@@ -14,7 +14,7 @@ def run_backtest(data, params, verbose=True):
     if verbose:
         print("\nFühre Backtest aus...")
 
-    # NEUE PARAMETER FÜR REALISTISCHERES BACKTESTING
+    # Parameter für realistischeres Backtesting
     leverage = params.get('leverage', 1.0)
     sl_multiplier = params.get('stop_loss_atr_multiplier', 1.5)
     
@@ -62,13 +62,13 @@ def run_backtest(data, params, verbose=True):
             exit_price = current_candle['open'] # Ausstieg am Anfang der neuen Kerze
             pnl = 0.0
 
-            # Ausstiegssignal für Long-Position
-            if position_side == 'long' and prev_candle['sell_signal_ut']:
+            # Ausstiegssignal für Long-Position (ein Verkaufssignal)
+            if position_side == 'long' and prev_candle['sell_signal']:
                 pnl = (((exit_price - entry_price) / entry_price) * leverage) - (2 * fee_pct * leverage)
                 if verbose: print(f"{current_candle.name.strftime('%Y-%m-%d %H:%M')} | CLOSE LONG  | PnL: {pnl*100:.2f}%")
 
-            # Ausstiegssignal für Short-Position
-            elif position_side == 'short' and prev_candle['buy_signal_ut']:
+            # Ausstiegssignal für Short-Position (ein Kaufsignal)
+            elif position_side == 'short' and prev_candle['buy_signal']:
                 pnl = (((entry_price - exit_price) / entry_price) * leverage) - (2 * fee_pct * leverage)
                 if verbose: print(f"{current_candle.name.strftime('%Y-%m-%d %H:%M')} | CLOSE SHORT | PnL: {pnl*100:.2f}%")
 
@@ -106,7 +106,7 @@ def run_backtest(data, params, verbose=True):
              print(f"Symbol: {params['symbol_display']}")
         print(f"Timeframe: {params['timeframe']}")
         print(f"Hebel: {leverage}x | SL-Multiplikator: {sl_multiplier}")
-        print(f"Parameter: ut_atr_period={params['ut_atr_period']}, ut_key_value={params['ut_key_value']}, adx_threshold={params.get('adx_threshold', 'N/A')}")
+        print(f"Parameter: st_atr_period={params['st_atr_period']}, st_atr_multiplier={params['st_atr_multiplier']}, adx_threshold={params.get('adx_threshold', 'N/A')}")
         print("-" * 27)
         print(f"Gesamt-PnL (gehebelt): {total_pnl * 100:.2f}%")
         print(f"Anzahl Trades: {trades_count}")
@@ -171,12 +171,11 @@ def load_data_for_backtest(symbol, timeframe, start_date_str, end_date_str):
     return None
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Strategie-Backtest für den Envelope Bot.")
+    parser = argparse.ArgumentParser(description="Strategie-Backtest für den Supertrend Bot.")
     parser.add_argument('--start', required=True, help="Startdatum im Format YYYY-MM-DD")
     parser.add_argument('--end', required=True, help="Enddatum im Format YYYY-MM-DD")
     parser.add_argument('--timeframe', required=True, help="Timeframe (z.B. 15m, 1h, 4h, 1d)")
     parser.add_argument('--symbols', nargs='+', help="Ein oder mehrere Handelspaare (z.B. BTC ETH SOL), überschreibt die config.json")
-    # NEUE ARGUMENTE
     parser.add_argument('--leverage', type=float, help="Optionaler Hebel (z.B. 10)")
     parser.add_argument('--sl_multiplier', type=float, help="Optionaler Stop-Loss ATR Multiplikator (z.B. 1.5)")
     args = parser.parse_args()
