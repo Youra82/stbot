@@ -7,7 +7,6 @@ import logging
 import requests
 
 # --- PFAD-SETUP ---
-# Fügt das Hauptverzeichnis des Projekts zum Python-Pfad hinzu
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(PROJECT_ROOT)
 
@@ -23,22 +22,21 @@ def load_config():
             return json.load(f)
     except Exception as e:
         logging.critical(f"Kritischer Fehler: Konfigurationsdatei config.json konnte nicht geladen werden: {e}")
-        # Telegram-Benachrichtigung hier, falls möglich
         sys.exit(1)
 
 params = load_config()
 
 # --- PFADEINSTELLUNGEN ---
-BASE_DIR = os.path.expanduser("~/utbot2") # Basisverzeichnis auf dem Server
+BASE_DIR = os.path.expanduser("~/utbot2")
 KEY_PATH = os.path.join(BASE_DIR, 'secret.json')
 DB_PATH = os.path.join(os.path.dirname(__file__), f"tracker_{params['symbol'].replace('/', '-').replace(':', '-')}.db")
 LOG_DIR = os.path.join(BASE_DIR, 'logs')
 os.makedirs(LOG_DIR, exist_ok=True)
-LOG_FILE = os.path.join(LOG_DIR, 'envelope.log')
+LOG_FILE = os.path.join(LOG_DIR, 'supertrend.log') # Log-Datei umbenannt
 
 # --- LOGGING & TELEGRAM ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s UTC: %(message)s', datefmt='%Y-%m-%d %H:%M:%S', handlers=[logging.FileHandler(LOG_FILE), logging.StreamHandler()])
-logger = logging.getLogger('envelope_bot')
+logger = logging.getLogger('supertrend_bot')
 
 telegram_bot_token = None
 telegram_chat_id = None
@@ -54,7 +52,7 @@ def send_telegram_message(message):
         logger.error(f"Fehler beim Senden der Telegram-Nachricht: {e}")
 
 # --- AUTHENTIFIZIERUNG & SETUP ---
-logger.info(f">>> Starte Ausführung für {params['symbol']}")
+logger.info(f">>> Starte Ausführung für {params['symbol']} (Supertrend-Strategie)")
 try:
     with open(KEY_PATH, "r") as f:
         secrets = json.load(f)
@@ -113,7 +111,7 @@ def open_new_position(side, data):
                 stop_loss_id = sl_order.get('id')
                 state_manager.set_state(status="in_trade", last_side=side, stop_loss_ids=[stop_loss_id])
                 position_type = 'Long' if side == 'buy' else 'Short'
-                sl_text = f"mit Stop-Loss bei {stop_loss_price:.4f}"
+                sl_text = f"mit initialem Stop-Loss bei {stop_loss_price:.4f}"
                 logger.info(f"{position_type}-Position bei {current_price:.4f} eröffnet, {sl_text}")
                 send_telegram_message(f"✅ *{position_type}-Position eröffnet ({params['symbol']}):* @ {current_price:.4f} USDT\n{sl_text}")
             else:
@@ -135,31 +133,40 @@ def manage_trailing_stop(position_info, data):
 
     state = state_manager.get_state()
     if not state.get('stop_loss_ids'):
-        logger.info("Keine Stop-Loss ID für Trailing Stop gefunden.")
-        return
-
+        logger.info("Keine Stop-Loss ID für Trailing Stop gefunden. Verwende Supertrend-Linie zum Setzen eines neuen SL.")
+    
     try:
-        current_sl_id = state['stop_loss_ids'][0]
-        open_orders = bitget.fetch_open_trigger_orders(params['symbol'])
-        current_sl_order = next((o for o in open_orders if o['id'] == current_sl_id), None)
+        # Die Supertrend-Linie der letzten geschlossenen Kerze ist unser neues SL-Ziel
+        new_trailing_stop_price = data.iloc[-2]['supertrend_line']
+        current_sl_id = state['stop_loss_ids'][0] if state.get('stop_loss_ids') else None
+        current_sl_price = 0.0
 
-        if not current_sl_order:
-            logger.warning(f"Gespeicherte SL-Order {current_sl_id} nicht mehr auf der Börse gefunden. Wurde sie manuell geschlossen?")
-            state_manager.set_state("in_trade", last_side=state['last_side'], stop_loss_ids=[])
-            return
-
-        current_sl_price = float(current_sl_order['stopPrice'])
-        new_trailing_stop_price = data.iloc[-1]['x_atr_trailing_stop']
+        if current_sl_id:
+            open_orders = bitget.fetch_open_trigger_orders(params['symbol'])
+            current_sl_order = next((o for o in open_orders if o['id'] == current_sl_id), None)
+            if current_sl_order:
+                current_sl_price = float(current_sl_order['stopPrice'])
+            else:
+                 logger.warning(f"Gespeicherte SL-Order {current_sl_id} nicht mehr gefunden. Wird neu gesetzt.")
+                 current_sl_id = None # Erzwingt das Setzen einer neuen Order
         
         should_trail = False
         if position_info['side'] == 'long' and new_trailing_stop_price > current_sl_price:
             should_trail = True
         elif position_info['side'] == 'short' and new_trailing_stop_price < current_sl_price:
             should_trail = True
+        
+        # Falls kein SL existiert, aber Trailing aktiv ist, wird der erste SL gesetzt
+        if not current_sl_id and params.get('enable_trailing_stop_loss'):
+             should_trail = True
+             logger.info("Kein aktiver SL. Setze Trailing Stop auf Supertrend-Linie.")
 
         if should_trail:
             logger.info(f"Trailing Stop: Verschiebe SL von {current_sl_price:.4f} nach {new_trailing_stop_price:.4f}")
-            bitget.cancel_trigger_order(current_sl_id, params['symbol'])
+            
+            # Bestehenden SL löschen, falls vorhanden
+            if current_sl_id:
+                bitget.cancel_trigger_order(current_sl_id, params['symbol'])
             
             amount = float(position_info['contracts'])
             sl_side = 'sell' if position_info['side'] == 'long' else 'buy'
@@ -201,8 +208,8 @@ def main():
             logger.info(f"Offene {pos_info['side']}-Position wird gehalten. PnL: {pos_info.get('unrealizedPnl', 0):.2f} USDT")
 
             # A. Auf Schließ-Signal (Flip) prüfen
-            should_close_long = pos_info['side'] == 'long' and last_candle['sell_signal_ut']
-            should_close_short = pos_info['side'] == 'short' and last_candle['buy_signal_ut']
+            should_close_long = pos_info['side'] == 'long' and last_candle['sell_signal']
+            should_close_short = pos_info['side'] == 'short' and last_candle['buy_signal']
             
             if should_close_long or should_close_short:
                 closed_side_msg = "LONG" if should_close_long else "SHORT"
