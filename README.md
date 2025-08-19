@@ -6,10 +6,10 @@ _A homemade humble library to run automated python crypto trading bots_
 🛠️ Setup commands (virtual environment included)
 -------------
 > git clone https://github.com/Youra82/stbot.git \
-> bash utbot2/install.sh
+> bash stbot/install.sh
 
 Botausführung:
-> bash utbot2/code/run_envelope.sh
+> bash stbot/code/run_envelope.sh
 
 Monitorinstallation:
 > chmod +x monitor_bot.sh
@@ -25,7 +25,7 @@ Cache vom Optimizer löschen:
 
 Abfrage der letzten Trading-etnscheidungen:
 
-> grep "TRADE_DECISION:" /home/ubuntu/utbot2/logs/envelope.log | tail -n 20
+> grep "TRADE_DECISION:" /home/ubuntu/stbot/logs/envelope.log | tail -n 20
 
 \
 ⭐ Bots and strategies
