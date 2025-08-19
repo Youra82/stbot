@@ -14,9 +14,5 @@
 
     "enable_stop_loss": true,
     "stop_loss_atr_multiplier": 1.5,
-    "enable_trailing_stop_loss": true,
-
-    "use_adx_filter": true,
-    "adx_window": 14,
-    "adx_threshold": 25
+    "enable_trailing_stop_loss": true
 }
