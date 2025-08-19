@@ -9,8 +9,8 @@
     "max_retries": 3,
     "retry_delay": 2,
 
-    "ut_key_value": 1.0,
-    "ut_atr_period": 10,
+    "st_atr_period": 10,
+    "st_atr_multiplier": 3.0,
 
     "enable_stop_loss": true,
     "stop_loss_atr_multiplier": 1.5,
