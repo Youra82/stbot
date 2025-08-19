@@ -5,7 +5,7 @@ _A homemade humble library to run automated python crypto trading bots_
 \
 🛠️ Setup commands (virtual environment included)
 -------------
-> git clone https://github.com/Youra82/utbot2.git \
+> git clone https://github.com/Youra82/stbot.git \
 > bash utbot2/install.sh
 
 Botausführung:
