@@ -106,7 +106,7 @@ def run_backtest(data, params, verbose=True):
              print(f"Symbol: {params['symbol_display']}")
         print(f"Timeframe: {params['timeframe']}")
         print(f"Hebel: {leverage}x | SL-Multiplikator: {sl_multiplier}")
-        print(f"Parameter: st_atr_period={params['st_atr_period']}, st_atr_multiplier={params['st_atr_multiplier']}, adx_threshold={params.get('adx_threshold', 'N/A')}")
+        print(f"Parameter: st_atr_period={params['st_atr_period']}, st_atr_multiplier={params['st_atr_multiplier']}")
         print("-" * 27)
         print(f"Gesamt-PnL (gehebelt): {total_pnl * 100:.2f}%")
         print(f"Anzahl Trades: {trades_count}")
@@ -147,7 +147,10 @@ def load_data_for_backtest(symbol, timeframe, start_date_str, end_date_str):
     if download_start_date:
         print(f"Lade neue Daten von {download_start_date} bis {end_date_str} für {symbol}...")
         try:
-            key_path = '/home/ubuntu/utbot2/secret.json'
+            # Dynamischer Pfad zur secret.json im Hauptverzeichnis des Bots
+            project_root = os.path.join(os.path.dirname(__file__), '..', '..')
+            key_path = os.path.abspath(os.path.join(project_root, 'secret.json'))
+            
             with open(key_path, "r") as f:
                 api_setup = json.load(f)['envelope']
             bitget = BitgetFutures(api_setup)
