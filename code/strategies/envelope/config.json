@@ -1,0 +1,22 @@
+{
+    "symbol": "BTC/USDT:USDT",
+    "timeframe": "15m",
+    "margin_mode": "isolated",
+    "leverage": 10,
+    "use_longs": true,
+    "use_shorts": true,
+    "trade_size_pct": 50,
+    "max_retries": 3,
+    "retry_delay": 2,
+
+    "ut_key_value": 1.0,
+    "ut_atr_period": 10,
+
+    "enable_stop_loss": true,
+    "stop_loss_atr_multiplier": 1.5,
+    "enable_trailing_stop_loss": true,
+
+    "use_adx_filter": true,
+    "adx_window": 14,
+    "adx_threshold": 25
+}
