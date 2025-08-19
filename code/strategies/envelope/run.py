@@ -27,7 +27,7 @@ def load_config():
 params = load_config()
 
 # --- PFADEINSTELLUNGEN ---
-BASE_DIR = os.path.expanduser("~/utbot2")
+BASE_DIR = os.path.expanduser(os.path.join("~", "stbot")) # Annahme, dass der Bot in ~/stbot liegt
 KEY_PATH = os.path.join(BASE_DIR, 'secret.json')
 DB_PATH = os.path.join(os.path.dirname(__file__), f"tracker_{params['symbol'].replace('/', '-').replace(':', '-')}.db")
 LOG_DIR = os.path.join(BASE_DIR, 'logs')
