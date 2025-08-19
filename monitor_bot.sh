@@ -2,7 +2,7 @@
 
 # Pfade zu wichtigen Dateien und Verzeichnissen
 CONFIG_FILE="/home/ubuntu/utbot2/code/strategies/envelope/config.json"
-LOG_FILE="/home/ubuntu/utbot2/logs/envelope.log"
+LOG_FILE="/home/ubuntu/utbot2/logs/supertrend.log" # Log-Datei angepasst
 PYTHON_VENV="/home/ubuntu/utbot2/code/.venv/bin/python3"
 BACKTEST_SCRIPT="/home/ubuntu/utbot2/code/analysis/backtest.py"
 OPTIMIZER_SCRIPT="/home/ubuntu/utbot2/code/analysis/optimizer.py"
@@ -22,7 +22,7 @@ function run_analysis() {
     local script_args=""
 
     echo -e "${CYAN}=======================================================${NC}"
-    echo -e "${CYAN}               ENVELOPE BOT - $mode_name MODUS               ${NC}"
+    echo -e "${CYAN}              SUPERTREND BOT - $mode_name MODUS              ${NC}"
     echo -e "${CYAN}=======================================================${NC}"
 
     read -p "Bitte geben Sie den Zeitraum ein (z.B. 2024-01-01 to 2024-06-30): " date_range_input
@@ -54,7 +54,7 @@ function run_analysis() {
         fi
     fi
 
-    # NEUE ABFRAGEN FÜR HEBEL UND SL
+    # Abfragen für Hebel und SL
     read -p "Hebel eingeben (optional, Enter für Standard): " LEVERAGE
     if [ -n "$LEVERAGE" ]; then
         script_args="$script_args --leverage $LEVERAGE"
@@ -92,7 +92,7 @@ esac
 
 # --- STANDARD-MONITORING-ANZEIGE ---
 echo -e "${CYAN}=======================================================${NC}"
-echo -e "${CYAN}               ENVELOPE TRADING BOT MONITORING               ${NC}"
+echo -e "${CYAN}             SUPERTREND TRADING BOT MONITORING             ${NC}"
 echo -e "${CYAN}=======================================================${NC}"
 echo "Verwende './monitor_bot.sh <mode>', Modi: ${GREEN}backtest, optimize, clear-cache${NC}"
 echo -e "Letzte Aktualisierung: $(date '+%Y-%m-%d %H:%M:%S')"
@@ -106,9 +106,9 @@ if command -v jq &> /dev/null; then
     LEVERAGE=$(jq -r '.leverage' $CONFIG_FILE)
     echo "Symbol: $SYMBOL, Timeframe: $TIMEFRAME, Hebel: ${LEVERAGE}x"
     
-    ATR_PERIOD=$(jq -r '.ut_atr_period' $CONFIG_FILE)
-    KEY_VALUE=$(jq -r '.ut_key_value' $CONFIG_FILE)
-    echo "UT Bot: ATR Periode $ATR_PERIOD / Key Value $KEY_VALUE"
+    ST_PERIOD=$(jq -r '.st_atr_period' $CONFIG_FILE)
+    ST_MULTI=$(jq -r '.st_atr_multiplier' $CONFIG_FILE)
+    echo "Supertrend: ATR Periode $ST_PERIOD / Multiplikator $ST_MULTI"
 
     if [[ $(jq -r '.use_adx_filter' $CONFIG_FILE) == "true" ]]; then
         ADX_WIN=$(jq -r '.adx_window' $CONFIG_FILE)
@@ -143,10 +143,11 @@ if [ -f "$LOG_FILE" ]; then
         POSITION_INFO=$(echo "$LAST_OPEN_LINE" | sed 's/.*UTC: //')
         ENTRY_SIDE=$(echo "$POSITION_INFO" | awk '{print $1}')
         ENTRY_PRICE=$(echo "$POSITION_INFO" | grep -oP '@ \K[0-9.]+')
-        STOP_LOSS_PRICE=$(echo "$POSITION_INFO" | grep -oP 'Stop-Loss bei \K[0-9.]+')
+        # Versuchen, den Trailing Stop oder den initialen SL zu finden
+        STOP_LOSS_PRICE=$(grep -oP '(Neuer SL bei|Stop-Loss bei) \K[0-9.]+' "$LOG_FILE" | tail -n 1)
         
         echo -e "Status: ${GREEN}Position offen${NC}"
-        echo -e "Seite: ${GREEN}${ENTRY_SIDE}${NC}, Einstieg: ${GREEN}${ENTRY_PRICE}${NC}, SL: ${RED}${STOP_LOSS_PRICE:-N/A}${NC}"
+        echo -e "Seite: ${GREEN}${ENTRY_SIDE}${NC}, Einstieg: ${GREEN}${ENTRY_PRICE}${NC}, Aktueller SL: ${RED}${STOP_LOSS_PRICE:-N/A}${NC}"
     else
         echo -e "Status: ${CYAN}Keine Position offen${NC}"
     fi
