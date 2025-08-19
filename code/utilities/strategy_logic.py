@@ -5,14 +5,14 @@ import ta
 
 def calculate_signals(data, params):
     """
-    Berechnet die Supertrend-Signale und optional den ADX-Trendindikator.
+    Berechnet die reinen Supertrend-Signale.
     """
     # --- Parameter aus der Konfiguration holen ---
     st_period = params.get('st_atr_period', 10)
     st_multiplier = params.get('st_atr_multiplier', 3.0)
     
     # --- Supertrend-Berechnung ---
-    # Quelle bestimmen (hl2 oder close)
+    # Quelle ist (High + Low) / 2
     src = (data['high'] + data['low']) / 2
 
     # ATR berechnen
@@ -71,20 +71,8 @@ def calculate_signals(data, params):
 
     # --- Signale generieren (Trendwechsel) ---
     # Kaufsignal, wenn der Trend von -1 (short) auf 1 (long) wechselt
-    data['buy_signal_st'] = (data['trend'] == 1) & (data['trend'].shift(1) == -1)
+    data['buy_signal'] = (data['trend'] == 1) & (data['trend'].shift(1) == -1)
     # Verkaufssignal, wenn der Trend von 1 (long) auf -1 (short) wechselt
-    data['sell_signal_st'] = (data['trend'] == -1) & (data['trend'].shift(1) == 1)
-
-    # --- ADX Trend Filter (optional) ---
-    if params.get('use_adx_filter', False):
-        data['adx'] = ta.trend.adx(data['high'], data['low'], data['close'], window=params.get('adx_window', 14))
-        is_trending = data['adx'] > params.get('adx_threshold', 25)
-        data['buy_signal'] = data['buy_signal_st'] & is_trending
-        data['sell_signal'] = data['sell_signal_st'] & is_trending
-    else:
-        # Wenn Filter aus, nutze die originalen Supertrend-Signale
-        data['buy_signal'] = data['buy_signal_st']
-        data['sell_signal'] = data['sell_signal_st']
-        data['adx'] = 0 # Platzhalter
+    data['sell_signal'] = (data['trend'] == -1) & (data['trend'].shift(1) == 1)
 
     return data
