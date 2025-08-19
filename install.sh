@@ -5,7 +5,7 @@ echo Installing pip
 sudo apt install python3-pip -y
 
 echo Installing virtual environment and packages
-cd utbot2/code
+cd stbot/code
 sudo apt-get install python3-venv
 python3 -m venv .venv
 source .venv/bin/activate
