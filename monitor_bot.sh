@@ -1,12 +1,15 @@
 #!/bin/bash
 
+# --- Dynamische Pfadermittlung ---
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
+
 # Pfade zu wichtigen Dateien und Verzeichnissen
-CONFIG_FILE="/home/ubuntu/utbot2/code/strategies/envelope/config.json"
-LOG_FILE="/home/ubuntu/utbot2/logs/supertrend.log" # Log-Datei angepasst
-PYTHON_VENV="/home/ubuntu/utbot2/code/.venv/bin/python3"
-BACKTEST_SCRIPT="/home/ubuntu/utbot2/code/analysis/backtest.py"
-OPTIMIZER_SCRIPT="/home/ubuntu/utbot2/code/analysis/optimizer.py"
-CACHE_DIR="/home/ubuntu/utbot2/code/analysis/historical_data"
+CONFIG_FILE="$SCRIPT_DIR/code/strategies/envelope/config.json"
+LOG_FILE="$SCRIPT_DIR/logs/supertrend.log"
+PYTHON_VENV="$SCRIPT_DIR/code/.venv/bin/python3"
+BACKTEST_SCRIPT="$SCRIPT_DIR/code/analysis/backtest.py"
+OPTIMIZER_SCRIPT="$SCRIPT_DIR/code/analysis/optimizer.py"
+CACHE_DIR="$SCRIPT_DIR/code/analysis/historical_data"
 
 # --- Farbcodes für eine schönere Ausgabe ---
 GREEN='\033[0;32m'
@@ -54,7 +57,6 @@ function run_analysis() {
         fi
     fi
 
-    # Abfragen für Hebel und SL
     read -p "Hebel eingeben (optional, Enter für Standard): " LEVERAGE
     if [ -n "$LEVERAGE" ]; then
         script_args="$script_args --leverage $LEVERAGE"
@@ -100,25 +102,21 @@ echo ""
 
 # --- Konfiguration & Strategie ---
 echo -e "${YELLOW}--- KONFIGURATION & STRATEGIE ---${NC}"
-if command -v jq &> /dev/null; then
-    SYMBOL=$(jq -r '.symbol' $CONFIG_FILE)
-    TIMEFRAME=$(jq -r '.timeframe' $CONFIG_FILE)
-    LEVERAGE=$(jq -r '.leverage' $CONFIG_FILE)
-    echo "Symbol: $SYMBOL, Timeframe: $TIMEFRAME, Hebel: ${LEVERAGE}x"
-    
-    ST_PERIOD=$(jq -r '.st_atr_period' $CONFIG_FILE)
-    ST_MULTI=$(jq -r '.st_atr_multiplier' $CONFIG_FILE)
-    echo "Supertrend: ATR Periode $ST_PERIOD / Multiplikator $ST_MULTI"
-
-    if [[ $(jq -r '.use_adx_filter' $CONFIG_FILE) == "true" ]]; then
-        ADX_WIN=$(jq -r '.adx_window' $CONFIG_FILE)
-        ADX_THRES=$(jq -r '.adx_threshold' $CONFIG_FILE)
-        echo -e "ADX Filter: ${GREEN}Aktiv${NC} (Window: $ADX_WIN, Threshold: $ADX_THRES)"
+if [ -f "$CONFIG_FILE" ]; then
+    if command -v jq &> /dev/null; then
+        SYMBOL=$(jq -r '.symbol' $CONFIG_FILE)
+        TIMEFRAME=$(jq -r '.timeframe' $CONFIG_FILE)
+        LEVERAGE=$(jq -r '.leverage' $CONFIG_FILE)
+        echo "Symbol: $SYMBOL, Timeframe: $TIMEFRAME, Hebel: ${LEVERAGE}x"
+        
+        ST_PERIOD=$(jq -r '.st_atr_period' $CONFIG_FILE)
+        ST_MULTI=$(jq -r '.st_atr_multiplier' $CONFIG_FILE)
+        echo "Supertrend: ATR Periode $ST_PERIOD / Multiplikator $ST_MULTI"
     else
-        echo -e "ADX Filter: ${RED}Inaktiv${NC}"
+        echo -e "${RED}Fehler: 'jq' ist nicht installiert. Bitte mit 'sudo apt-get install jq' installieren.${NC}"
     fi
 else
-    echo -e "${RED}Fehler: 'jq' ist nicht installiert. Bitte mit 'sudo apt-get install jq' installieren.${NC}"
+    echo -e "${RED}Fehler: Konfigurationsdatei nicht gefunden unter $CONFIG_FILE${NC}"
 fi
 echo ""
 
@@ -143,7 +141,6 @@ if [ -f "$LOG_FILE" ]; then
         POSITION_INFO=$(echo "$LAST_OPEN_LINE" | sed 's/.*UTC: //')
         ENTRY_SIDE=$(echo "$POSITION_INFO" | awk '{print $1}')
         ENTRY_PRICE=$(echo "$POSITION_INFO" | grep -oP '@ \K[0-9.]+')
-        # Versuchen, den Trailing Stop oder den initialen SL zu finden
         STOP_LOSS_PRICE=$(grep -oP '(Neuer SL bei|Stop-Loss bei) \K[0-9.]+' "$LOG_FILE" | tail -n 1)
         
         echo -e "Status: ${GREEN}Position offen${NC}"
