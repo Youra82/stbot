@@ -27,7 +27,7 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, leverag
         
         base_params = default_params.copy()
 
-        # NEU: Überschreibe Hebel und SL, falls vom Nutzer angegeben
+        # Überschreibe Hebel und SL, falls vom Nutzer angegeben
         if leverage:
             base_params['leverage'] = leverage
         if sl_multiplier:
@@ -45,10 +45,10 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, leverag
 
         timeframes_to_test = timeframes_str.split()
         
-        # HINWEIS: SL Multiplikator wird hier nicht mehr optimiert, sondern als fester Wert verwendet.
+        # Parameter-Grid für die Supertrend-Strategie
         param_grid = {
-            'ut_atr_period': [7, 10, 14],
-            'ut_key_value': [1.0, 1.5, 2.0],
+            'st_atr_period': [7, 10, 14],
+            'st_atr_multiplier': [2.0, 3.0, 4.0],
             'adx_threshold': [20, 25, 30],
             'adx_window': [14, 20, 25] 
         }
@@ -75,7 +75,7 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, leverag
                 current_run += 1
                 print(f"\rTeste Kombination {current_run}/{total_runs}...", end="")
 
-                required_data_points = params_to_test.get('adx_window', 14) * 2
+                required_data_points = max(params_to_test.get('adx_window', 14), params_to_test.get('st_atr_period', 10)) * 2
                 if len(data) < required_data_points:
                     continue
 
@@ -116,17 +116,17 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, leverag
             print(f"     --- PLATZ {platz} ---")
             print("="*30)
             print("\n  LEISTUNG:")
-            print(f"    Gewinn (PnL):       {row['total_pnl_pct']:.2f} %")
-            print(f"    Trefferquote:       {row['win_rate']:.2f} %")
+            print(f"    Gewinn (PnL):        {row['total_pnl_pct']:.2f} %")
+            print(f"    Trefferquote:        {row['win_rate']:.2f} %")
             print(f"    Anzahl Trades:    {int(row['trades_count'])}")
             print("\n  EINGESTELLTE PARAMETER:")
-            print(f"    Hebel:              {row['leverage']}x")
-            print(f"    SL Multiplikator:   {row['stop_loss_atr_multiplier']}")
-            print(f"    Timeframe:          {row['timeframe']}")
-            print(f"    UT ATR Periode:     {int(row['ut_atr_period'])}")
-            print(f"    UT Key Value:       {row['ut_key_value']:.1f}")
-            print(f"    ADX Schwellenwert:  {int(row['adx_threshold'])}")
-            print(f"    ADX Window:         {int(row['adx_window'])}")
+            print(f"    Hebel:               {row['leverage']}x")
+            print(f"    SL Multiplikator:    {row['stop_loss_atr_multiplier']}")
+            print(f"    Timeframe:           {row['timeframe']}")
+            print(f"    ST ATR Periode:      {int(row['st_atr_period'])}")
+            print(f"    ST Multiplikator:    {row['st_atr_multiplier']:.1f}")
+            print(f"    ADX Schwellenwert:   {int(row['adx_threshold'])}")
+            print(f"    ADX Window:          {int(row['adx_window'])}")
             
         print("\n" + "="*30)
         print(f"#################### ENDE OPTIMIERUNG FÜR: {base_params['symbol']} ####################\n")
@@ -148,27 +148,26 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, leverag
             print("="*50)
             print(f"\n  HANDELSPAAR: {row['symbol']}")
             print("\n  LEISTUNG:")
-            print(f"    Gewinn (PnL):       {row['total_pnl_pct']:.2f} %")
-            print(f"    Trefferquote:       {row['win_rate']:.2f} %")
+            print(f"    Gewinn (PnL):        {row['total_pnl_pct']:.2f} %")
+            print(f"    Trefferquote:        {row['win_rate']:.2f} %")
             print(f"    Anzahl Trades:    {int(row['trades_count'])}")
             print("\n  BESTE PARAMETER FÜR DIESEN COIN:")
-            print(f"    Hebel:              {row['leverage']}x")
-            print(f"    SL Multiplikator:   {row['stop_loss_atr_multiplier']}")
-            print(f"    Timeframe:          {row['timeframe']}")
-            print(f"    UT ATR Periode:     {int(row['ut_atr_period'])}")
-            print(f"    UT Key Value:       {row['ut_key_value']:.1f}")
-            print(f"    ADX Schwellenwert:  {int(row['adx_threshold'])}")
-            print(f"    ADX Window:         {int(row['adx_window'])}")
+            print(f"    Hebel:               {row['leverage']}x")
+            print(f"    SL Multiplikator:    {row['stop_loss_atr_multiplier']}")
+            print(f"    Timeframe:           {row['timeframe']}")
+            print(f"    ST ATR Periode:      {int(row['st_atr_period'])}")
+            print(f"    ST Multiplikator:    {row['st_atr_multiplier']:.1f}")
+            print(f"    ADX Schwellenwert:   {int(row['adx_threshold'])}")
+            print(f"    ADX Window:          {int(row['adx_window'])}")
         
         print("\n" + "="*50)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Strategie-Optimierer für den Envelope Bot.")
+    parser = argparse.ArgumentParser(description="Strategie-Optimierer für den Supertrend Bot.")
     parser.add_argument('--start', required=True, help="Startdatum im Format YYYY-MM-DD")
     parser.add_argument('--end', required=True, help="Enddatum im Format YYYY-MM-DD")
     parser.add_argument('--timeframes', required=True, help="Eine Liste von Timeframes, getrennt durch Leerzeichen")
     parser.add_argument('--symbols', nargs='+', help="Ein oder mehrere Handelspaare (z.B. BTC ETH SOL)")
-    # NEUE ARGUMENTE
     parser.add_argument('--leverage', type=float, help="Optionaler Hebel (z.B. 10)")
     parser.add_argument('--sl_multiplier', type=float, help="Optionaler Stop-Loss ATR Multiplikator (z.B. 1.5)")
     args = parser.parse_args()
