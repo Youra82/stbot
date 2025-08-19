@@ -23,7 +23,7 @@ Backtest & Optimizer benutzen
 Cache vom Optimizer löschen:
 > ./monitor_bot.sh clear-cache
 
-Abfrage der letzten Trading-Etnscheidungen:
+Abfrage der letzten Trading-Entscheidungen:
 
 > grep "TRADE_DECISION:" /home/ubuntu/stbot/logs/envelope.log | tail -n 20
 
