@@ -27,7 +27,6 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, leverag
         
         base_params = default_params.copy()
 
-        # Überschreibe Hebel und SL, falls vom Nutzer angegeben
         if leverage:
             base_params['leverage'] = leverage
         if sl_multiplier:
@@ -45,12 +44,10 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, leverag
 
         timeframes_to_test = timeframes_str.split()
         
-        # Parameter-Grid für die Supertrend-Strategie
+        # Parameter-Grid für die reine Supertrend-Strategie
         param_grid = {
-            'st_atr_period': [7, 10, 14],
-            'st_atr_multiplier': [2.0, 3.0, 4.0],
-            'adx_threshold': [20, 25, 30],
-            'adx_window': [14, 20, 25] 
+            'st_atr_period': [7, 10, 14, 21],
+            'st_atr_multiplier': [2.0, 2.5, 3.0, 3.5, 4.0],
         }
         
         keys, values = zip(*param_grid.items())
@@ -75,7 +72,7 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, leverag
                 current_run += 1
                 print(f"\rTeste Kombination {current_run}/{total_runs}...", end="")
 
-                required_data_points = max(params_to_test.get('adx_window', 14), params_to_test.get('st_atr_period', 10)) * 2
+                required_data_points = params_to_test.get('st_atr_period', 10) * 2
                 if len(data) < required_data_points:
                     continue
 
@@ -125,8 +122,6 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, leverag
             print(f"    Timeframe:           {row['timeframe']}")
             print(f"    ST ATR Periode:      {int(row['st_atr_period'])}")
             print(f"    ST Multiplikator:    {row['st_atr_multiplier']:.1f}")
-            print(f"    ADX Schwellenwert:   {int(row['adx_threshold'])}")
-            print(f"    ADX Window:          {int(row['adx_window'])}")
             
         print("\n" + "="*30)
         print(f"#################### ENDE OPTIMIERUNG FÜR: {base_params['symbol']} ####################\n")
@@ -157,8 +152,6 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, leverag
             print(f"    Timeframe:           {row['timeframe']}")
             print(f"    ST ATR Periode:      {int(row['st_atr_period'])}")
             print(f"    ST Multiplikator:    {row['st_atr_multiplier']:.1f}")
-            print(f"    ADX Schwellenwert:   {int(row['adx_threshold'])}")
-            print(f"    ADX Window:          {int(row['adx_window'])}")
         
         print("\n" + "="*50)
 
