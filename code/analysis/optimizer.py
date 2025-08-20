@@ -28,10 +28,13 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, leverag
         
         base_params = default_params.copy()
 
+        # Diese Argumente überschreiben die Grid-Suche, falls sie übergeben werden
         if leverage:
             base_params['leverage'] = leverage
+        # WICHTIG: Wenn sl_multiplier übergeben wird, wird er nicht optimiert
         if sl_multiplier:
             base_params['stop_loss_atr_multiplier'] = sl_multiplier
+            print(f"INFO: Fester SL-Multiplikator von {sl_multiplier} wird für den Lauf verwendet.")
 
         raw_symbol = symbol_arg
         if '/' not in raw_symbol:
@@ -41,14 +44,23 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, leverag
             base_params['symbol'] = raw_symbol.upper()
         
         print(f"\n\n#################### START OPTIMIERUNG FÜR: {base_params['symbol']} ####################")
-        print(f"INFO: Fester Hebel für diesen Lauf: {base_params.get('leverage', 'N/A')}x, Fester SL-Multiplikator: {base_params.get('stop_loss_atr_multiplier', 'N/A')}")
-
+        
         timeframes_to_test = timeframes_str.split()
         
+        # --- ERWEITERUNG: SL-Multiplikator wird jetzt mitgetestet ---
         param_grid = {
-            'st_atr_period': [7, 10, 14, 21],
-            'st_atr_multiplier': [2.0, 2.5, 3.0, 3.5, 4.0],
+            'st_atr_period': [10, 14, 21],
+            'st_atr_multiplier': [2.5, 3.0, 3.5, 4.0],
+            'stop_loss_atr_multiplier': [1.0, 1.5, 2.0, 2.5] # NEUE ZEILE
         }
+        
+        # Falls ein fester SL übergeben wurde, wird er nicht optimiert
+        if sl_multiplier:
+            del param_grid['stop_loss_atr_multiplier']
+            print(f"INFO: Fester Hebel für diesen Lauf: {base_params.get('leverage', '1.0')}x")
+        else:
+            print(f"INFO: Fester Hebel: {base_params.get('leverage', '1.0')}x. SL-Multiplikator wird optimiert.")
+
         
         keys, values = zip(*param_grid.items())
         param_combinations = [dict(zip(keys, v)) for v in product(*values)]
@@ -123,7 +135,7 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, leverag
 
             print("\n  EINGESTELLTE PARAMETER:")
             print(f"    Hebel:              {row['leverage']}x")
-            print(f"    SL Multiplikator:   {row['stop_loss_atr_multiplier']}")
+            print(f"    SL Multiplikator:   {row['stop_loss_atr_multiplier']:.1f}") # Formatierung angepasst
             print(f"    Timeframe:          {row['timeframe']}")
             print(f"    ST ATR Periode:     {int(row['st_atr_period'])}")
             print(f"    ST Multiplikator:   {row['st_atr_multiplier']:.1f}")
@@ -158,7 +170,7 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, leverag
 
             print("\n  BESTE PARAMETER FÜR DIESEN COIN:")
             print(f"    Hebel:              {row['leverage']}x")
-            print(f"    SL Multiplikator:   {row['stop_loss_atr_multiplier']}")
+            print(f"    SL Multiplikator:   {row['stop_loss_atr_multiplier']:.1f}") # Formatierung angepasst
             print(f"    Timeframe:          {row['timeframe']}")
             print(f"    ST ATR Periode:     {int(row['st_atr_period'])}")
             print(f"    ST Multiplikator:   {row['st_atr_multiplier']:.1f}")
