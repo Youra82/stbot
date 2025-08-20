@@ -5,6 +5,7 @@ import json
 import pandas as pd
 import argparse
 from itertools import product
+import numpy as np
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from utilities.strategy_logic import calculate_signals
@@ -44,7 +45,6 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, leverag
 
         timeframes_to_test = timeframes_str.split()
         
-        # Parameter-Grid für die reine Supertrend-Strategie
         param_grid = {
             'st_atr_period': [7, 10, 14, 21],
             'st_atr_multiplier': [2.0, 2.5, 3.0, 3.5, 4.0],
@@ -110,18 +110,23 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, leverag
         for i, row in top_10_results.reset_index(drop=True).iterrows():
             platz = i + 1
             print("\n" + "="*30)
-            print(f"     --- PLATZ {platz} ---")
+            print(f"      --- PLATZ {platz} ---")
             print("="*30)
             print("\n  LEISTUNG:")
-            print(f"    Gewinn (PnL):        {row['total_pnl_pct']:.2f} %")
-            print(f"    Trefferquote:        {row['win_rate']:.2f} %")
-            print(f"    Anzahl Trades:    {int(row['trades_count'])}")
+            print(f"    Gewinn (PnL):       {row['total_pnl_pct']:.2f} %")
+            print(f"    Trefferquote:       {row['win_rate']:.2f} %")
+            print(f"    Anzahl Trades:      {int(row['trades_count'])}")
+            
+            safe_leverage = row.get('max_safe_leverage', np.inf)
+            leverage_text = f"{safe_leverage:.2f}x" if safe_leverage != np.inf else "Keine Verluste"
+            print(f"    Max. sicherer Hebel: {leverage_text}")
+
             print("\n  EINGESTELLTE PARAMETER:")
-            print(f"    Hebel:               {row['leverage']}x")
-            print(f"    SL Multiplikator:    {row['stop_loss_atr_multiplier']}")
-            print(f"    Timeframe:           {row['timeframe']}")
-            print(f"    ST ATR Periode:      {int(row['st_atr_period'])}")
-            print(f"    ST Multiplikator:    {row['st_atr_multiplier']:.1f}")
+            print(f"    Hebel:              {row['leverage']}x")
+            print(f"    SL Multiplikator:   {row['stop_loss_atr_multiplier']}")
+            print(f"    Timeframe:          {row['timeframe']}")
+            print(f"    ST ATR Periode:     {int(row['st_atr_period'])}")
+            print(f"    ST Multiplikator:   {row['st_atr_multiplier']:.1f}")
             
         print("\n" + "="*30)
         print(f"#################### ENDE OPTIMIERUNG FÜR: {base_params['symbol']} ####################\n")
@@ -139,19 +144,24 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, leverag
         for i, row in final_ranking.iterrows():
             platz = i + 1
             print("\n" + "="*50)
-            print(f"     --- GESAMT-PLATZ {platz} ---")
+            print(f"          --- GESAMT-PLATZ {platz} ---")
             print("="*50)
             print(f"\n  HANDELSPAAR: {row['symbol']}")
             print("\n  LEISTUNG:")
-            print(f"    Gewinn (PnL):        {row['total_pnl_pct']:.2f} %")
-            print(f"    Trefferquote:        {row['win_rate']:.2f} %")
-            print(f"    Anzahl Trades:    {int(row['trades_count'])}")
+            print(f"    Gewinn (PnL):       {row['total_pnl_pct']:.2f} %")
+            print(f"    Trefferquote:       {row['win_rate']:.2f} %")
+            print(f"    Anzahl Trades:      {int(row['trades_count'])}")
+            
+            safe_leverage = row.get('max_safe_leverage', np.inf)
+            leverage_text = f"{safe_leverage:.2f}x" if safe_leverage != np.inf else "Keine Verluste"
+            print(f"    Max. sicherer Hebel: {leverage_text}")
+
             print("\n  BESTE PARAMETER FÜR DIESEN COIN:")
-            print(f"    Hebel:               {row['leverage']}x")
-            print(f"    SL Multiplikator:    {row['stop_loss_atr_multiplier']}")
-            print(f"    Timeframe:           {row['timeframe']}")
-            print(f"    ST ATR Periode:      {int(row['st_atr_period'])}")
-            print(f"    ST Multiplikator:    {row['st_atr_multiplier']:.1f}")
+            print(f"    Hebel:              {row['leverage']}x")
+            print(f"    SL Multiplikator:   {row['stop_loss_atr_multiplier']}")
+            print(f"    Timeframe:          {row['timeframe']}")
+            print(f"    ST ATR Periode:     {int(row['st_atr_period'])}")
+            print(f"    ST Multiplikator:   {row['st_atr_multiplier']:.1f}")
         
         print("\n" + "="*50)
 
