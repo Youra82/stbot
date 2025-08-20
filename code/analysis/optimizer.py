@@ -12,7 +12,7 @@ from utilities.strategy_logic import calculate_signals
 from analysis.backtest import run_backtest, load_data_for_backtest
 
 def run_optimization(start_date, end_date, timeframes_str, symbols_list, leverage=None, sl_multiplier=None):
-    print("Lade Basis-Konfiguration...")
+    print("Loading base configuration...")
     config_path = os.path.join(os.path.dirname(__file__), '..', 'strategies', 'envelope', 'config.json')
     with open(config_path, 'r') as f:
         default_params = json.load(f)
@@ -28,13 +28,13 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, leverag
         
         base_params = default_params.copy()
 
-        # Diese Argumente überschreiben die Grid-Suche, falls sie übergeben werden
+        # These arguments will override the grid search if provided
         if leverage:
             base_params['leverage'] = leverage
-        # WICHTIG: Wenn sl_multiplier übergeben wird, wird er nicht optimiert
+        # IMPORTANT: If sl_multiplier is provided, it will not be optimized
         if sl_multiplier:
             base_params['stop_loss_atr_multiplier'] = sl_multiplier
-            print(f"INFO: Fester SL-Multiplikator von {sl_multiplier} wird für den Lauf verwendet.")
+            print(f"INFO: Using fixed SL-Multiplier of {sl_multiplier} for the run.")
 
         raw_symbol = symbol_arg
         if '/' not in raw_symbol:
@@ -43,23 +43,23 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, leverag
         else:
             base_params['symbol'] = raw_symbol.upper()
         
-        print(f"\n\n#################### START OPTIMIERUNG FÜR: {base_params['symbol']} ####################")
+        print(f"\n\n#################### STARTING OPTIMIZATION FOR: {base_params['symbol']} ####################")
         
         timeframes_to_test = timeframes_str.split()
         
-        # --- ERWEITERUNG: SL-Multiplikator wird jetzt mitgetestet ---
+        # --- EXTENSION: SL-Multiplier is now also tested ---
         param_grid = {
             'st_atr_period': [10, 14, 21],
             'st_atr_multiplier': [2.5, 3.0, 3.5, 4.0],
-            'stop_loss_atr_multiplier': [1.0, 1.5, 2.0, 2.5] # NEUE ZEILE
+            'stop_loss_atr_multiplier': [1.0, 1.5, 2.0, 2.5] # NEW LINE
         }
         
-        # Falls ein fester SL übergeben wurde, wird er nicht optimiert
+        # If a fixed SL was passed, it won't be optimized
         if sl_multiplier:
             del param_grid['stop_loss_atr_multiplier']
-            print(f"INFO: Fester Hebel für diesen Lauf: {base_params.get('leverage', '1.0')}x")
+            print(f"INFO: Fixed leverage for this run: {base_params.get('leverage', '1.0')}x")
         else:
-            print(f"INFO: Fester Hebel: {base_params.get('leverage', '1.0')}x. SL-Multiplikator wird optimiert.")
+            print(f"INFO: Fixed leverage: {base_params.get('leverage', '1.0')}x. SL-Multiplier will be optimized.")
 
         
         keys, values = zip(*param_grid.items())
@@ -69,20 +69,20 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, leverag
         total_runs = len(param_combinations) * len(timeframes_to_test)
         current_run = 0
         
-        print(f"\nStarte Optimierungslauf für '{base_params['symbol']}' auf {len(timeframes_to_test)} Timeframes mit insgesamt {total_runs} Kombinationen...")
+        print(f"\nStarting optimization run for '{base_params['symbol']}' on {len(timeframes_to_test)} timeframes with a total of {total_runs} combinations...")
 
         for timeframe in timeframes_to_test:
-            print(f"\n--- Bearbeite Timeframe: {timeframe} ---")
+            print(f"\n--- Processing timeframe: {timeframe} ---")
             
             data = load_data_for_backtest(base_params['symbol'], timeframe, start_date, end_date)
             if data is None or data.empty:
-                print(f"Keine Daten für Timeframe {timeframe} gefunden. Überspringe.")
+                print(f"No data found for timeframe {timeframe}. Skipping.")
                 current_run += len(param_combinations)
                 continue
 
             for params_to_test in param_combinations:
                 current_run += 1
-                print(f"\rTeste Kombination {current_run}/{total_runs}...", end="")
+                print(f"\rTesting combination {current_run}/{total_runs}...", end="")
 
                 required_data_points = params_to_test.get('st_atr_period', 10) * 2
                 if len(data) < required_data_points:
@@ -97,10 +97,10 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, leverag
                 all_results.append(result)
 
         if not all_results:
-            print(f"\n\nKeine Ergebnisse für {base_params['symbol']} erzielt.")
+            print(f"\n\nNo results achieved for {base_params['symbol']}.")
             continue
             
-        print("\n\n--- Optimierung abgeschlossen ---")
+        print("\n\n--- Optimization finished ---")
         results_df = pd.DataFrame(all_results)
         
         params_df = pd.json_normalize(results_df['params'])
@@ -117,74 +117,74 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, leverag
 
         top_10_results = sorted_results.head(10)
 
-        print(f"\nBeste Ergebnisse für {base_params['symbol']} (Top 10 über alle Timeframes):")
+        print(f"\nBest results for {base_params['symbol']} (Top 10 across all timeframes):")
         
         for i, row in top_10_results.reset_index(drop=True).iterrows():
             platz = i + 1
             print("\n" + "="*30)
-            print(f"      --- PLATZ {platz} ---")
+            print(f"      --- RANK {platz} ---")
             print("="*30)
-            print("\n  LEISTUNG:")
-            print(f"    Gewinn (PnL):       {row['total_pnl_pct']:.2f} %")
-            print(f"    Trefferquote:       {row['win_rate']:.2f} %")
-            print(f"    Anzahl Trades:      {int(row['trades_count'])}")
+            print("\n  PERFORMANCE:")
+            print(f"    Profit (PnL):       {row['total_pnl_pct']:.2f} %")
+            print(f"    Win Rate:           {row['win_rate']:.2f} %")
+            print(f"    Number of Trades:   {int(row['trades_count'])}")
             
             safe_leverage = row.get('max_safe_leverage', np.inf)
-            leverage_text = f"{safe_leverage:.2f}x" if safe_leverage != np.inf else "Keine Verluste"
-            print(f"    Max. sicherer Hebel: {leverage_text}")
+            leverage_text = f"{safe_leverage:.2f}x" if safe_leverage != np.inf else "No losses"
+            print(f"    Max Safe Leverage:  {leverage_text}")
 
-            print("\n  EINGESTELLTE PARAMETER:")
-            print(f"    Hebel:              {row['leverage']}x")
-            print(f"    SL Multiplikator:   {row['stop_loss_atr_multiplier']:.1f}") # Formatierung angepasst
+            print("\n  PARAMETERS USED:")
+            print(f"    Leverage:           {row['leverage']}x")
+            print(f"    SL Multiplier:      {row['stop_loss_atr_multiplier']:.1f}")
             print(f"    Timeframe:          {row['timeframe']}")
-            print(f"    ST ATR Periode:     {int(row['st_atr_period'])}")
-            print(f"    ST Multiplikator:   {row['st_atr_multiplier']:.1f}")
+            print(f"    ST ATR Period:      {int(row['st_atr_period'])}")
+            print(f"    ST Multiplier:      {row['st_atr_multiplier']:.1f}")
             
         print("\n" + "="*30)
-        print(f"#################### ENDE OPTIMIERUNG FÜR: {base_params['symbol']} ####################\n")
+        print(f"#################### END OF OPTIMIZATION FOR: {base_params['symbol']} ####################\n")
 
     if len(overall_best_results) > 1:
-        print("\n\n#################### FINALE GESAMTAUSWERTUNG (BESTER LAUF PRO COIN) ####################")
+        print("\n\n#################### FINAL OVERALL SUMMARY (BEST RUN PER COIN) ####################")
         summary_df = pd.DataFrame(overall_best_results)
         final_ranking = summary_df.sort_values(
             by=['total_pnl_pct', 'win_rate', 'trades_count'],
             ascending=[False, False, False]
         ).reset_index(drop=True)
 
-        print("\nRanking der Handelspaare nach bester Performance:")
+        print("\nRanking of trading pairs by best performance:")
 
         for i, row in final_ranking.iterrows():
             platz = i + 1
             print("\n" + "="*50)
-            print(f"          --- GESAMT-PLATZ {platz} ---")
+            print(f"          --- OVERALL RANK {platz} ---")
             print("="*50)
-            print(f"\n  HANDELSPAAR: {row['symbol']}")
-            print("\n  LEISTUNG:")
-            print(f"    Gewinn (PnL):       {row['total_pnl_pct']:.2f} %")
-            print(f"    Trefferquote:       {row['win_rate']:.2f} %")
-            print(f"    Anzahl Trades:      {int(row['trades_count'])}")
+            print(f"\n  TRADING PAIR: {row['symbol']}")
+            print("\n  PERFORMANCE:")
+            print(f"    Profit (PnL):       {row['total_pnl_pct']:.2f} %")
+            print(f"    Win Rate:           {row['win_rate']:.2f} %")
+            print(f"    Number of Trades:   {int(row['trades_count'])}")
             
             safe_leverage = row.get('max_safe_leverage', np.inf)
-            leverage_text = f"{safe_leverage:.2f}x" if safe_leverage != np.inf else "Keine Verluste"
-            print(f"    Max. sicherer Hebel: {leverage_text}")
+            leverage_text = f"{safe_leverage:.2f}x" if safe_leverage != np.inf else "No losses"
+            print(f"    Max Safe Leverage:  {leverage_text}")
 
-            print("\n  BESTE PARAMETER FÜR DIESEN COIN:")
-            print(f"    Hebel:              {row['leverage']}x")
-            print(f"    SL Multiplikator:   {row['stop_loss_atr_multiplier']:.1f}") # Formatierung angepasst
+            print("\n  BEST PARAMETERS FOR THIS COIN:")
+            print(f"    Leverage:           {row['leverage']}x")
+            print(f"    SL Multiplier:      {row['stop_loss_atr_multiplier']:.1f}")
             print(f"    Timeframe:          {row['timeframe']}")
-            print(f"    ST ATR Periode:     {int(row['st_atr_period'])}")
-            print(f"    ST Multiplikator:   {row['st_atr_multiplier']:.1f}")
+            print(f"    ST ATR Period:      {int(row['st_atr_period'])}")
+            print(f"    ST Multiplier:      {row['st_atr_multiplier']:.1f}")
         
         print("\n" + "="*50)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Strategie-Optimierer für den Supertrend Bot.")
-    parser.add_argument('--start', required=True, help="Startdatum im Format YYYY-MM-DD")
-    parser.add_argument('--end', required=True, help="Enddatum im Format YYYY-MM-DD")
-    parser.add_argument('--timeframes', required=True, help="Eine Liste von Timeframes, getrennt durch Leerzeichen")
-    parser.add_argument('--symbols', nargs='+', help="Ein oder mehrere Handelspaare (z.B. BTC ETH SOL)")
-    parser.add_argument('--leverage', type=float, help="Optionaler Hebel (z.B. 10)")
-    parser.add_argument('--sl_multiplier', type=float, help="Optionaler Stop-Loss ATR Multiplikator (z.B. 1.5)")
+    parser = argparse.ArgumentParser(description="Strategy optimizer for the Supertrend Bot.")
+    parser.add_argument('--start', required=True, help="Start date in YYYY-MM-DD format")
+    parser.add_argument('--end', required=True, help="End date in YYYY-MM-DD format")
+    parser.add_argument('--timeframes', required=True, help="A list of timeframes, separated by spaces")
+    parser.add_argument('--symbols', nargs='+', help="One or more trading pairs (e.g., BTC ETH SOL)")
+    parser.add_argument('--leverage', type=float, help="Optional leverage (e.g., 10)")
+    parser.add_argument('--sl_multiplier', type=float, help="Optional Stop-Loss ATR multiplier (e.g., 1.5)")
     args = parser.parse_args()
 
     run_optimization(args.start, args.end, args.timeframes, args.symbols, args.leverage, args.sl_multiplier)
