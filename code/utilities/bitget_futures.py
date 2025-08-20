@@ -11,14 +11,21 @@ class BitgetFutures():
         self.session = ccxt.bitget(api_setup)
         self.markets = self.session.load_markets()
     
+    def set_leverage(self, symbol: str, leverage: int) -> Dict[str, Any]:
+        """Sets the leverage for a specific trading pair."""
+        try:
+            return self.session.set_leverage(leverage, symbol)
+        except Exception as e:
+            self._handle_exception(f"set_leverage to {leverage}x for {symbol}", e)
+
     def _handle_exception(self, operation: str, e: Exception):
-        raise Exception(f"Fehler bei '{operation}': {e}") from e
+        raise Exception(f"Error during '{operation}': {e}") from e
 
     def fetch_ticker(self, symbol: str) -> Dict[str, Any]:
         try:
             return self.session.fetch_ticker(symbol)
         except Exception as e:
-            self._handle_exception(f"fetch_ticker für {symbol}", e)
+            self._handle_exception(f"fetch_ticker for {symbol}", e)
 
     def fetch_balance(self) -> Dict[str, Any]:
         try:
@@ -30,39 +37,39 @@ class BitgetFutures():
         try:
             return self.session.fetch_open_orders(symbol)
         except Exception as e:
-            self._handle_exception(f"fetch_open_orders für {symbol}", e)
+            self._handle_exception(f"fetch_open_orders for {symbol}", e)
 
     def fetch_open_trigger_orders(self, symbol: str) -> List[Dict[str, Any]]:
         try:
             return self.session.fetch_open_orders(symbol, params={'stop': True})
         except Exception as e:
-            self._handle_exception(f"fetch_open_trigger_orders für {symbol}", e)
+            self._handle_exception(f"fetch_open_trigger_orders for {symbol}", e)
 
     def cancel_trigger_order(self, order_id: str, symbol: str) -> Dict[str, Any]:
         try:
             return self.session.cancel_order(order_id, symbol, params={'stop': True})
         except Exception as e:
-            self._handle_exception(f"cancel_trigger_order {order_id} für {symbol}", e)
+            self._handle_exception(f"cancel_trigger_order {order_id} for {symbol}", e)
 
     def fetch_open_positions(self, symbol: str) -> List[Dict[str, Any]]:
         try:
             positions = self.session.fetch_positions([symbol])
             return [p for p in positions if p and p.get('contracts') and float(p['contracts']) > 0]
         except Exception as e:
-            self._handle_exception(f"fetch_open_positions für {symbol}", e)
+            self._handle_exception(f"fetch_open_positions for {symbol}", e)
 
     def flash_close_position(self, symbol: str) -> Dict[str, Any]:
         try:
             positions = self.fetch_open_positions(symbol)
             if not positions:
-                raise Exception("Keine offene Position zum Schließen gefunden.")
+                raise Exception("No open position found to close.")
             
             position_info = positions[0]
             amount = float(position_info['contracts'])
             side_to_close = 'buy' if position_info['side'] == 'short' else 'sell'
             return self.place_market_order(symbol, side_to_close, amount, reduce=True)
         except Exception as e:
-            self._handle_exception(f"flash_close_position für {symbol}", e)
+            self._handle_exception(f"flash_close_position for {symbol}", e)
     
     def fetch_recent_ohlcv(self, symbol: str, timeframe: str, limit: int = 1000) -> pd.DataFrame:
         try:
@@ -72,7 +79,7 @@ class BitgetFutures():
             df.set_index('timestamp', inplace=True)
             return df.sort_index()
         except Exception as e:
-            self._handle_exception(f"fetch_recent_ohlcv für {symbol}", e)
+            self._handle_exception(f"fetch_recent_ohlcv for {symbol}", e)
 
     def fetch_historical_ohlcv(self, symbol: str, timeframe: str, start_date: str, end_date: str) -> pd.DataFrame:
         try:
@@ -95,17 +102,17 @@ class BitgetFutures():
             df.set_index('timestamp', inplace=True)
             return df.loc[start_date:end_date].sort_index()
         except Exception as e:
-            self._handle_exception(f"fetch_historical_ohlcv für {symbol}", e)
+            self._handle_exception(f"fetch_historical_ohlcv for {symbol}", e)
 
     def place_market_order(self, symbol: str, side: str, amount: float, reduce: bool = False) -> Dict[str, Any]:
         try:
             return self.session.create_order(symbol, 'market', side, amount, params={'reduceOnly': reduce})
         except Exception as e:
-            self._handle_exception(f"place_market_order ({side}, {amount}) für {symbol}", e)
+            self._handle_exception(f"place_market_order ({side}, {amount}) for {symbol}", e)
 
     def place_trigger_market_order(self, symbol: str, side: str, amount: float, trigger_price: float, reduce: bool = False) -> Dict[str, Any]:
         try:
             trigger_price_str = self.session.price_to_precision(symbol, trigger_price)
             return self.session.create_order(symbol, 'market', side, amount, params={'stopPrice': trigger_price_str, 'reduceOnly': reduce})
         except Exception as e:
-            self._handle_exception(f"place_trigger_market_order bei {trigger_price} für {symbol}", e)
+            self._handle_exception(f"place_trigger_market_order at {trigger_price} for {symbol}", e)
