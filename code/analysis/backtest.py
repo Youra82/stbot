@@ -4,6 +4,7 @@ import sys
 import json
 import pandas as pd
 import argparse
+import numpy as np
 
 # Pfad anpassen
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -25,6 +26,8 @@ def run_backtest(data, params, verbose=True):
     total_pnl = 0.0
     trades_count = 0
     wins_count = 0
+    entry_index = 0
+    worst_drawdown_overall = 0.0
     
     fee_pct = 0.05 / 100
 
@@ -32,78 +35,75 @@ def run_backtest(data, params, verbose=True):
         prev_candle = data.iloc[i-1]
         current_candle = data.iloc[i]
 
-        # --- 1. PRÜFUNG: WURDE EIN STOP-LOSS AUSGELÖST? ---
-        if in_position:
-            pnl = 0.0
-            exit_price = 0.0
-
-            # Stop-Loss für Long-Position
-            if position_side == 'long' and current_candle['low'] <= stop_loss_price:
-                exit_price = stop_loss_price
-                pnl = (((exit_price - entry_price) / entry_price) * leverage) - (2 * fee_pct * leverage)
-                if verbose: print(f"{current_candle.name.strftime('%Y-%m-%d %H:%M')} | STOP-LOSS   | PnL: {pnl*100:.2f}%")
+        def close_position(exit_price, reason):
+            nonlocal total_pnl, trades_count, wins_count, in_position, worst_drawdown_overall
             
-            # Stop-Loss für Short-Position
-            elif position_side == 'short' and current_candle['high'] >= stop_loss_price:
-                exit_price = stop_loss_price
-                pnl = (((entry_price - exit_price) / entry_price) * leverage) - (2 * fee_pct * leverage)
-                if verbose: print(f"{current_candle.name.strftime('%Y-%m-%d %H:%M')} | STOP-LOSS   | PnL: {pnl*100:.2f}%")
-
-            if exit_price > 0: # Wenn Stop-Loss ausgelöst wurde
-                total_pnl += pnl
-                trades_count += 1
-                if pnl > 0: wins_count += 1
-                in_position = False
-                stop_loss_price = 0.0
-                continue # Gehe zur nächsten Kerze
-
-        # --- 2. PRÜFUNG: GIBT ES EIN REGULÄRES AUSSTIEGSSIGNAL? (FALLS KEIN SL) ---
-        if in_position:
-            exit_price = current_candle['open'] # Ausstieg am Anfang der neuen Kerze
             pnl = 0.0
-
-            # Ausstiegssignal für Long-Position (ein Verkaufssignal)
-            if position_side == 'long' and prev_candle['sell_signal']:
+            if position_side == 'long':
                 pnl = (((exit_price - entry_price) / entry_price) * leverage) - (2 * fee_pct * leverage)
-                if verbose: print(f"{current_candle.name.strftime('%Y-%m-%d %H:%M')} | CLOSE LONG  | PnL: {pnl*100:.2f}%")
-
-            # Ausstiegssignal für Short-Position (ein Kaufsignal)
-            elif position_side == 'short' and prev_candle['buy_signal']:
+            elif position_side == 'short':
                 pnl = (((entry_price - exit_price) / entry_price) * leverage) - (2 * fee_pct * leverage)
-                if verbose: print(f"{current_candle.name.strftime('%Y-%m-%d %H:%M')} | CLOSE SHORT | PnL: {pnl*100:.2f}%")
 
-            if pnl != 0.0: # Wenn ein Gegensignal kam
-                total_pnl += pnl
-                trades_count += 1
-                if pnl > 0: wins_count += 1
-                in_position = False
+            # Drawdown-Berechnung für den abgeschlossenen Trade
+            trade_candles = data.iloc[entry_index : i + 1] # KORRIGIERTE ZEILE
+            if not trade_candles.empty:
+                if position_side == 'long':
+                    lowest_price_during_trade = trade_candles['low'].min()
+                    trade_drawdown = (entry_price - lowest_price_during_trade) / entry_price
+                else: # short
+                    highest_price_during_trade = trade_candles['high'].max()
+                    trade_drawdown = (highest_price_during_trade - entry_price) / entry_price
+                
+                if trade_drawdown > worst_drawdown_overall:
+                    worst_drawdown_overall = trade_drawdown
 
-        # --- 3. PRÜFUNG: GIBT ES EIN EINSTIEGSSIGNAL? ---
+            if verbose: print(f"{current_candle.name.strftime('%Y-%m-%d %H:%M')} | {reason.ljust(12)}| PnL: {pnl*100:.2f}%")
+
+            total_pnl += pnl
+            trades_count += 1
+            if pnl > 0: wins_count += 1
+            in_position = False
+
+        if in_position:
+            if position_side == 'long' and current_candle['low'] <= stop_loss_price:
+                close_position(stop_loss_price, 'STOP-LOSS')
+                continue
+            elif position_side == 'short' and current_candle['high'] >= stop_loss_price:
+                close_position(stop_loss_price, 'STOP-LOSS')
+                continue
+
+        if in_position:
+            if position_side == 'long' and prev_candle['sell_signal']:
+                close_position(current_candle['open'], 'CLOSE LONG')
+            elif position_side == 'short' and prev_candle['buy_signal']:
+                close_position(current_candle['open'], 'CLOSE SHORT')
+
         if not in_position:
-            entry_price = current_candle['open']
-            atr_for_sl = prev_candle['atr']
-
-            # Einstiegssignal für Long-Position
             if prev_candle['buy_signal'] and params.get('use_longs', True):
                 in_position = True
                 position_side = 'long'
-                stop_loss_price = entry_price - (atr_for_sl * sl_multiplier)
+                entry_price = current_candle['open']
+                entry_index = i
+                stop_loss_price = entry_price - (prev_candle['atr'] * sl_multiplier)
                 if verbose: print(f"{current_candle.name.strftime('%Y-%m-%d %H:%M')} | OPEN LONG   | @ {entry_price:.2f} | SL: {stop_loss_price:.2f}")
 
-            # Einstiegssignal für Short-Position
             elif prev_candle['sell_signal'] and params.get('use_shorts', True):
                 in_position = True
                 position_side = 'short'
-                stop_loss_price = entry_price + (atr_for_sl * sl_multiplier)
+                entry_price = current_candle['open']
+                entry_index = i
+                stop_loss_price = entry_price + (prev_candle['atr'] * sl_multiplier)
                 if verbose: print(f"{current_candle.name.strftime('%Y-%m-%d %H:%M')} | OPEN SHORT  | @ {entry_price:.2f} | SL: {stop_loss_price:.2f}")
 
     win_rate = (wins_count / trades_count * 100) if trades_count > 0 else 0
     
+    max_safe_leverage = (1 / worst_drawdown_overall) if worst_drawdown_overall > 0 else np.inf
+
     if verbose:
         print("\n--- Backtest-Ergebnisse ---")
         print(f"Zeitraum: {data.index[0].strftime('%Y-%m-%d')} -> {data.index[-1].strftime('%Y-%m-%d')}")
         if 'symbol_display' in params:
-             print(f"Symbol: {params['symbol_display']}")
+            print(f"Symbol: {params['symbol_display']}")
         print(f"Timeframe: {params['timeframe']}")
         print(f"Hebel: {leverage}x | SL-Multiplikator: {sl_multiplier}")
         print(f"Parameter: st_atr_period={params['st_atr_period']}, st_atr_multiplier={params['st_atr_multiplier']}")
@@ -112,12 +112,15 @@ def run_backtest(data, params, verbose=True):
         print(f"Anzahl Trades: {trades_count}")
         print(f"Gewonnene Trades: {wins_count}")
         print(f"Trefferquote: {win_rate:.2f}%")
+        leverage_text = f"{max_safe_leverage:.2f}x" if max_safe_leverage != np.inf else "Keine Verluste (theoretisch unendlich)"
+        print(f"Maximal sicherer Hebel: {leverage_text}")
         print("---------------------------")
 
     return {
         "total_pnl_pct": total_pnl * 100,
         "trades_count": trades_count,
         "win_rate": win_rate,
+        "max_safe_leverage": max_safe_leverage,
         "params": params
     }
 
@@ -139,7 +142,7 @@ def load_data_for_backtest(symbol, timeframe, start_date_str, end_date_str):
         last_cached_date = data.index[-1].strftime('%Y-%m-%d')
         print(f"Letztes Datum im Cache: {last_cached_date}")
         if pd.to_datetime(last_cached_date) < pd.to_datetime(end_date_str):
-             download_start_date = (data.index[-1] + pd.Timedelta(minutes=int(timeframe.replace('m','')))).strftime('%Y-%m-%d %H:%M:%S')
+            download_start_date = (data.index[-1] + pd.Timedelta(minutes=int(timeframe.replace('m','')))).strftime('%Y-%m-%d %H:%M:%S')
         else:
             print("Cache ist aktuell. Keine neuen Daten zum Herunterladen.")
             download_start_date = None
@@ -147,7 +150,6 @@ def load_data_for_backtest(symbol, timeframe, start_date_str, end_date_str):
     if download_start_date:
         print(f"Lade neue Daten von {download_start_date} bis {end_date_str} für {symbol}...")
         try:
-            # Dynamischer Pfad zur secret.json im Hauptverzeichnis des Bots
             project_root = os.path.join(os.path.dirname(__file__), '..', '..')
             key_path = os.path.abspath(os.path.join(project_root, 'secret.json'))
             
