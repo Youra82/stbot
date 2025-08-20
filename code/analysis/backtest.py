@@ -6,16 +6,16 @@ import pandas as pd
 import argparse
 import numpy as np
 
-# Pfad anpassen
+# Adjust path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from utilities.bitget_futures import BitgetFutures
 from utilities.strategy_logic import calculate_signals
 
 def run_backtest(data, params, verbose=True):
     if verbose:
-        print("\nFühre Backtest aus...")
+        print("\nRunning backtest...")
 
-    # Parameter für realistischeres Backtesting
+    # Parameters for realistic backtesting
     leverage = params.get('leverage', 1.0)
     sl_multiplier = params.get('stop_loss_atr_multiplier', 1.5)
     
@@ -44,8 +44,8 @@ def run_backtest(data, params, verbose=True):
             elif position_side == 'short':
                 pnl = (((entry_price - exit_price) / entry_price) * leverage) - (2 * fee_pct * leverage)
 
-            # Drawdown-Berechnung für den abgeschlossenen Trade
-            trade_candles = data.iloc[entry_index : i + 1] # KORRIGIERTE ZEILE
+            # Drawdown calculation for the closed trade
+            trade_candles = data.iloc[entry_index : i + 1] # CORRECTED LINE
             if not trade_candles.empty:
                 if position_side == 'long':
                     lowest_price_during_trade = trade_candles['low'].min()
@@ -100,20 +100,20 @@ def run_backtest(data, params, verbose=True):
     max_safe_leverage = (1 / worst_drawdown_overall) if worst_drawdown_overall > 0 else np.inf
 
     if verbose:
-        print("\n--- Backtest-Ergebnisse ---")
-        print(f"Zeitraum: {data.index[0].strftime('%Y-%m-%d')} -> {data.index[-1].strftime('%Y-%m-%d')}")
+        print("\n--- Backtest Results ---")
+        print(f"Period: {data.index[0].strftime('%Y-%m-%d')} -> {data.index[-1].strftime('%Y-%m-%d')}")
         if 'symbol_display' in params:
             print(f"Symbol: {params['symbol_display']}")
         print(f"Timeframe: {params['timeframe']}")
-        print(f"Hebel: {leverage}x | SL-Multiplikator: {sl_multiplier}")
-        print(f"Parameter: st_atr_period={params['st_atr_period']}, st_atr_multiplier={params['st_atr_multiplier']}")
+        print(f"Leverage: {leverage}x | SL-Multiplier: {sl_multiplier}")
+        print(f"Parameters: st_atr_period={params['st_atr_period']}, st_atr_multiplier={params['st_atr_multiplier']}")
         print("-" * 27)
-        print(f"Gesamt-PnL (gehebelt): {total_pnl * 100:.2f}%")
-        print(f"Anzahl Trades: {trades_count}")
-        print(f"Gewonnene Trades: {wins_count}")
-        print(f"Trefferquote: {win_rate:.2f}%")
-        leverage_text = f"{max_safe_leverage:.2f}x" if max_safe_leverage != np.inf else "Keine Verluste (theoretisch unendlich)"
-        print(f"Maximal sicherer Hebel: {leverage_text}")
+        print(f"Total PnL (leveraged): {total_pnl * 100:.2f}%")
+        print(f"Number of Trades: {trades_count}")
+        print(f"Won Trades: {wins_count}")
+        print(f"Win Rate: {win_rate:.2f}%")
+        leverage_text = f"{max_safe_leverage:.2f}x" if max_safe_leverage != np.inf else "No losses (theoretically infinite)"
+        print(f"Max Safe Leverage: {leverage_text}")
         print("---------------------------")
 
     return {
@@ -125,7 +125,7 @@ def run_backtest(data, params, verbose=True):
     }
 
 def load_data_for_backtest(symbol, timeframe, start_date_str, end_date_str):
-    """Lädt und cacht historische Daten."""
+    """Loads and caches historical data."""
     cache_dir = os.path.join(os.path.dirname(__file__), 'historical_data')
     os.makedirs(cache_dir, exist_ok=True)
     symbol_filename = symbol.replace('/', '-').replace(':', '-')
@@ -133,22 +133,22 @@ def load_data_for_backtest(symbol, timeframe, start_date_str, end_date_str):
 
     data = None
     if os.path.exists(cache_file):
-        print(f"Lade Daten aus lokaler Cache-Datei: {cache_file}")
+        print(f"Loading data from local cache file: {cache_file}")
         data = pd.read_csv(cache_file, index_col='timestamp', parse_dates=True)
         data.index = pd.to_datetime(data.index, utc=True)
 
     download_start_date = start_date_str
     if data is not None and not data.empty:
         last_cached_date = data.index[-1].strftime('%Y-%m-%d')
-        print(f"Letztes Datum im Cache: {last_cached_date}")
+        print(f"Last date in cache: {last_cached_date}")
         if pd.to_datetime(last_cached_date) < pd.to_datetime(end_date_str):
             download_start_date = (data.index[-1] + pd.Timedelta(minutes=int(timeframe.replace('m','')))).strftime('%Y-%m-%d %H:%M:%S')
         else:
-            print("Cache ist aktuell. Keine neuen Daten zum Herunterladen.")
+            print("Cache is up to date. No new data to download.")
             download_start_date = None
 
     if download_start_date:
-        print(f"Lade neue Daten von {download_start_date} bis {end_date_str} für {symbol}...")
+        print(f"Loading new data from {download_start_date} to {end_date_str} for {symbol}...")
         try:
             project_root = os.path.join(os.path.dirname(__file__), '..', '..')
             key_path = os.path.abspath(os.path.join(project_root, 'secret.json'))
@@ -163,12 +163,12 @@ def load_data_for_backtest(symbol, timeframe, start_date_str, end_date_str):
                 data = data[~data.index.duplicated(keep='first')]
                 data.sort_index(inplace=True)
                 data.to_csv(cache_file)
-                print("Cache-Datei wurde aktualisiert.")
+                print("Cache file has been updated.")
             else:
-                print("Keine neuen Daten erhalten.")
+                print("No new data received.")
 
         except Exception as e:
-            print(f"\nEin Fehler beim Herunterladen der Daten ist aufgetreten: {e}")
+            print(f"\nAn error occurred while downloading data: {e}")
             return None
     
     if data is not None and not data.empty:
@@ -176,16 +176,16 @@ def load_data_for_backtest(symbol, timeframe, start_date_str, end_date_str):
     return None
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Strategie-Backtest für den Supertrend Bot.")
-    parser.add_argument('--start', required=True, help="Startdatum im Format YYYY-MM-DD")
-    parser.add_argument('--end', required=True, help="Enddatum im Format YYYY-MM-DD")
-    parser.add_argument('--timeframe', required=True, help="Timeframe (z.B. 15m, 1h, 4h, 1d)")
-    parser.add_argument('--symbols', nargs='+', help="Ein oder mehrere Handelspaare (z.B. BTC ETH SOL), überschreibt die config.json")
-    parser.add_argument('--leverage', type=float, help="Optionaler Hebel (z.B. 10)")
-    parser.add_argument('--sl_multiplier', type=float, help="Optionaler Stop-Loss ATR Multiplikator (z.B. 1.5)")
+    parser = argparse.ArgumentParser(description="Strategy backtest for the Supertrend Bot.")
+    parser.add_argument('--start', required=True, help="Start date in YYYY-MM-DD format")
+    parser.add_argument('--end', required=True, help="End date in YYYY-MM-DD format")
+    parser.add_argument('--timeframe', required=True, help="Timeframe (e.g., 15m, 1h, 4h, 1d)")
+    parser.add_argument('--symbols', nargs='+', help="One or more trading pairs (e.g., BTC ETH SOL), overrides config.json")
+    parser.add_argument('--leverage', type=float, help="Optional leverage (e.g., 10)")
+    parser.add_argument('--sl_multiplier', type=float, help="Optional Stop-Loss ATR multiplier (e.g., 1.5)")
     args = parser.parse_args()
 
-    print("Lade Konfiguration...")
+    print("Loading configuration...")
     config_path = os.path.join(os.path.dirname(__file__), '..', 'strategies', 'envelope', 'config.json')
     with open(config_path, 'r') as f:
         base_params = json.load(f)
@@ -205,11 +205,11 @@ if __name__ == "__main__":
         raw_symbol = symbol_arg
         if '/' not in raw_symbol:
             formatted_symbol = f"{raw_symbol.upper()}/USDT:USDT"
-            print(f"\n\n==================== START TEST FÜR: {formatted_symbol} ====================")
+            print(f"\n\n==================== STARTING TEST FOR: {formatted_symbol} ====================")
             params['symbol'] = formatted_symbol
         else:
             formatted_symbol = raw_symbol.upper()
-            print(f"\n\n==================== START TEST FÜR: {formatted_symbol} ====================")
+            print(f"\n\n==================== STARTING TEST FOR: {formatted_symbol} ====================")
             params['symbol'] = formatted_symbol
 
         data_for_backtest = load_data_for_backtest(params['symbol'], args.timeframe, args.start, args.end)
@@ -223,6 +223,6 @@ if __name__ == "__main__":
             run_backtest(data_with_signals, params_for_run)
 
         else:
-            print(f"Keine Daten für das Symbol {params['symbol']} im angegebenen Zeitraum verfügbar.")
+            print(f"No data available for symbol {params['symbol']} in the specified period.")
         
-        print(f"==================== ENDE TEST FÜR: {formatted_symbol} =====================\n")
+        print(f"==================== END OF TEST FOR: {formatted_symbol} =====================\n")
