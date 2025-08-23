@@ -7,7 +7,6 @@ import argparse
 import numpy as np
 import re
 
-# Adjust path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from utilities.bitget_futures import BitgetFutures
 from utilities.strategy_logic import calculate_signals
@@ -27,33 +26,26 @@ def parse_timeframe_to_minutes(tf_str):
     elif unit == 'd': return value * 24 * 60
     return 0
 
-def run_backtest(data_main_tf, params, verbose=True):
+def run_backtest(data_main_tf, data_lower_tf, params, initial_capital=1000.0, verbose=True):
     main_timeframe = params['timeframe']
-    lower_timeframe = LOWER_TF_MAP.get(main_timeframe)
-    simulation_tf_to_report = main_timeframe # Fallback, falls kleinerer TF fehlschlägt
-
-    if lower_timeframe:
+    simulation_tf_to_report = main_timeframe
+    sim_data = None
+    
+    if data_lower_tf is not None:
         if verbose:
-            print(f"\nStarte präzise Simulation: Haupt-TF={main_timeframe}, Simulations-TF={lower_timeframe}")
+            print(f"\nStarte präzise Simulation: Haupt-TF={main_timeframe}, Simulations-TF={LOWER_TF_MAP.get(main_timeframe)}")
         
-        start_date = data_main_tf.index[0].strftime('%Y-%m-%d')
-        end_date = data_main_tf.index[-1].strftime('%Y-%m-%d')
-        data_lower_tf = load_data_for_backtest(params['symbol'], lower_timeframe, start_date, end_date)
-
-        if data_lower_tf is not None and not data_lower_tf.empty:
-            simulation_tf_to_report = lower_timeframe
-            data_main_tf_with_signals = calculate_signals(data_main_tf, params)
-            sim_data = pd.merge_asof(
-                data_lower_tf,
-                data_main_tf_with_signals[['buy_signal', 'sell_signal', 'atr']],
-                left_index=True, right_index=True, direction='backward'
-            )
-            sim_data.dropna(inplace=True)
-        else:
-            if verbose: print(f"\nWARNUNG: Konnte keine Daten für '{lower_timeframe}' laden. Führe einfachen Backtest auf '{main_timeframe}' aus.")
-            sim_data = calculate_signals(data_main_tf, params)
-    else:
-        if verbose: print(f"\nFühre einfachen Backtest auf '{main_timeframe}' aus (kein kleinerer TF definiert).")
+        simulation_tf_to_report = LOWER_TF_MAP.get(main_timeframe, main_timeframe)
+        data_main_tf_with_signals = calculate_signals(data_main_tf, params)
+        sim_data = pd.merge_asof(
+            data_lower_tf,
+            data_main_tf_with_signals[['buy_signal', 'sell_signal', 'atr']],
+            left_index=True, right_index=True, direction='backward'
+        )
+        sim_data.dropna(inplace=True)
+    
+    if sim_data is None:
+        if verbose: print(f"\nFühre einfachen Backtest auf '{main_timeframe}' aus.")
         sim_data = calculate_signals(data_main_tf, params)
 
     leverage = params.get('leverage', 1.0)
@@ -62,11 +54,10 @@ def run_backtest(data_main_tf, params, verbose=True):
     enable_ttp = params.get('enable_trailing_take_profit', False)
     ttp_drawdown_pct = params.get('trailing_take_profit_drawdown_pct', 1.5)
 
-    initial_capital = 1000.0
+    trade_log = []
     capital = initial_capital
     peak_capital = initial_capital
     max_drawdown_pct = 0.0
-
     in_position = False
     position_side = None
     entry_price = 0.0
@@ -81,18 +72,32 @@ def run_backtest(data_main_tf, params, verbose=True):
 
         def close_position(exit_price, reason, exit_time):
             nonlocal capital, peak_capital, max_drawdown_pct, trades_count, wins_count, in_position
+            
             pnl_percentage = 0.0
             if position_side == 'long': pnl_percentage = (exit_price - entry_price) / entry_price
             elif position_side == 'short': pnl_percentage = (entry_price - exit_price) / entry_price
+
             net_pnl_pct = (pnl_percentage * leverage) - (2 * fee_pct * leverage)
-            capital += capital * net_pnl_pct
+            
+            capital_before_trade = capital
+            capital_change_usdt = capital_before_trade * net_pnl_pct
+            capital += capital_change_usdt
+            
             if capital > peak_capital: peak_capital = capital
+            
             drawdown = (peak_capital - capital) / peak_capital
             if drawdown > max_drawdown_pct: max_drawdown_pct = drawdown
-            if verbose: print(f"{exit_time.strftime('%Y-%m-%d %H:%M')} | {reason.ljust(12)}| PnL: {net_pnl_pct*100:.2f}% | New Capital: {capital:.2f}")
+
+            if verbose: print(f"{exit_time.strftime('%Y-%m-%d %H:%M')} | {reason.ljust(12)}| PnL: {net_pnl_pct*100:.2f}% (${capital_change_usdt:,.2f}) | New Capital: ${capital:,.2f}")
+
             trades_count += 1
             if net_pnl_pct > 0: wins_count += 1
             in_position = False
+
+            trade_log.append({
+                "exit_time": exit_time, "side": position_side, "reason": reason,
+                "pnl_usdt": capital_change_usdt, "capital_after": capital
+            })
 
         if in_position:
             if position_side == 'long': unrealized_pnl_pct = ((current_candle['low'] - entry_price) / entry_price) * leverage
@@ -102,12 +107,14 @@ def run_backtest(data_main_tf, params, verbose=True):
                  temp_drawdown = (peak_capital - unrealized_capital) / peak_capital
                  if temp_drawdown > max_drawdown_pct: max_drawdown_pct = temp_drawdown
             
-            if enable_ttp and lower_timeframe: # TTP nur im präzisen Modus
+            if enable_ttp and data_lower_tf is not None:
                 if position_side == 'long': pnl_at_high_pct = ((current_candle['high'] - entry_price) / entry_price) * leverage * 100
                 else: pnl_at_high_pct = ((entry_price - current_candle['low']) / entry_price) * leverage * 100
                 peak_pnl_pct_trade = max(peak_pnl_pct_trade, pnl_at_high_pct)
+
                 if position_side == 'long': pnl_at_close_pct = ((current_candle['close'] - entry_price) / entry_price) * leverage * 100
                 else: pnl_at_close_pct = ((entry_price - current_candle['close']) / entry_price) * leverage * 100
+                
                 profit_drawdown = peak_pnl_pct_trade - pnl_at_close_pct
                 if peak_pnl_pct_trade > ttp_drawdown_pct and profit_drawdown >= ttp_drawdown_pct:
                     target_pnl_pct = peak_pnl_pct_trade - ttp_drawdown_pct
@@ -124,11 +131,11 @@ def run_backtest(data_main_tf, params, verbose=True):
                 close_position(stop_loss_price, 'STOP-LOSS', current_candle.name)
                 continue
 
-            if position_side == 'long' and prev_candle['sell_signal']:
-                close_position(current_candle['open'], 'CLOSE LONG', current_candle.name)
-                continue
-            elif position_side == 'short' and prev_candle['buy_signal']:
+            if prev_candle['buy_signal'] and (position_side == 'short'):
                 close_position(current_candle['open'], 'CLOSE SHORT', current_candle.name)
+                continue
+            elif prev_candle['sell_signal'] and (position_side == 'long'):
+                close_position(current_candle['open'], 'CLOSE LONG', current_candle.name)
                 continue
 
         if not in_position:
@@ -148,13 +155,14 @@ def run_backtest(data_main_tf, params, verbose=True):
                 if verbose: print(f"{current_candle.name.strftime('%Y-%m-%d %H:%M')} | OPEN SHORT  | @ {entry_price:.2f} | SL: {stop_loss_price:.2f}")
 
     win_rate = (wins_count / trades_count * 100) if trades_count > 0 else 0
-    final_pnl_pct = (capital - initial_capital) / initial_capital * 100
+    final_pnl_pct = (capital - initial_capital) / initial_capital * 100 if initial_capital > 0 else 0
+    profit_usdt = capital - initial_capital
     max_safe_leverage = (1 / max_drawdown_pct) if max_drawdown_pct > 0 else np.inf
     
     return {
-        "total_pnl_pct": final_pnl_pct, "trades_count": trades_count, "win_rate": win_rate,
-        "max_drawdown_pct": max_drawdown_pct * 100, "max_safe_leverage": max_safe_leverage,
-        "params": params, "simulation_tf": simulation_tf_to_report # <-- NEU HINZUGEFÜGT
+        "total_pnl_pct": final_pnl_pct, "profit_usdt": profit_usdt, "trades_count": trades_count, 
+        "win_rate": win_rate, "max_drawdown_pct": max_drawdown_pct * 100, "max_safe_leverage": max_safe_leverage,
+        "params": params, "simulation_tf": simulation_tf_to_report, "trade_log": trade_log
     }
 
 def load_data_for_backtest(symbol, timeframe, start_date_str, end_date_str):
@@ -202,6 +210,7 @@ if __name__ == "__main__":
     parser.add_argument('--symbols', nargs='+')
     parser.add_argument('--leverage', type=float)
     parser.add_argument('--sl_multiplier', type=float)
+    parser.add_argument('--capital', type=float, default=1000.0)
     args = parser.parse_args()
     config_path = os.path.join(os.path.dirname(__file__), '..', 'strategies', 'envelope', 'config.json')
     with open(config_path, 'r') as f: base_params = json.load(f)
@@ -211,11 +220,34 @@ if __name__ == "__main__":
         params['timeframe'] = args.timeframe
         if args.leverage: params['leverage'] = args.leverage
         if args.sl_multiplier: params['stop_loss_atr_multiplier'] = args.sl_multiplier
-        # ...
+        
+        raw_symbol = symbol_arg
+        if '/' not in raw_symbol: params['symbol'] = f"{raw_symbol.upper()}/USDT:USDT"
+        else: params['symbol'] = raw_symbol.upper()
+        
+        print(f"\n\n==================== STARTING TEST FOR: {params['symbol']} ====================")
+        
         data_for_backtest_main = load_data_for_backtest(params['symbol'], args.timeframe, args.start, args.end)
         if data_for_backtest_main is not None and not data_for_backtest_main.empty:
             params_for_run = params.copy()
             params_for_run['symbol_display'] = params['symbol']
-            run_backtest(data_for_backtest_main, params_for_run)
+            
+            lower_tf = LOWER_TF_MAP.get(args.timeframe)
+            data_for_backtest_lower = None
+            if lower_tf:
+                data_for_backtest_lower = load_data_for_backtest(params['symbol'], lower_tf, args.start, args.end)
+
+            final_results = run_backtest(data_for_backtest_main, data_for_backtest_lower, params_for_run, initial_capital=args.capital, verbose=True)
+            
+            trade_log = final_results.get('trade_log', [])
+            if trade_log:
+                print(f"\n{'-'*70}")
+                print(f"{'Datum':<20} | {'Typ':<12} | {'PnL (USDT)':>15} | {'Kontostand':>15}")
+                print(f"{'-'*70}")
+                for trade in trade_log:
+                    print(f"{trade['exit_time'].strftime('%Y-%m-%d %H:%M'):<20} | {trade['reason']:<12} | ${trade['pnl_usdt']:>14,.2f} | ${trade['capital_after']:>14,.2f}")
+                print(f"{'-'*70}\n")
         else:
             print(f"No data available for symbol {params['symbol']} in the specified period.")
+        
+        print(f"==================== END OF TEST FOR: {params['symbol']} =====================\n")
