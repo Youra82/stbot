@@ -25,8 +25,15 @@ function run_analysis() {
     local script_args=""
 
     echo -e "${CYAN}=======================================================${NC}"
-    echo -e "${CYAN}              SUPERTREND BOT - $mode_name MODUS              ${NC}"
+    echo -e "${CYAN}         SUPERTREND BOT - $mode_name MODUS         ${NC}"
     echo -e "${CYAN}=======================================================${NC}"
+
+    if [ "$mode_name" == "OPTIMIZER" ]; then
+        read -p "Startkapital in USDT eingeben (optional, Standard: 1000): " START_CAPITAL
+        if [ -n "$START_CAPITAL" ]; then
+            script_args="$script_args --capital $START_CAPITAL"
+        fi
+    fi
 
     read -p "Bitte geben Sie den Zeitraum ein (z.B. 2024-01-01 to 2024-06-30): " date_range_input
     START_DATE=$(echo $date_range_input | awk '{print $1}')
@@ -36,7 +43,7 @@ function run_analysis() {
         echo -e "${RED}Fehler: Ungültiges Datum.${NC}"
         exit 1
     fi
-    script_args="--start $START_DATE --end $END_DATE"
+    script_args="$script_args --start $START_DATE --end $END_DATE"
 
     if [ "$mode_name" == "BACKTEST" ]; then
         read -p "Bitte geben Sie den Timeframe ein (z.B. 1h): " TIMEFRAME
@@ -57,10 +64,6 @@ function run_analysis() {
         fi
     fi
 
-    read -p "Hebel eingeben (optional, Enter für Standard): " LEVERAGE
-    if [ -n "$LEVERAGE" ]; then
-        script_args="$script_args --leverage $LEVERAGE"
-    fi
     read -p "SL-Multiplikator eingeben (optional, Enter für Standard): " SL_MULTIPLIER
     if [ -n "$SL_MULTIPLIER" ]; then
         script_args="$script_args --sl_multiplier $SL_MULTIPLIER"
@@ -94,7 +97,7 @@ esac
 
 # --- STANDARD-MONITORING-ANZEIGE ---
 echo -e "${CYAN}=======================================================${NC}"
-echo -e "${CYAN}             SUPERTREND TRADING BOT MONITORING             ${NC}"
+echo -e "${CYAN}         SUPERTREND TRADING BOT MONITORING         ${NC}"
 echo -e "${CYAN}=======================================================${NC}"
 echo "Verwende './monitor_bot.sh <mode>', Modi: ${GREEN}backtest, optimize, clear-cache${NC}"
 echo -e "Letzte Aktualisierung: $(date '+%Y-%m-%d %H:%M:%S')"
@@ -123,8 +126,8 @@ echo ""
 # --- Bot-Statistiken aus dem Log ---
 echo -e "${YELLOW}--- BOT-STATISTIKEN (seit Log-Start) ---${NC}"
 if [ -f "$LOG_FILE" ]; then
-    TRADES_OPENED=$(grep -c "Position eröffnet" "$LOG_FILE")
-    TRADES_CLOSED=$(grep -c "Position geschlossen" "$LOG_FILE")
+    TRADES_OPENED=$(grep -c "position opened" "$LOG_FILE")
+    TRADES_CLOSED=$(grep -c "Position closed" "$LOG_FILE")
     echo "Eröffnete Trades: ${GREEN}$TRADES_OPENED${NC}, Geschlossene Trades: ${GREEN}$TRADES_CLOSED${NC}"
 else
     echo "Log-Datei nicht gefunden."
@@ -134,14 +137,14 @@ echo ""
 # --- Aktuelle Position & Risiko ---
 echo -e "${YELLOW}--- AKTUELLE POSITION & RISIKO ---${NC}"
 if [ -f "$LOG_FILE" ]; then
-    LAST_OPEN_LINE=$(grep "Position bei" "$LOG_FILE" | tail -n 1)
-    LAST_CLOSE_LINE=$(grep "Position geschlossen" "$LOG_FILE" | tail -n 1)
+    LAST_OPEN_LINE=$(grep "position opened" "$LOG_FILE" | tail -n 1)
+    LAST_CLOSE_LINE=$(grep "Position closed" "$LOG_FILE" | tail -n 1)
 
     if [ -n "$LAST_OPEN_LINE" ] && [ "$(echo -e "$LAST_OPEN_LINE\n$LAST_CLOSE_LINE" | sort | tail -n 1)" == "$LAST_OPEN_LINE" ]; then
         POSITION_INFO=$(echo "$LAST_OPEN_LINE" | sed 's/.*UTC: //')
         ENTRY_SIDE=$(echo "$POSITION_INFO" | awk '{print $1}')
         ENTRY_PRICE=$(echo "$POSITION_INFO" | grep -oP '@ \K[0-9.]+')
-        STOP_LOSS_PRICE=$(grep -oP '(Neuer SL bei|Stop-Loss bei) \K[0-9.]+' "$LOG_FILE" | tail -n 1)
+        STOP_LOSS_PRICE=$(grep -oP '(New SL at|stop-loss at) \K[0-9.]+' "$LOG_FILE" | tail -n 1)
         
         echo -e "Status: ${GREEN}Position offen${NC}"
         echo -e "Seite: ${GREEN}${ENTRY_SIDE}${NC}, Einstieg: ${GREEN}${ENTRY_PRICE}${NC}, Aktueller SL: ${RED}${STOP_LOSS_PRICE:-N/A}${NC}"
