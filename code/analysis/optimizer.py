@@ -130,9 +130,9 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, sl_mult
             best_run_params_dict = sorted_results.iloc[0].to_dict()
             best_params_config = best_run_params_dict 
 
-            print("\n" + "="*50)
-            print("    TRADE-PROTOKOLL FÜR BESTE KONFIGURATION (RANK 1)")
-            print("="*50)
+            print("\n" + "="*70)
+            print("         TRADE-PROTOKOLL FÜR BESTE KONFIGURATION (RANK 1)")
+            print("="*70)
             
             best_tf = best_params_config.get('timeframe')
             
@@ -158,12 +158,12 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, sl_mult
                     trade_log = final_result['trade_log']
                     
                     if trade_log:
-                        print(f"\n{'-'*60}")
-                        print(f"{'Datum':<20} | {'Typ':<12} | {'PnL (USDT)':>12} | {'Kontostand':>12}")
-                        print(f"{'-'*60}")
+                        print(f"\n{'-'*75}")
+                        print(f"{'Datum':<20} | {'Richtung':>8} | {'Typ':<12} | {'PnL (USDT)':>15} | {'Kontostand':>15}")
+                        print(f"{'-'*75}")
                         for trade in trade_log:
-                            print(f"{trade['exit_time'].strftime('%Y-%m-%d %H:%M'):<20} | {trade['reason']:<12} | ${trade['pnl_usdt']:>11,.2f} | ${trade['capital_after']:>11,.2f}")
-                        print(f"{'-'*60}\n")
+                            print(f"{trade['exit_time'].strftime('%Y-%m-%d %H:%M'):<20} | {trade['side'].capitalize():>8} | {trade['reason']:<12} | ${trade['pnl_usdt']:>14,.2f} | ${trade['capital_after']:>14,.2f}")
+                        print(f"{'-'*75}\n")
                     else:
                         print("\nKeine Trades im besten Lauf ausgeführt.")
             else:
