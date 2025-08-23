@@ -120,7 +120,8 @@ def open_new_position(side, data):
             sl_order = bitget.place_trigger_market_order(params['symbol'], sl_side, amount_to_trade, stop_loss_price, reduce=True)
             if sl_order and sl_order.get('id'):
                 stop_loss_id = sl_order.get('id')
-                state_manager.set_state(status="in_trade", last_side=side, stop_loss_ids=[stop_loss_id])
+                # --- NEU: Setze peak_pnl_pct auf 0.0 bei Trade-Öffnung ---
+                state_manager.set_state(status="in_trade", last_side=side, stop_loss_ids=[stop_loss_id], peak_pnl_pct=0.0)
                 position_type = 'Long' if side == 'buy' else 'Short'
                 sl_text = f"with initial stop-loss at {stop_loss_price:.4f}"
                 logger.info(f"{position_type} position opened at {current_price:.4f}, {sl_text}")
@@ -128,7 +129,8 @@ def open_new_position(side, data):
             else:
                 raise Exception("Could not extract Stop-Loss ID from order response.")
         else:
-            state_manager.set_state(status="in_trade", last_side=side, stop_loss_ids=[])
+            # --- NEU: Setze peak_pnl_pct auf 0.0 bei Trade-Öffnung ---
+            state_manager.set_state(status="in_trade", last_side=side, stop_loss_ids=[], peak_pnl_pct=0.0)
             logger.info("Position opened without stop-loss.")
             send_telegram_message(f"✅ *Position opened ({params['symbol']}) WITHOUT Stop-Loss*")
 
@@ -139,6 +141,7 @@ def open_new_position(side, data):
         state_manager.set_state(status="ok_to_trade")
 
 def manage_trailing_stop(position_info, data):
+    # (Diese Funktion bleibt unverändert)
     if not params.get('enable_trailing_stop_loss', False):
         return
 
@@ -147,7 +150,6 @@ def manage_trailing_stop(position_info, data):
         logger.info("No Stop-Loss ID found for trailing stop. Will attempt to set a new one based on Supertrend line.")
     
     try:
-        # The Supertrend line of the last closed candle is our new SL target
         new_trailing_stop_price = data.iloc[-2]['supertrend_line']
         current_sl_id = state['stop_loss_ids'][0] if state.get('stop_loss_ids') else None
         current_sl_price = 0.0
@@ -159,7 +161,7 @@ def manage_trailing_stop(position_info, data):
                 current_sl_price = float(current_sl_order['stopPrice'])
             else:
                 logger.warning(f"Saved SL order {current_sl_id} no longer found. Will be reset.")
-                current_sl_id = None # Force setting a new order
+                current_sl_id = None
         
         should_trail = False
         if position_info['side'] == 'long' and new_trailing_stop_price > current_sl_price:
@@ -167,7 +169,6 @@ def manage_trailing_stop(position_info, data):
         elif position_info['side'] == 'short' and new_trailing_stop_price < current_sl_price:
             should_trail = True
         
-        # If no SL exists, but trailing is active, set the first one
         if not current_sl_id and params.get('enable_trailing_stop_loss'):
             should_trail = True
             logger.info("No active SL. Setting trailing stop to Supertrend line.")
@@ -175,7 +176,6 @@ def manage_trailing_stop(position_info, data):
         if should_trail:
             logger.info(f"Trailing Stop: Moving SL from {current_sl_price:.4f} to {new_trailing_stop_price:.4f}")
             
-            # Cancel existing SL if it exists
             if current_sl_id:
                 bitget.cancel_trigger_order(current_sl_id, params['symbol'])
             
@@ -193,30 +193,84 @@ def manage_trailing_stop(position_info, data):
         logger.error(f"Error during trailing stop management: {e}")
         send_telegram_message(f"⚠️ *Warning ({params['symbol']}):* Error in Trailing Stop Management: {e}")
 
+# --- NEUE FUNKTION: Trailing Take-Profit ---
+def manage_trailing_take_profit(position_info):
+    """Monitors unrealized PnL and closes position if profit drops by a defined percentage."""
+    if not params.get('enable_trailing_take_profit', False):
+        return False # Position wurde nicht geschlossen
+
+    try:
+        state = state_manager.get_state()
+        peak_pnl_pct = state.get('peak_pnl_pct', 0.0)
+        
+        # Berechne aktuellen gehebelten PnL in Prozent
+        initial_margin = float(position_info.get('initialMargin', 0))
+        unrealized_pnl = float(position_info.get('unrealizedPnl', 0))
+
+        if initial_margin == 0:
+            logger.warning("Could not calculate current PnL percentage: initialMargin is zero.")
+            return False
+
+        current_pnl_pct = (unrealized_pnl / initial_margin) * 100
+        
+        # Aktualisiere den höchsten PnL, falls der aktuelle höher ist
+        if current_pnl_pct > peak_pnl_pct:
+            state_manager.set_state(status="in_trade", last_side=state['last_side'], peak_pnl_pct=current_pnl_pct)
+            logger.info(f"New peak PnL reached: {current_pnl_pct:.2f}%")
+            peak_pnl_pct = current_pnl_pct # update local variable for this cycle
+
+        # Prüfe, ob der Take-Profit ausgelöst werden soll
+        drawdown_trigger_pct = params.get('trailing_take_profit_drawdown_pct', 1.5)
+        profit_drawdown = peak_pnl_pct - current_pnl_pct
+        
+        if peak_pnl_pct > drawdown_trigger_pct and profit_drawdown >= drawdown_trigger_pct:
+            logger.info(f"Trailing Take-Profit triggered! Peak PnL was {peak_pnl_pct:.2f}%, current is {current_pnl_pct:.2f}%. Closing position.")
+            send_telegram_message(f"💰 *Trailing Take-Profit ({params['symbol']}):* Position geschlossen bei {current_pnl_pct:.2f}% PnL (Peak war {peak_pnl_pct:.2f}%).")
+
+            if state.get('stop_loss_ids'):
+                for sl_id in state['stop_loss_ids']: bitget.cancel_trigger_order(sl_id, params['symbol'])
+
+            bitget.flash_close_position(params['symbol'])
+            state_manager.set_state(status="ok_to_trade") # Setzt auch peak_pnl_pct zurück
+            return True # Signalisiert, dass die Position geschlossen wurde
+
+    except Exception as e:
+        logger.error(f"Error during trailing take-profit management: {e}")
+        send_telegram_message(f"⚠️ *Warning ({params['symbol']}):* Error in Trailing Take-Profit Management: {e}")
+    
+    return False # Position wurde nicht geschlossen
+
 # --- MAIN LOGIC ---
 def main():
     try:
-        # 1. Fetch data and calculate signals
         data = bitget.fetch_recent_ohlcv(params['symbol'], params['timeframe'], 200)
         data = calculate_signals(data, params)
-        last_candle = data.iloc[-2] # Previous, closed candle for decision making
+        last_candle = data.iloc[-2]
         
-        # 2. Check positions and status
         positions = bitget.fetch_open_positions(params['symbol'])
         is_position_open = len(positions) > 0
         state = state_manager.get_state()
 
-        # 3. Synchronization: DB Status <> Exchange Status
         if state['status'] == "in_trade" and not is_position_open:
             logger.warning("Tracker was 'in_trade', but no position found. Resetting.")
             send_telegram_message(f"ℹ️ *Info ({params['symbol']}):* Position was closed externally. Resetting bot status.")
             state_manager.set_state(status="ok_to_trade")
             state = state_manager.get_state()
         
-        # --- LOGIC FOR OPEN POSITIONS ---
         if is_position_open:
             pos_info = positions[0]
-            logger.info(f"Holding open {pos_info['side']} position. PnL: {pos_info.get('unrealizedPnl', 0):.2f} USDT")
+            pnl_info = f"PnL: {pos_info.get('unrealizedPnl', 0):.2f} USDT"
+            # Berechne PnL % für das Log
+            try:
+                pnl_pct = (pos_info.get('unrealizedPnl', 0) / pos_info.get('initialMargin', 1)) * 100
+                pnl_info += f" ({pnl_pct:.2f}%)"
+            except: pass
+            logger.info(f"Holding open {pos_info['side']} position. {pnl_info}")
+            
+            # --- NEU: Zuerst Trailing Take-Profit prüfen ---
+            position_was_closed_by_tp = manage_trailing_take_profit(pos_info)
+            if position_was_closed_by_tp:
+                return # Beende den aktuellen Durchlauf, da die Position geschlossen wurde
 
             # A. Check for close signal (flip)
             should_close_long = pos_info['side'] == 'long' and last_candle['sell_signal']
@@ -227,13 +281,11 @@ def main():
                 logger.info(f"{closed_side_msg} position closed due to counter-signal.")
                 send_telegram_message(f"🚪 *Position closed ({params['symbol']}):* {closed_side_msg} due to counter-signal.")
                 
-                # Cancel old SL orders
                 if state.get('stop_loss_ids'):
                     for sl_id in state['stop_loss_ids']: bitget.cancel_trigger_order(sl_id, params['symbol'])
                 
                 bitget.flash_close_position(params['symbol'])
                 
-                # Flip: Immediately open a new position in the other direction
                 if should_close_long and params['use_shorts']:
                     logger.info("Counter-signal (SELL) detected. Immediately opening Short position.")
                     open_new_position('sell', data)
@@ -247,8 +299,7 @@ def main():
             else:
                 manage_trailing_stop(pos_info, data)
 
-        # --- LOGIC FOR NO OPEN POSITION ---
-        else:
+        else: # LOGIC FOR NO OPEN POSITION
             if last_candle['buy_signal'] and params['use_longs']:
                 logger.info("Buy signal detected. Opening new Long position.")
                 open_new_position('buy', data)
