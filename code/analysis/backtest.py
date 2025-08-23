@@ -65,13 +65,17 @@ def run_backtest(data_main_tf, data_lower_tf, params, initial_capital=1000.0, ve
     trades_count = 0
     wins_count = 0
     peak_pnl_pct_trade = 0.0
-    
+    is_liquidated = False
+
     for i in range(1, len(sim_data)):
+        if is_liquidated:
+            break
+
         prev_candle = sim_data.iloc[i-1]
         current_candle = sim_data.iloc[i]
 
         def close_position(exit_price, reason, exit_time):
-            nonlocal capital, peak_capital, max_drawdown_pct, trades_count, wins_count, in_position
+            nonlocal capital, peak_capital, max_drawdown_pct, trades_count, wins_count, in_position, is_liquidated
             
             pnl_percentage = 0.0
             if position_side == 'long': pnl_percentage = (exit_price - entry_price) / entry_price
@@ -88,10 +92,15 @@ def run_backtest(data_main_tf, data_lower_tf, params, initial_capital=1000.0, ve
             drawdown = (peak_capital - capital) / peak_capital
             if drawdown > max_drawdown_pct: max_drawdown_pct = drawdown
 
+            if capital <= 0:
+                capital = 0
+                is_liquidated = True
+                reason = "LIQUIDATION"
+
             if verbose: print(f"{exit_time.strftime('%Y-%m-%d %H:%M')} | {reason.ljust(12)}| PnL: {net_pnl_pct*100:.2f}% (${capital_change_usdt:,.2f}) | New Capital: ${capital:,.2f}")
 
             trades_count += 1
-            if net_pnl_pct > 0: wins_count += 1
+            if net_pnl_pct > 0 and not is_liquidated: wins_count += 1
             in_position = False
 
             trade_log.append({
@@ -103,6 +112,13 @@ def run_backtest(data_main_tf, data_lower_tf, params, initial_capital=1000.0, ve
             if position_side == 'long': unrealized_pnl_pct = ((current_candle['low'] - entry_price) / entry_price) * leverage
             else: unrealized_pnl_pct = ((entry_price - current_candle['high']) / entry_price) * leverage
             unrealized_capital = capital * (1 + unrealized_pnl_pct)
+
+            if unrealized_capital <= 0:
+                # Annahme: Liquidation erfolgt beim Preis, der 100% des Kapitals auslöscht
+                liquidation_price = entry_price * (1 - (1/leverage)) if position_side == 'long' else entry_price * (1 + (1/leverage))
+                close_position(liquidation_price, "LIQUIDATION", current_candle.name)
+                continue
+
             if unrealized_capital < peak_capital:
                  temp_drawdown = (peak_capital - unrealized_capital) / peak_capital
                  if temp_drawdown > max_drawdown_pct: max_drawdown_pct = temp_drawdown
@@ -155,7 +171,7 @@ def run_backtest(data_main_tf, data_lower_tf, params, initial_capital=1000.0, ve
                 if verbose: print(f"{current_candle.name.strftime('%Y-%m-%d %H:%M')} | OPEN SHORT  | @ {entry_price:.2f} | SL: {stop_loss_price:.2f}")
 
     win_rate = (wins_count / trades_count * 100) if trades_count > 0 else 0
-    final_pnl_pct = (capital - initial_capital) / initial_capital * 100 if initial_capital > 0 else 0
+    final_pnl_pct = (capital - initial_capital) / initial_capital * 100 if initial_capital > 0 else -100
     profit_usdt = capital - initial_capital
     max_safe_leverage = (1 / max_drawdown_pct) if max_drawdown_pct > 0 else np.inf
     
