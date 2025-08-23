@@ -14,5 +14,8 @@
 
     "enable_stop_loss": true,
     "stop_loss_atr_multiplier": 1.5,
-    "enable_trailing_stop_loss": true
+    "enable_trailing_stop_loss": true,
+
+    "enable_trailing_take_profit": true,
+    "trailing_take_profit_drawdown_pct": 1.5
 }
