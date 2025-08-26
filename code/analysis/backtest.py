@@ -114,7 +114,6 @@ def run_backtest(data_main_tf, data_lower_tf, params, initial_capital=1000.0, ve
             unrealized_capital = capital * (1 + unrealized_pnl_pct)
 
             if unrealized_capital <= 0:
-                # Annahme: Liquidation erfolgt beim Preis, der 100% des Kapitals auslöscht
                 liquidation_price = entry_price * (1 - (1/leverage)) if position_side == 'long' else entry_price * (1 + (1/leverage))
                 close_position(liquidation_price, "LIQUIDATION", current_candle.name)
                 continue
@@ -220,22 +219,34 @@ def load_data_for_backtest(symbol, timeframe, start_date_str, end_date_str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Strategy backtest for the Supertrend Bot.")
+    parser.add_argument('--capital', type=float, default=1000.0)
     parser.add_argument('--start', required=True)
     parser.add_argument('--end', required=True)
     parser.add_argument('--timeframe', required=True)
     parser.add_argument('--symbols', nargs='+')
     parser.add_argument('--leverage', type=float)
+    parser.add_argument('--st_period', type=int)
+    parser.add_argument('--st_multiplier', type=float)
     parser.add_argument('--sl_multiplier', type=float)
-    parser.add_argument('--capital', type=float, default=1000.0)
+    parser.add_argument('--ttp_enabled', action='store_true')
+    parser.add_argument('--ttp_drawdown', type=float)
     args = parser.parse_args()
+    
     config_path = os.path.join(os.path.dirname(__file__), '..', 'strategies', 'envelope', 'config.json')
     with open(config_path, 'r') as f: base_params = json.load(f)
+    
     symbols_to_test = args.symbols if args.symbols else [base_params['symbol']]
+
     for symbol_arg in symbols_to_test:
         params = base_params.copy()
+        
         params['timeframe'] = args.timeframe
-        if args.leverage: params['leverage'] = args.leverage
-        if args.sl_multiplier: params['stop_loss_atr_multiplier'] = args.sl_multiplier
+        if args.leverage is not None: params['leverage'] = args.leverage
+        if args.st_period is not None: params['st_atr_period'] = args.st_period
+        if args.st_multiplier is not None: params['st_atr_multiplier'] = args.st_multiplier
+        if args.sl_multiplier is not None: params['stop_loss_atr_multiplier'] = args.sl_multiplier
+        if args.ttp_enabled: params['enable_trailing_take_profit'] = True
+        if args.ttp_drawdown is not None: params['trailing_take_profit_drawdown_pct'] = args.ttp_drawdown
         
         raw_symbol = symbol_arg
         if '/' not in raw_symbol: params['symbol'] = f"{raw_symbol.upper()}/USDT:USDT"
@@ -244,6 +255,7 @@ if __name__ == "__main__":
         print(f"\n\n==================== STARTING TEST FOR: {params['symbol']} ====================")
         
         data_for_backtest_main = load_data_for_backtest(params['symbol'], args.timeframe, args.start, args.end)
+        
         if data_for_backtest_main is not None and not data_for_backtest_main.empty:
             params_for_run = params.copy()
             params_for_run['symbol_display'] = params['symbol']
@@ -257,12 +269,12 @@ if __name__ == "__main__":
             
             trade_log = final_results.get('trade_log', [])
             if trade_log:
-                print(f"\n{'-'*70}")
-                print(f"{'Datum':<20} | {'Typ':<12} | {'PnL (USDT)':>15} | {'Kontostand':>15}")
-                print(f"{'-'*70}")
+                print(f"\n{'-'*75}")
+                print(f"{'Datum':<20} | {'Richtung':>8} | {'Typ':<12} | {'PnL (USDT)':>15} | {'Kontostand':>15}")
+                print(f"{'-'*75}")
                 for trade in trade_log:
-                    print(f"{trade['exit_time'].strftime('%Y-%m-%d %H:%M'):<20} | {trade['reason']:<12} | ${trade['pnl_usdt']:>14,.2f} | ${trade['capital_after']:>14,.2f}")
-                print(f"{'-'*70}\n")
+                    print(f"{trade['exit_time'].strftime('%Y-%m-%d %H:%M'):<20} | {trade['side'].capitalize():>8} | {trade['reason']:<12} | ${trade['pnl_usdt']:>14,.2f} | ${trade['capital_after']:>14,.2f}")
+                print(f"{'-'*75}\n")
         else:
             print(f"No data available for symbol {params['symbol']} in the specified period.")
         
