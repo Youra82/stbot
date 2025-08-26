@@ -53,6 +53,7 @@ def run_backtest(data_main_tf, data_lower_tf, params, initial_capital=1000.0, ve
     fee_pct = 0.05 / 100
     enable_ttp = params.get('enable_trailing_take_profit', False)
     ttp_drawdown_pct = params.get('trailing_take_profit_drawdown_pct', 1.5)
+    trade_size_pct = params.get('trade_size_pct', 100.0) / 100.0 # Als Ratio 0-1
 
     trade_log = []
     capital = initial_capital
@@ -84,7 +85,10 @@ def run_backtest(data_main_tf, data_lower_tf, params, initial_capital=1000.0, ve
             net_pnl_pct = (pnl_percentage * leverage) - (2 * fee_pct * leverage)
             
             capital_before_trade = capital
-            capital_change_usdt = capital_before_trade * net_pnl_pct
+            
+            # --- KORREKTUR: Wende den PnL nur auf den eingesetzten Kapitalanteil an ---
+            margin_used = capital_before_trade * trade_size_pct
+            capital_change_usdt = margin_used * net_pnl_pct
             capital += capital_change_usdt
             
             if capital > peak_capital: peak_capital = capital
@@ -97,7 +101,9 @@ def run_backtest(data_main_tf, data_lower_tf, params, initial_capital=1000.0, ve
                 is_liquidated = True
                 reason = "LIQUIDATION"
 
-            if verbose: print(f"{exit_time.strftime('%Y-%m-%d %H:%M')} | {reason.ljust(12)}| PnL: {net_pnl_pct*100:.2f}% (${capital_change_usdt:,.2f}) | New Capital: ${capital:,.2f}")
+            if verbose: 
+                price_format = ".8f" if entry_price < 1 else ".2f"
+                print(f"{exit_time.strftime('%Y-%m-%d %H:%M')} | {reason.ljust(12)}| PnL: {net_pnl_pct*100:.2f}% (${capital_change_usdt:,.2f}) | New Capital: ${capital:,.2f}")
 
             trades_count += 1
             if net_pnl_pct > 0 and not is_liquidated: wins_count += 1
@@ -109,9 +115,12 @@ def run_backtest(data_main_tf, data_lower_tf, params, initial_capital=1000.0, ve
             })
 
         if in_position:
+            unrealized_capital_at_risk = (capital * trade_size_pct)
             if position_side == 'long': unrealized_pnl_pct = ((current_candle['low'] - entry_price) / entry_price) * leverage
             else: unrealized_pnl_pct = ((entry_price - current_candle['high']) / entry_price) * leverage
-            unrealized_capital = capital * (1 + unrealized_pnl_pct)
+            
+            unrealized_loss = unrealized_capital_at_risk * unrealized_pnl_pct if unrealized_pnl_pct < 0 else 0
+            unrealized_capital = capital + unrealized_loss
 
             if unrealized_capital <= 0:
                 liquidation_price = entry_price * (1 - (1/leverage)) if position_side == 'long' else entry_price * (1 + (1/leverage))
@@ -160,14 +169,18 @@ def run_backtest(data_main_tf, data_lower_tf, params, initial_capital=1000.0, ve
                 entry_price = current_candle['open']
                 stop_loss_price = entry_price - (prev_candle['atr'] * sl_multiplier)
                 peak_pnl_pct_trade = 0.0
-                if verbose: print(f"{current_candle.name.strftime('%Y-%m-%d %H:%M')} | OPEN LONG   | @ {entry_price:.2f} | SL: {stop_loss_price:.2f}")
+                if verbose:
+                    price_format = ".8f" if entry_price < 1 else ".2f"
+                    print(f"{current_candle.name.strftime('%Y-%m-%d %H:%M')} | OPEN LONG   | @ {entry_price:{price_format}} | SL: {stop_loss_price:{price_format}}")
             elif prev_candle['sell_signal'] and params.get('use_shorts', True):
                 in_position = True
                 position_side = 'short'
                 entry_price = current_candle['open']
                 stop_loss_price = entry_price + (prev_candle['atr'] * sl_multiplier)
                 peak_pnl_pct_trade = 0.0
-                if verbose: print(f"{current_candle.name.strftime('%Y-%m-%d %H:%M')} | OPEN SHORT  | @ {entry_price:.2f} | SL: {stop_loss_price:.2f}")
+                if verbose:
+                    price_format = ".8f" if entry_price < 1 else ".2f"
+                    print(f"{current_candle.name.strftime('%Y-%m-%d %H:%M')} | OPEN SHORT  | @ {entry_price:{price_format}} | SL: {stop_loss_price:{price_format}}")
 
     win_rate = (wins_count / trades_count * 100) if trades_count > 0 else 0
     final_pnl_pct = (capital - initial_capital) / initial_capital * 100 if initial_capital > 0 else -100
