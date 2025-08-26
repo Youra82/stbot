@@ -28,11 +28,9 @@ function run_analysis() {
     echo -e "${CYAN}         SUPERTREND BOT - $mode_name MODUS         ${NC}"
     echo -e "${CYAN}=======================================================${NC}"
 
-    if [ "$mode_name" == "OPTIMIZER" ]; then
-        read -p "Startkapital in USDT eingeben (optional, Standard: 1000): " START_CAPITAL
-        if [ -n "$START_CAPITAL" ]; then
-            script_args="$script_args --capital $START_CAPITAL"
-        fi
+    read -p "Startkapital in USDT eingeben (Standard: 1000): " START_CAPITAL
+    if [ -n "$START_CAPITAL" ]; then
+        script_args="$script_args --capital $START_CAPITAL"
     fi
 
     read -p "Bitte geben Sie den Zeitraum ein (z.B. 2024-01-01 to 2024-06-30): " date_range_input
@@ -46,12 +44,31 @@ function run_analysis() {
     script_args="$script_args --start $START_DATE --end $END_DATE"
 
     if [ "$mode_name" == "BACKTEST" ]; then
-        read -p "Bitte geben Sie den Timeframe ein (z.B. 1h): " TIMEFRAME
-        script_args="$script_args --timeframe $TIMEFRAME"
-        
-        read -p "Handelspaar(e) eingeben (optional, z.B. BTC ETH): " SYMBOLS
+        read -p "Handelspaar(e) eingeben (z.B. BTC ETH): " SYMBOLS
         if [ -n "$SYMBOLS" ]; then
             script_args="$script_args --symbols $SYMBOLS"
+        fi
+        read -p "Timeframe eingeben (z.B. 1h): " TIMEFRAME
+        script_args="$script_args --timeframe $TIMEFRAME"
+
+        echo -e "${YELLOW}--- STRATEGIE-PARAMETER EINGEBEN (Enter für Standard aus config.json) ---${NC}"
+        read -p "Angewandter Hebel: " LEVERAGE
+        if [ -n "$LEVERAGE" ]; then script_args="$script_args --leverage $LEVERAGE"; fi
+        
+        read -p "ST ATR Periode: " ST_PERIOD
+        if [ -n "$ST_PERIOD" ]; then script_args="$script_args --st_period $ST_PERIOD"; fi
+        
+        read -p "ST Multiplikator: " ST_MULTI
+        if [ -n "$ST_MULTI" ]; then script_args="$script_args --st_multiplier $ST_MULTI"; fi
+        
+        read -p "SL Multiplikator: " SL_MULTIPLIER
+        if [ -n "$SL_MULTIPLIER" ]; then script_args="$script_args --sl_multiplier $SL_MULTIPLIER"; fi
+        
+        read -p "Trailing TP aktivieren? [j/N]: " TTP_ENABLED_INPUT
+        if [[ "$TTP_ENABLED_INPUT" =~ ^([jJ][aA]|[jJ])$ ]]; then
+            script_args="$script_args --ttp_enabled"
+            read -p "Trailing TP Drawdown %: " TTP_DRAWDOWN
+            if [ -n "$TTP_DRAWDOWN" ]; then script_args="$script_args --ttp_drawdown $TTP_DRAWDOWN"; fi
         fi
 
     elif [ "$mode_name" == "OPTIMIZER" ]; then
@@ -62,18 +79,17 @@ function run_analysis() {
         if [ -n "$SYMBOLS" ]; then
             script_args="$script_args --symbols $SYMBOLS"
         fi
-    fi
 
-    read -p "SL-Multiplikator eingeben (optional, Enter für Standard): " SL_MULTIPLIER
-    if [ -n "$SL_MULTIPLIER" ]; then
-        script_args="$script_args --sl_multiplier $SL_MULTIPLIER"
+        read -p "SL-Multiplikator eingeben (optional, Enter für Standard): " SL_MULTIPLIER
+        if [ -n "$SL_MULTIPLIER" ]; then
+            script_args="$script_args --sl_multiplier $SL_MULTIPLIER"
+        fi
     fi
 
     echo -e "${YELLOW}Starte $mode_name für $START_DATE bis $END_DATE...${NC}"
     eval "$PYTHON_VENV $script_path $script_args"
     exit 0
 }
-
 
 # --- MODUS-AUSWAHL ---
 case "$1" in
