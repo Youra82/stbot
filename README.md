@@ -20,6 +20,8 @@ Monitorabfrage:
 Backtest & Optimizer benutzen
 > ./monitor_bot.sh optimize
 
+>./monitor_bot.sh backtest 
+
 Cache vom Optimizer löschen:
 > ./monitor_bot.sh clear-cache
 
