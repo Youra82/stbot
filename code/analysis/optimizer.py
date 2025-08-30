@@ -4,168 +4,244 @@ import sys
 import json
 import pandas as pd
 import argparse
-from itertools import product
 import numpy as np
-import concurrent.futures # NEU: Import für die Parallelverarbeitung
+import time 
+import multiprocessing # NEU: Import für prozesssichere Listen
+from geneticalgorithm import geneticalgorithm as ga
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from utilities.strategy_logic import calculate_signals
 from analysis.backtest import run_backtest, load_data_for_backtest, LOWER_TF_MAP
 
-# NEU: Eine "Worker"-Funktion, die einen einzelnen Backtest ausführt.
-# Diese Funktion wird von den verschiedenen Prozessen aufgerufen.
-def process_backtest_combination(args):
-    """Führt einen einzelnen Backtest für eine gegebene Parameterkombination aus."""
-    params_to_test, run_params_template, data_main, data_lower, capital = args
-    
-    run_params = run_params_template.copy()
-    
-    # Parameter für diesen spezifischen Lauf anwenden
-    run_params['supertrend_einstellungen']['st_atr_period'] = params_to_test['st_atr_period']
-    run_params['supertrend_einstellungen']['st_atr_multiplier'] = params_to_test['st_atr_multiplier']
-    if 'sl_atr_multiplier' in params_to_test:
-        run_params['supertrend_einstellungen']['sl_atr_multiplier'] = params_to_test['sl_atr_multiplier']
-    
-    run_params['hebel_einstellungen']['enable_dynamic_leverage'] = params_to_test['enable_dynamic_leverage']
-    run_params['hebel_einstellungen']['adx_strong_trend_threshold'] = params_to_test['adx_strong_trend_threshold']
-    run_params['hebel_einstellungen']['leverage_strong_trend'] = params_to_test['leverage_strong_trend']
-    run_params['hebel_einstellungen']['leverage_weak_trend'] = params_to_test['leverage_weak_trend']
+# Globale Variable, um statische Daten zu halten und nicht immer neu zu laden
+BACKTEST_DATA = {}
 
-    run_params['stop_loss_einstellungen']['enable_donchian_channel_sl'] = params_to_test['enable_donchian_channel_sl']
-    run_params['stop_loss_einstellungen']['donchian_period'] = params_to_test['donchian_period']
+def parse_range(range_str, var_type=float):
+    """Wandelt einen String 'min-max' in eine Liste [min, max] um."""
+    try:
+        min_val, max_val = map(var_type, range_str.split('-'))
+        return [min_val, max_val]
+    except:
+        raise argparse.ArgumentTypeError(f"Ungültiger Bereich: '{range_str}'")
 
-    # Führe den Backtest aus und gib das Ergebnis zurück
+def f(X):
+    """
+    Dies ist die Fitness-Funktion für den genetischen Algorithmus.
+    Sie nimmt ein Numpy-Array 'X' mit den Parametern und gibt den Profit zurück.
+    """
+    params = BACKTEST_DATA['base_params'].copy()
+    
+    # Ordne die Werte aus dem Array X den benannten Parametern zu
+    params['supertrend_einstellungen']['st_atr_period'] = int(X[0])
+    params['supertrend_einstellungen']['st_atr_multiplier'] = float(X[1])
+    params['supertrend_einstellungen']['sl_atr_multiplier'] = float(X[2])
+    params['stop_loss_einstellungen']['donchian_period'] = int(X[3])
+    params['hebel_einstellungen']['adx_strong_trend_threshold'] = int(X[4])
+    params['hebel_einstellungen']['leverage_strong_trend'] = int(X[5])
+    params['hebel_einstellungen']['leverage_weak_trend'] = int(X[6])
+    params['stop_loss_einstellungen']['enable_donchian_channel_sl'] = bool(int(X[7]))
+    params['hebel_einstellungen']['enable_dynamic_leverage'] = bool(int(X[8]))
+    
     result = run_backtest(
-        data_main.copy(), 
-        data_lower.copy() if data_lower is not None else None, 
-        run_params, 
-        initial_capital=capital, 
+        data_main_tf=BACKTEST_DATA['data_main'],
+        data_lower_tf=BACKTEST_DATA['data_lower'],
+        params=params,
+        initial_capital=BACKTEST_DATA['capital'],
         verbose=False
     )
-    return result
+    
+    min_trades = BACKTEST_DATA['min_trades']
+    if result is None or result['trades_count'] < min_trades:
+        return 99999.0 
+    
+    # Speichere jedes gültige Ergebnis in der geteilten Liste
+    BACKTEST_DATA['shared_list'].append(result)
+    
+    profit = result['profit_usdt']
+    drawdown = result['max_drawdown_pct']
+    fitness = profit * (1 - (drawdown / 100))
+    
+    return -fitness
 
+def run_optimization(args):
+    global BACKTEST_DATA
 
-def run_optimization(start_date, end_date, timeframes_str, symbols_list, sl_multiplier=None, capital=1000.0):
     print("Lade Basiskonfiguration...")
     config_path = os.path.join(os.path.dirname(__file__), '..', 'strategies', 'envelope', 'config.json')
-    with open(config_path, 'r') as f:
-        default_params = json.load(f)
+    with open(config_path, 'r') as config_file:
+        default_params = json.load(config_file)
 
-    symbols_to_optimize = symbols_list or [default_params['symbol']]
-    overall_best_results = []
+    # Erstelle eine prozesssichere Liste, um Ergebnisse zu sammeln
+    manager = multiprocessing.Manager()
+    shared_results_list = manager.list()
 
+    symbols_to_optimize = args.symbols or [default_params['symbol']]
+    
     for symbol_arg in symbols_to_optimize:
         base_params = default_params.copy()
         raw_symbol = symbol_arg
-        if '/' not in raw_symbol: base_params['symbol'] = f"{raw_symbol.upper()}/USDT:USDT"
-        else: base_params['symbol'] = raw_symbol.upper()
+        if '/' not in raw_symbol: 
+            base_params['symbol'] = f"{raw_symbol.upper()}/USDT:USDT"
+        else: 
+            base_params['symbol'] = raw_symbol.upper()
         
         print(f"\n\n#################### STARTE OPTIMIERUNG FÜR: {base_params['symbol']} ####################")
         
-        timeframes_to_test = timeframes_str.split()
+        shared_results_list[:] = [] # Leere die Liste für jeden neuen Symbol-Lauf
         
-        param_grid = {
-            'st_atr_period': [10, 14, 21],
-            'st_atr_multiplier': [2.5, 3.0, 3.5],
-            'sl_atr_multiplier': [1.0, 1.5, 2.0],
-            'enable_dynamic_leverage': [True, False],
-            'adx_strong_trend_threshold': [22, 25, 28],
-            'leverage_strong_trend': [15, 20, 25],
-            'leverage_weak_trend': [5, 8, 10],
-            'enable_donchian_channel_sl': [True, False],
-            'donchian_period': [20, 30, 40]
-        }
+        timeframes_to_test = args.timeframes.split()
         
-        if sl_multiplier is not None:
-            base_params['supertrend_einstellungen']['sl_atr_multiplier'] = sl_multiplier
-            del param_grid['sl_atr_multiplier']
-
-        keys, values = zip(*param_grid.items())
-        param_combinations = [dict(zip(keys, v)) for v in product(*values)]
-        all_results = []
-        
-        total_runs = len(param_combinations) * len(timeframes_to_test)
-        
-        print(f"\nStarte Optimierung für '{base_params['symbol']}' auf {len(timeframes_to_test)} Timeframes mit {len(param_combinations)} Kombinationen pro TF (Total: {total_runs} Läufe)...")
-
         for timeframe in timeframes_to_test:
             print(f"\n--- Bearbeite Timeframe: {timeframe} ---")
             
-            data_main = load_data_for_backtest(base_params['symbol'], timeframe, start_date, end_date)
+            data_main = load_data_for_backtest(base_params['symbol'], timeframe, args.start, args.end)
             if data_main is None or data_main.empty:
                 print(f"Keine Daten für {timeframe}. Überspringe."); continue
 
             lower_timeframe = LOWER_TF_MAP.get(timeframe)
-            data_lower = load_data_for_backtest(base_params['symbol'], lower_timeframe, start_date, end_date) if lower_timeframe else None
+            data_lower = load_data_for_backtest(base_params['symbol'], lower_timeframe, args.start, args.end) if lower_timeframe else None
 
-            # GEÄNDERT: Die for-Schleife wird durch einen ProcessPoolExecutor ersetzt.
-            
-            # 1. Bereite eine Liste aller "Aufgaben" vor. Jede Aufgabe enthält alle nötigen Argumente.
-            run_params_template = base_params.copy()
-            run_params_template['timeframe'] = timeframe
-            
-            tasks = [
-                (params, run_params_template, data_main, data_lower, capital)
-                for params in param_combinations
-            ]
-            
-            # 2. Starte den Pool mit 2 Prozessen (für deine 2 vCPUs)
-            print(f"Verarbeite {len(tasks)} Kombinationen für {timeframe} auf 2 CPU-Kernen...")
-            with concurrent.futures.ProcessPoolExecutor(max_workers=2) as executor:
-                # 3. Führe die Aufgaben parallel aus und sammle die Ergebnisse
-                # executor.map wendet die Funktion 'process_backtest_combination' auf jedes Element in 'tasks' an
-                results_for_timeframe = list(executor.map(process_backtest_combination, tasks))
-                all_results.extend(results_for_timeframe)
+            BACKTEST_DATA = {
+                'data_main': data_main.copy(),
+                'data_lower': data_lower.copy() if data_lower is not None else None,
+                'base_params': default_params.copy(),
+                'capital': args.capital,
+                'min_trades': args.min_trades,
+                'shared_list': shared_results_list # Füge die Liste den geteilten Daten hinzu
+            }
+            BACKTEST_DATA['base_params']['timeframe'] = timeframe
 
-            print(f"Timeframe {timeframe} abgeschlossen.")
+            varbound = np.array([
+                parse_range(args.st_atr_period, int),
+                parse_range(args.st_atr_multiplier, float),
+                parse_range(args.sl_atr_multiplier, float),
+                parse_range(args.donchian_period, int),
+                parse_range(args.hebel_adx_strong_trend_threshold, int),
+                parse_range(args.hebel_leverage_strong_trend, int),
+                parse_range(args.hebel_leverage_weak_trend, int),
+                parse_range(args.donchian_sl_mode, int),
+                parse_range(args.dyn_leverage_mode, int)
+            ])
+            
+            vartype = np.array([
+                ['int'], ['real'], ['real'], ['int'], ['int'], ['int'], ['int'], ['int'], ['int']
+            ])
 
+            print("Führe Benchmark für eine einzelne Berechnung durch...")
+            benchmark_params = default_params.copy()
+            benchmark_params['timeframe'] = timeframe
+            benchmark_params['supertrend_einstellungen']['st_atr_period'] = np.random.randint(varbound[0][0], varbound[0][1] + 1)
+            start_benchmark = time.time()
+            run_backtest(data_main, data_lower, benchmark_params, args.capital, verbose=False)
+            end_benchmark = time.time()
+            duration_one_run = end_benchmark - start_benchmark
+            total_evaluations = args.population_size * args.generation_count
+            total_estimated_seconds = duration_one_run * total_evaluations
+            est_minutes = int(total_estimated_seconds // 60)
+            est_seconds = int(total_estimated_seconds % 60)
+            print(f"Benchmark abgeschlossen. Geschätzte Gesamtdauer: {est_minutes} Minuten und {est_seconds} Sekunden.")
+
+            algorithm_param = {
+                'max_num_iteration': args.generation_count, 'population_size': args.population_size,
+                'elit_ratio': 0.01, 'parents_portion': 0.3, 'crossover_probability': 0.5,
+                'mutation_probability': 0.1, 'crossover_type':'uniform', 'max_iteration_without_improv': None
+            }
+            
+            model = ga(function=f, dimension=len(varbound), variable_type_mixed=vartype,
+                       variable_boundaries=varbound, algorithm_parameters=algorithm_param,
+                       function_timeout=60) 
+
+            print(f"Starte genetische Optimierung für {args.generation_count} Generationen mit einer Population von {args.population_size}...")
+            print(f"Mindestanzahl an Trades für gültige Ergebnisse: {args.min_trades}")
+            
+            model.run()
+        
+        # Verarbeitung der gesammelten Ergebnisse am Ende des Symbol-Laufs
+        all_results = list(shared_results_list)
+        print(f"\n--- Optimierung für {base_params['symbol']} abgeschlossen ---")
+        print(f"Insgesamt {len(all_results)} gültige Strategien gefunden.")
 
         if not all_results:
-            print(f"\nKeine Ergebnisse für {base_params['symbol']}."); continue
-            
-        print("\n\n--- Optimierung abgeschlossen ---")
-        results_df = pd.DataFrame(all_results)
-        if results_df.empty:
-            print(f"\nKeine validen Ergebnisse für {base_params['symbol']}.")
+            print("Keine Strategie hat die Mindestanforderungen erfüllt.")
             continue
-            
-        params_df = pd.json_normalize(results_df['params'])
-        results_df = pd.concat([results_df.drop(['params', 'trade_log'], axis=1), params_df], axis=1)
-        
-        sorted_results = results_df.sort_values(by=['profit_usdt'], ascending=[False])
-        
+
+        results_df = pd.DataFrame(all_results)
+        # Entferne Duplikate
+        json_params = results_df['params'].apply(lambda p: json.dumps(p, sort_keys=True))
+        results_df = results_df.loc[json_params.drop_duplicates().index]
+
+        sorted_results = results_df.sort_values(by='profit_usdt', ascending=False)
         top_10_results = sorted_results.head(10)
-        print(f"\nBeste Ergebnisse für {base_params['symbol']} (Top 10, Startkapital: ${capital:,.2f}):")
-        
+
+        print(f"\nBeste Ergebnisse für {base_params['symbol']} (Top 10, Startkapital: ${args.capital:,.2f}):")
+
         for i, row in top_10_results.reset_index(drop=True).iterrows():
-            print("\n" + "="*35)
-            print(f"                 --- RANK {i + 1} ---")
-            print("="*35)
-            print(f"  Gewinn (USDT): ${row.get('profit_usdt', 0):,.2f}")
-            print(f"  Gewinn (%):    {row.get('total_pnl_pct', 0):.2f}%")
-            print(f"  Win Rate:      {row.get('win_rate', 0):.2f}%")
-            print(f"  Anzahl Trades: {int(row.get('trades_count', 0))}")
-            print(f"  Max Drawdown:  {row.get('max_drawdown_pct', 0):.2f}%")
-            print("\n  PARAMETER:")
-            print(f"    Timeframe: {row.get('timeframe', 'N/A')}")
-            # Hier könnten weitere Ausgaben der besten Parameter hinzugefügt werden
+            params = row['params']
+            print("\n" + "="*80)
+            print(f"                                --- RANK {i + 1} ---")
+            print("="*80)
+            print(f"  Gesamtgewinn: ${row['profit_usdt']:>10,.2f}  ({row['total_pnl_pct']:.2f}%)")
+            print(f"  Win Rate:     {row['win_rate']:>10.2f}%         | Trades: {row['trades_count']}")
+            print(f"  Max Drawdown: {row['max_drawdown_pct']:>10.2f}%")
+            print("-" * 80)
+            print("  OPTIMALE PARAMETER:")
+            print(f"  - Supertrend: ATR {params['supertrend_einstellungen']['st_atr_period']} / Multiplikator {params['supertrend_einstellungen']['st_atr_multiplier']:.2f}")
+            print(f"  - Stop-Loss:  ATR Multiplikator {params['supertrend_einstellungen']['sl_atr_multiplier']:.2f}")
 
-# ... (der restliche Code ab 'if __name__ == "__main__":' bleibt unverändert)
+            if params['stop_loss_einstellungen']['enable_donchian_channel_sl']:
+                print(f"  - Donchian SL: Aktiviert (Periode: {params['stop_loss_einstellungen']['donchian_period']})")
+            else:
+                print("  - Donchian SL: Deaktiviert")
+            
+            if params['hebel_einstellungen']['enable_dynamic_leverage']:
+                print(f"  - Dyn. Hebel:  Aktiviert (ADX Schwelle: {params['hebel_einstellungen']['adx_strong_trend_threshold']})")
+                print(f"    - Hebel (stark/schwach): {params['hebel_einstellungen']['leverage_strong_trend']}x / {params['hebel_einstellungen']['leverage_weak_trend']}x")
+            else:
+                print("  - Dyn. Hebel:  Deaktiviert")
+            
+            trade_log = row['trade_log']
+            if trade_log:
+                print("-" * 80)
+                print("  TRADE-PROTOKOLL:")
+                print(f"  {'Datum':<20} | {'Typ':<6} | {'Gewinn (USDT)':>15} | {'Kontostand (USDT)':>18}")
+                print(f"  {'-'*20} | {'-'*6} | {'-'*15} | {'-'*18}")
+                
+                def print_trade_line(trade):
+                    exit_time_str = trade['exit_time'].strftime('%Y-%m-%d %H:%M')
+                    side_str = trade['side'].upper()
+                    pnl_str = f"{trade['pnl_usdt']:>15,.2f}"
+                    capital_str = f"{trade['capital_after']:>18,.2f}"
+                    print(f"  {exit_time_str:<20} | {side_str:<6} | {pnl_str} | {capital_str}")
+
+                num_trades = len(trade_log)
+                max_log_trades = 20
+                if num_trades > max_log_trades:
+                    for trade in trade_log[:10]: print_trade_line(trade)
+                    hidden_trades = num_trades - 20
+                    print(f"  ... ({hidden_trades} weitere Trades werden nicht angezeigt) ...".center(80))
+                    for trade in trade_log[-10:]: print_trade_line(trade)
+                else:
+                    for trade in trade_log: print_trade_line(trade)
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Strategy optimizer for the Supertrend Bot.")
-    parser.add_argument('--capital', type=float, default=1000.0)
-    parser.add_argument('--start', required=True)
-    parser.add_argument('--end', required=True)
-    parser.add_argument('--timeframes', required=True)
-    parser.add_argument('--symbols', nargs='+')
-    parser.add_argument('--sl_multiplier', type=float)
+    parser = argparse.ArgumentParser(description="Genetic Strategy Optimizer.")
+    parser.add_argument('--capital', type=float, required=True)
+    parser.add_argument('--start', type=str, required=True)
+    parser.add_argument('--end', type=str, required=True)
+    parser.add_argument('--timeframes', type=str, required=True)
+    parser.add_argument('--symbols', type=str, nargs='+')
+    parser.add_argument('--population_size', type=int, default=50)
+    parser.add_argument('--generation_count', type=int, default=100)
+    parser.add_argument('--min_trades', type=int, default=10)
+    parser.add_argument('--st_atr_period', type=str, required=True)
+    parser.add_argument('--st_atr_multiplier', type=str, required=True)
+    parser.add_argument('--sl_atr_multiplier', type=str, required=True)
+    parser.add_argument('--donchian_period', type=str, required=True)
+    parser.add_argument('--hebel_adx_strong_trend_threshold', type=str, required=True)
+    parser.add_argument('--hebel_leverage_strong_trend', type=str, required=True)
+    parser.add_argument('--hebel_leverage_weak_trend', type=str, required=True)
+    parser.add_argument('--donchian_sl_mode', type=str, required=True)
+    parser.add_argument('--dyn_leverage_mode', type=str, required=True)
     args = parser.parse_args()
-
-    run_optimization(
-        start_date=args.start,
-        end_date=args.end,
-        timeframes_str=args.timeframes,
-        symbols_list=args.symbols,
-        sl_multiplier=args.sl_multiplier,
-        capital=args.capital
-    )
+    
+    run_optimization(args)
