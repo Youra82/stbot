@@ -6,10 +6,44 @@ import pandas as pd
 import argparse
 from itertools import product
 import numpy as np
+import concurrent.futures # NEU: Import für die Parallelverarbeitung
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from utilities.strategy_logic import calculate_signals
 from analysis.backtest import run_backtest, load_data_for_backtest, LOWER_TF_MAP
+
+# NEU: Eine "Worker"-Funktion, die einen einzelnen Backtest ausführt.
+# Diese Funktion wird von den verschiedenen Prozessen aufgerufen.
+def process_backtest_combination(args):
+    """Führt einen einzelnen Backtest für eine gegebene Parameterkombination aus."""
+    params_to_test, run_params_template, data_main, data_lower, capital = args
+    
+    run_params = run_params_template.copy()
+    
+    # Parameter für diesen spezifischen Lauf anwenden
+    run_params['supertrend_einstellungen']['st_atr_period'] = params_to_test['st_atr_period']
+    run_params['supertrend_einstellungen']['st_atr_multiplier'] = params_to_test['st_atr_multiplier']
+    if 'sl_atr_multiplier' in params_to_test:
+        run_params['supertrend_einstellungen']['sl_atr_multiplier'] = params_to_test['sl_atr_multiplier']
+    
+    run_params['hebel_einstellungen']['enable_dynamic_leverage'] = params_to_test['enable_dynamic_leverage']
+    run_params['hebel_einstellungen']['adx_strong_trend_threshold'] = params_to_test['adx_strong_trend_threshold']
+    run_params['hebel_einstellungen']['leverage_strong_trend'] = params_to_test['leverage_strong_trend']
+    run_params['hebel_einstellungen']['leverage_weak_trend'] = params_to_test['leverage_weak_trend']
+
+    run_params['stop_loss_einstellungen']['enable_donchian_channel_sl'] = params_to_test['enable_donchian_channel_sl']
+    run_params['stop_loss_einstellungen']['donchian_period'] = params_to_test['donchian_period']
+
+    # Führe den Backtest aus und gib das Ergebnis zurück
+    result = run_backtest(
+        data_main.copy(), 
+        data_lower.copy() if data_lower is not None else None, 
+        run_params, 
+        initial_capital=capital, 
+        verbose=False
+    )
+    return result
+
 
 def run_optimization(start_date, end_date, timeframes_str, symbols_list, sl_multiplier=None, capital=1000.0):
     print("Lade Basiskonfiguration...")
@@ -51,9 +85,8 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, sl_mult
         all_results = []
         
         total_runs = len(param_combinations) * len(timeframes_to_test)
-        current_run = 0
         
-        print(f"\nStarte Optimierung für '{base_params['symbol']}' auf {len(timeframes_to_test)} Timeframes mit {total_runs} Kombinationen...")
+        print(f"\nStarte Optimierung für '{base_params['symbol']}' auf {len(timeframes_to_test)} Timeframes mit {len(param_combinations)} Kombinationen pro TF (Total: {total_runs} Läufe)...")
 
         for timeframe in timeframes_to_test:
             print(f"\n--- Bearbeite Timeframe: {timeframe} ---")
@@ -65,28 +98,27 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, sl_mult
             lower_timeframe = LOWER_TF_MAP.get(timeframe)
             data_lower = load_data_for_backtest(base_params['symbol'], lower_timeframe, start_date, end_date) if lower_timeframe else None
 
-            for params_to_test in param_combinations:
-                current_run += 1
-                print(f"\rTeste Kombination {current_run}/{total_runs}...", end="")
+            # GEÄNDERT: Die for-Schleife wird durch einen ProcessPoolExecutor ersetzt.
+            
+            # 1. Bereite eine Liste aller "Aufgaben" vor. Jede Aufgabe enthält alle nötigen Argumente.
+            run_params_template = base_params.copy()
+            run_params_template['timeframe'] = timeframe
+            
+            tasks = [
+                (params, run_params_template, data_main, data_lower, capital)
+                for params in param_combinations
+            ]
+            
+            # 2. Starte den Pool mit 2 Prozessen (für deine 2 vCPUs)
+            print(f"Verarbeite {len(tasks)} Kombinationen für {timeframe} auf 2 CPU-Kernen...")
+            with concurrent.futures.ProcessPoolExecutor(max_workers=2) as executor:
+                # 3. Führe die Aufgaben parallel aus und sammle die Ergebnisse
+                # executor.map wendet die Funktion 'process_backtest_combination' auf jedes Element in 'tasks' an
+                results_for_timeframe = list(executor.map(process_backtest_combination, tasks))
+                all_results.extend(results_for_timeframe)
 
-                run_params = base_params.copy()
-                run_params['timeframe'] = timeframe
-                
-                run_params['supertrend_einstellungen']['st_atr_period'] = params_to_test['st_atr_period']
-                run_params['supertrend_einstellungen']['st_atr_multiplier'] = params_to_test['st_atr_multiplier']
-                if 'sl_atr_multiplier' in params_to_test:
-                    run_params['supertrend_einstellungen']['sl_atr_multiplier'] = params_to_test['sl_atr_multiplier']
-                
-                run_params['hebel_einstellungen']['enable_dynamic_leverage'] = params_to_test['enable_dynamic_leverage']
-                run_params['hebel_einstellungen']['adx_strong_trend_threshold'] = params_to_test['adx_strong_trend_threshold']
-                run_params['hebel_einstellungen']['leverage_strong_trend'] = params_to_test['leverage_strong_trend']
-                run_params['hebel_einstellungen']['leverage_weak_trend'] = params_to_test['leverage_weak_trend']
+            print(f"Timeframe {timeframe} abgeschlossen.")
 
-                run_params['stop_loss_einstellungen']['enable_donchian_channel_sl'] = params_to_test['enable_donchian_channel_sl']
-                run_params['stop_loss_einstellungen']['donchian_period'] = params_to_test['donchian_period']
-
-                result = run_backtest(data_main.copy(), data_lower.copy() if data_lower is not None else None, run_params, initial_capital=capital, verbose=False)
-                all_results.append(result)
 
         if not all_results:
             print(f"\nKeine Ergebnisse für {base_params['symbol']}."); continue
@@ -107,7 +139,7 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, sl_mult
         
         for i, row in top_10_results.reset_index(drop=True).iterrows():
             print("\n" + "="*35)
-            print(f"               --- RANK {i + 1} ---")
+            print(f"                 --- RANK {i + 1} ---")
             print("="*35)
             print(f"  Gewinn (USDT): ${row.get('profit_usdt', 0):,.2f}")
             print(f"  Gewinn (%):    {row.get('total_pnl_pct', 0):.2f}%")
@@ -118,6 +150,7 @@ def run_optimization(start_date, end_date, timeframes_str, symbols_list, sl_mult
             print(f"    Timeframe: {row.get('timeframe', 'N/A')}")
             # Hier könnten weitere Ausgaben der besten Parameter hinzugefügt werden
 
+# ... (der restliche Code ab 'if __name__ == "__main__":' bleibt unverändert)
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Strategy optimizer for the Supertrend Bot.")
     parser.add_argument('--capital', type=float, default=1000.0)
