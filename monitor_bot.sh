@@ -25,7 +25,7 @@ function run_analysis() {
     local script_args=""
 
     echo -e "${CYAN}=======================================================${NC}"
-    echo -e "${CYAN}         SUPERTREND BOT - $mode_name MODUS         ${NC}"
+    echo -e "${CYAN}           SUPERTREND BOT - $mode_name MODUS           ${NC}"
     echo -e "${CYAN}=======================================================${NC}"
 
     read -p "Startkapital in USDT eingeben (Standard: 1000): " START_CAPITAL
@@ -113,7 +113,7 @@ esac
 
 # --- STANDARD-MONITORING-ANZEIGE ---
 echo -e "${CYAN}=======================================================${NC}"
-echo -e "${CYAN}         SUPERTREND TRADING BOT MONITORING         ${NC}"
+echo -e "${CYAN}           SUPERTREND TRADING BOT MONITORING           ${NC}"
 echo -e "${CYAN}=======================================================${NC}"
 echo "Verwende './monitor_bot.sh <mode>', Modi: ${GREEN}backtest, optimize, clear-cache${NC}"
 echo -e "Letzte Aktualisierung: $(date '+%Y-%m-%d %H:%M:%S')"
@@ -125,11 +125,11 @@ if [ -f "$CONFIG_FILE" ]; then
     if command -v jq &> /dev/null; then
         SYMBOL=$(jq -r '.symbol' $CONFIG_FILE)
         TIMEFRAME=$(jq -r '.timeframe' $CONFIG_FILE)
-        LEVERAGE=$(jq -r '.leverage' $CONFIG_FILE)
-        echo "Symbol: $SYMBOL, Timeframe: $TIMEFRAME, Hebel: ${LEVERAGE}x"
+        FALLBACK_LEVERAGE=$(jq -r '.hebel_einstellungen.fallback_leverage' $CONFIG_FILE)
+        echo "Symbol: $SYMBOL, Timeframe: $TIMEFRAME, Fallback-Hebel: ${FALLBACK_LEVERAGE}x"
         
-        ST_PERIOD=$(jq -r '.st_atr_period' $CONFIG_FILE)
-        ST_MULTI=$(jq -r '.st_atr_multiplier' $CONFIG_FILE)
+        ST_PERIOD=$(jq -r '.supertrend_einstellungen.st_atr_period' $CONFIG_FILE)
+        ST_MULTI=$(jq -r '.supertrend_einstellungen.st_atr_multiplier' $CONFIG_FILE)
         echo "Supertrend: ATR Periode $ST_PERIOD / Multiplikator $ST_MULTI"
     else
         echo -e "${RED}Fehler: 'jq' ist nicht installiert. Bitte mit 'sudo apt-get install jq' installieren.${NC}"
@@ -142,8 +142,8 @@ echo ""
 # --- Bot-Statistiken aus dem Log ---
 echo -e "${YELLOW}--- BOT-STATISTIKEN (seit Log-Start) ---${NC}"
 if [ -f "$LOG_FILE" ]; then
-    TRADES_OPENED=$(grep -c "position opened" "$LOG_FILE")
-    TRADES_CLOSED=$(grep -c "Position closed" "$LOG_FILE")
+    TRADES_OPENED=$(grep -c "Position eröffnet" "$LOG_FILE")
+    TRADES_CLOSED=$(grep -c "Position geschlossen" "$LOG_FILE")
     echo "Eröffnete Trades: ${GREEN}$TRADES_OPENED${NC}, Geschlossene Trades: ${GREEN}$TRADES_CLOSED${NC}"
 else
     echo "Log-Datei nicht gefunden."
@@ -153,14 +153,14 @@ echo ""
 # --- Aktuelle Position & Risiko ---
 echo -e "${YELLOW}--- AKTUELLE POSITION & RISIKO ---${NC}"
 if [ -f "$LOG_FILE" ]; then
-    LAST_OPEN_LINE=$(grep "position opened" "$LOG_FILE" | tail -n 1)
-    LAST_CLOSE_LINE=$(grep "Position closed" "$LOG_FILE" | tail -n 1)
+    LAST_OPEN_LINE=$(grep "Position eröffnet" "$LOG_FILE" | tail -n 1)
+    LAST_CLOSE_LINE=$(grep "Position geschlossen" "$LOG_FILE" | tail -n 1)
 
     if [ -n "$LAST_OPEN_LINE" ] && [ "$(echo -e "$LAST_OPEN_LINE\n$LAST_CLOSE_LINE" | sort | tail -n 1)" == "$LAST_OPEN_LINE" ]; then
         POSITION_INFO=$(echo "$LAST_OPEN_LINE" | sed 's/.*UTC: //')
-        ENTRY_SIDE=$(echo "$POSITION_INFO" | awk '{print $1}')
+        ENTRY_SIDE=$(echo "$POSITION_INFO" | awk '{print $2}')
         ENTRY_PRICE=$(echo "$POSITION_INFO" | grep -oP '@ \K[0-9.]+')
-        STOP_LOSS_PRICE=$(grep -oP '(New SL at|stop-loss at) \K[0-9.]+' "$LOG_FILE" | tail -n 1)
+        STOP_LOSS_PRICE=$(grep -oP '(initialem Stop-Loss bei|Neuer SL bei) \K[0-9.]+' "$LOG_FILE" | tail -n 1)
         
         echo -e "Status: ${GREEN}Position offen${NC}"
         echo -e "Seite: ${GREEN}${ENTRY_SIDE}${NC}, Einstieg: ${GREEN}${ENTRY_PRICE}${NC}, Aktueller SL: ${RED}${STOP_LOSS_PRICE:-N/A}${NC}"
