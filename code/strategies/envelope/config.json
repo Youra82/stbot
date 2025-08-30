@@ -5,6 +5,7 @@
     "use_longs": true,
     "use_shorts": true,
     "trade_size_pct": 50,
+    "fee_percentage": 0.05,
     "max_retries": 3,
     "retry_delay": 2,
 
@@ -28,9 +29,13 @@
         "sl_atr_multiplier": 1.5
     },
     
-    "trailing_tp_einstellungen": {
-        "enable_trailing_take_profit": true,
-        "trailing_take_profit_drawdown_pct": 1.5
+    "pnl_trailing_einstellungen": {
+        "enabled": true,
+        "drawdown_pct": 1.5
+    },
+
+    "supertrend_trailing_stop_einstellungen": {
+        "enabled": false
     },
 
     "hebel_test_modus": {
