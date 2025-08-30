@@ -55,7 +55,7 @@ def run_backtest(data_main_tf, data_lower_tf, params, initial_capital=1000.0, ve
         if verbose: print(f"\nFühre einfachen Backtest auf '{main_timeframe}' aus.")
         sim_data = data_main_tf_with_signals
 
-    fee_pct = 0.05 / 100
+    fee_pct = params.get('fee_percentage', 0.05) / 100.0
     trade_size_pct = params.get('trade_size_pct', 100.0) / 100.0
 
     hebel_params = params.get('hebel_einstellungen', {})
@@ -169,7 +169,7 @@ def run_backtest(data_main_tf, data_lower_tf, params, initial_capital=1000.0, ve
     }
 
 def load_data_for_backtest(symbol, timeframe, start_date_str, end_date_str):
-    cache_dir = os.path.join(os.path.dirname(__file__), 'historical_data')
+    cache_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'historical_data')
     os.makedirs(cache_dir, exist_ok=True)
     symbol_filename = symbol.replace('/', '-').replace(':', '-')
     cache_file = os.path.join(cache_dir, f"{symbol_filename}_{timeframe}.csv")
