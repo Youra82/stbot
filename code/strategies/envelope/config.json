@@ -2,20 +2,39 @@
     "symbol": "BTC/USDT:USDT",
     "timeframe": "15m",
     "margin_mode": "isolated",
-    "leverage": 10,
     "use_longs": true,
     "use_shorts": true,
     "trade_size_pct": 50,
     "max_retries": 3,
     "retry_delay": 2,
 
-    "st_atr_period": 10,
-    "st_atr_multiplier": 3.0,
+    "hebel_einstellungen": {
+        "enable_dynamic_leverage": true,
+        "adx_period": 14,
+        "adx_strong_trend_threshold": 25,
+        "leverage_strong_trend": 15,
+        "leverage_weak_trend": 5,
+        "fallback_leverage": 10
+    },
 
-    "enable_stop_loss": true,
-    "stop_loss_atr_multiplier": 1.5,
-    "enable_trailing_stop_loss": true,
+    "stop_loss_einstellungen": {
+        "enable_donchian_channel_sl": true,
+        "donchian_period": 20
+    },
 
-    "enable_trailing_take_profit": true,
-    "trailing_take_profit_drawdown_pct": 1.5
+    "supertrend_einstellungen": {
+        "st_atr_period": 10,
+        "st_atr_multiplier": 3.0,
+        "sl_atr_multiplier": 1.5
+    },
+    
+    "trailing_tp_einstellungen": {
+        "enable_trailing_take_profit": true,
+        "trailing_take_profit_drawdown_pct": 1.5
+    },
+
+    "hebel_test_modus": {
+        "enabled": false,
+        "leverage_to_test": 25
+    }
 }
