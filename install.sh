@@ -1,4 +1,4 @@
-#!/bin.sh
+#!/bin/bash
 # Dieses Skript installiert den Bot und seine Abhängigkeiten.
 # Es kann von überall auf dem Server ausgeführt werden.
 
