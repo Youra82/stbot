@@ -41,5 +41,5 @@
     "hebel_test_modus": {
         "enabled": false,
         "leverage_to_test": 25
-    }
+    },
 }
