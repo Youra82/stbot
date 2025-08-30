@@ -11,16 +11,54 @@ class BitgetFutures():
         self.session = ccxt.bitget(api_setup)
         self.markets = self.session.load_markets()
     
-    def set_leverage(self, symbol: str, leverage: int) -> Dict[str, Any]:
-        """Sets the leverage for a specific trading pair."""
-        try:
-            return self.session.set_leverage(leverage, symbol)
-        except Exception as e:
-            self._handle_exception(f"set_leverage to {leverage}x for {symbol}", e)
-
     def _handle_exception(self, operation: str, e: Exception):
         raise Exception(f"Error during '{operation}': {e}") from e
 
+    # Diese Funktion ist jetzt nur noch für den Testmodus.
+    def set_leverage(self, symbol: str, leverage: int, params: dict = None) -> Dict[str, Any]:
+        """Sets the leverage for a specific trading pair. Used for testing."""
+        try:
+            return self.session.set_leverage(leverage, symbol, params)
+        except Exception as e:
+            self._handle_exception(f"set_leverage to {leverage}x for {symbol}", e)
+
+    def fetch_current_leverage(self, symbol: str) -> Dict[str, Any]:
+        """Fetches current leverage and margin mode for a symbol."""
+        try:
+            # fetch_positions liefert detaillierte Infos, inkl. Hebel
+            positions = self.session.fetch_positions([symbol])
+            if positions:
+                # Gibt die Infos der ersten gefundenen Position zurück (auch wenn sie 0 ist)
+                pos = positions[0]
+                return {
+                    "leverage": float(pos.get('leverage', 0)),
+                    "marginMode": pos.get('marginMode')
+                }
+            return {} # Fallback, falls keine Positionsdaten verfügbar sind
+        except Exception as e:
+            self._handle_exception(f"fetch_current_leverage for {symbol}", e)
+    
+    # +++ START DER ÄNDERUNGEN für zuverlässige Order-Platzierung +++
+    def place_market_order(self, symbol: str, side: str, amount: float, reduce: bool = False, params: dict = None) -> Dict[str, Any]:
+        """Places a market order, allowing extra parameters like leverage."""
+        try:
+            order_params = {'reduceOnly': reduce}
+            if params:
+                order_params.update(params)
+            return self.session.create_order(symbol, 'market', side, amount, params=order_params)
+        except Exception as e:
+            self._handle_exception(f"place_market_order ({side}, {amount}) for {symbol}", e)
+
+    def place_trigger_market_order(self, symbol: str, side: str, amount: float, trigger_price: float, reduce: bool = False) -> Dict[str, Any]:
+        """Places a trigger market order (SL/TP)."""
+        try:
+            trigger_price_str = self.session.price_to_precision(symbol, trigger_price)
+            params = {'stopPrice': trigger_price_str, 'reduceOnly': reduce}
+            return self.session.create_order(symbol, 'market', side, amount, params=params)
+        except Exception as e:
+            self._handle_exception(f"place_trigger_market_order at {trigger_price} for {symbol}", e)
+    # +++ ENDE DER ÄNDERUNGEN +++
+            
     def fetch_ticker(self, symbol: str) -> Dict[str, Any]:
         try:
             return self.session.fetch_ticker(symbol)
@@ -32,12 +70,6 @@ class BitgetFutures():
             return self.session.fetch_balance()
         except Exception as e:
             self._handle_exception("fetch_balance", e)
-
-    def fetch_open_orders(self, symbol: str) -> List[Dict[str, Any]]:
-        try:
-            return self.session.fetch_open_orders(symbol)
-        except Exception as e:
-            self._handle_exception(f"fetch_open_orders for {symbol}", e)
 
     def fetch_open_trigger_orders(self, symbol: str) -> List[Dict[str, Any]]:
         try:
@@ -103,16 +135,3 @@ class BitgetFutures():
             return df.loc[start_date:end_date].sort_index()
         except Exception as e:
             self._handle_exception(f"fetch_historical_ohlcv for {symbol}", e)
-
-    def place_market_order(self, symbol: str, side: str, amount: float, reduce: bool = False) -> Dict[str, Any]:
-        try:
-            return self.session.create_order(symbol, 'market', side, amount, params={'reduceOnly': reduce})
-        except Exception as e:
-            self._handle_exception(f"place_market_order ({side}, {amount}) for {symbol}", e)
-
-    def place_trigger_market_order(self, symbol: str, side: str, amount: float, trigger_price: float, reduce: bool = False) -> Dict[str, Any]:
-        try:
-            trigger_price_str = self.session.price_to_precision(symbol, trigger_price)
-            return self.session.create_order(symbol, 'market', side, amount, params={'stopPrice': trigger_price_str, 'reduceOnly': reduce})
-        except Exception as e:
-            self._handle_exception(f"place_trigger_market_order at {trigger_price} for {symbol}", e)
