@@ -131,7 +131,6 @@ def open_new_position(side, data):
         margin_mode = params['margin_mode']
         leverage = get_dynamic_leverage(data)
         
-        # Parameter, die direkt mit der Order gesendet werden
         order_params = {
             'leverage': leverage,
             'marginMode': margin_mode
@@ -150,7 +149,6 @@ def open_new_position(side, data):
         current_price = data.iloc[-1]['close']
         amount_to_trade = trade_size_usdt / current_price
         
-        # Market-Order mit Hebel-Parametern platzieren
         bitget.place_market_order(symbol, side, amount_to_trade, params=order_params)
         
         stop_loss_price = get_stop_loss_price(side, current_price, data)
@@ -176,9 +174,9 @@ def open_new_position(side, data):
         send_telegram_message(f"❌ *Fehler bei Positionseröffnung ({symbol}):* {msg}")
         state_manager.set_state(status="ok_to_trade")
 
-def manage_trailing_stop(position_info, data):
-    st_params = params.get('supertrend_einstellungen', {})
-    if not st_params.get('enable_trailing_stop_loss', False):
+def manage_supertrend_trailing_stop(position_info, data):
+    st_ts_params = params.get('supertrend_trailing_stop_einstellungen', {})
+    if not st_ts_params.get('enabled', False):
         return
 
     state = state_manager.get_state()
@@ -207,7 +205,7 @@ def manage_trailing_stop(position_info, data):
             should_trail = True
         
         if should_trail:
-            logger.info(f"Trailing Stop: Verschiebe SL von {current_sl_price:.4f} auf {new_trailing_stop_price:.4f}")
+            logger.info(f"Supertrend Trailing Stop: Verschiebe SL von {current_sl_price:.4f} auf {new_trailing_stop_price:.4f}")
             bitget.cancel_trigger_order(current_sl_id, params['symbol'])
             
             amount = float(position_info['contracts'])
@@ -216,18 +214,18 @@ def manage_trailing_stop(position_info, data):
             
             if new_sl_order and new_sl_order.get('id'):
                 state_manager.set_state("in_trade", last_side=state['last_side'], stop_loss_ids=[new_sl_order['id']])
-                send_telegram_message(f"📈 *Trailing Stop Update ({params['symbol']}):* Neuer SL bei {new_trailing_stop_price:.4f} USDT")
+                send_telegram_message(f"📈 *Supertrend Trailing Stop ({params['symbol']}):* Neuer SL bei {new_trailing_stop_price:.4f} USDT")
             else:
                 raise Exception("Konnte neue Trailing Stop-Loss ID nicht extrahieren.")
 
     except Exception as e:
-        logger.error(f"Fehler beim Trailing-Stop-Management: {e}")
-        send_telegram_message(f"⚠️ *Warnung ({params['symbol']}):* Fehler im Trailing-Stop-Management: {e}")
+        logger.error(f"Fehler beim Supertrend-Trailing-Stop: {e}")
+        send_telegram_message(f"⚠️ *Warnung ({params['symbol']}):* Fehler im Supertrend-Trailing-Stop: {e}")
 
 
-def manage_trailing_take_profit(position_info):
-    ttp_params = params.get('trailing_tp_einstellungen', {})
-    if not ttp_params.get('enable_trailing_take_profit', False):
+def manage_pnl_trailing_stop(position_info):
+    pnl_ts_params = params.get('pnl_trailing_einstellungen', {})
+    if not pnl_ts_params.get('enabled', False):
         return False
 
     try:
@@ -248,12 +246,12 @@ def manage_trailing_take_profit(position_info):
             logger.info(f"Neuer PnL-Peak erreicht: {current_pnl_pct:.2f}%")
             peak_pnl_pct = current_pnl_pct
 
-        drawdown_trigger_pct = ttp_params.get('trailing_take_profit_drawdown_pct', 1.5)
+        drawdown_trigger_pct = pnl_ts_params.get('drawdown_pct', 1.5)
         profit_drawdown = peak_pnl_pct - current_pnl_pct
         
         if peak_pnl_pct > drawdown_trigger_pct and profit_drawdown >= drawdown_trigger_pct:
-            logger.info(f"Trailing Take-Profit ausgelöst! Peak PnL war {peak_pnl_pct:.2f}%, aktuell {current_pnl_pct:.2f}%. Schließe Position.")
-            send_telegram_message(f"💰 *Trailing Take-Profit ({params['symbol']}):* Position geschlossen bei {current_pnl_pct:.2f}% PnL (Peak war {peak_pnl_pct:.2f}%).")
+            logger.info(f"PnL Trailing Stop ausgelöst! Peak PnL war {peak_pnl_pct:.2f}%, aktuell {current_pnl_pct:.2f}%. Schließe Position.")
+            send_telegram_message(f"💰 *PnL Trailing Stop ({params['symbol']}):* Position geschlossen bei {current_pnl_pct:.2f}% PnL (Peak war {peak_pnl_pct:.2f}%).")
 
             if state.get('stop_loss_ids'):
                 for sl_id in state['stop_loss_ids']: bitget.cancel_trigger_order(sl_id, params['symbol'])
@@ -263,8 +261,8 @@ def manage_trailing_take_profit(position_info):
             return True
 
     except Exception as e:
-        logger.error(f"Fehler beim Trailing-Take-Profit-Management: {e}")
-        send_telegram_message(f"⚠️ *Warnung ({params['symbol']}):* Fehler im Trailing-Take-Profit-Management: {e}")
+        logger.error(f"Fehler beim PnL-Trailing-Stop: {e}")
+        send_telegram_message(f"⚠️ *Warnung ({params['symbol']}):* Fehler im PnL-Trailing-Stop: {e}")
     
     return False
 
@@ -341,7 +339,7 @@ def main():
             except: pass
             logger.info(f"Halte offene {pos_info['side']}-Position. {pnl_info}")
             
-            if not manage_trailing_take_profit(pos_info):
+            if not manage_pnl_trailing_stop(pos_info):
                 should_close_long = pos_info['side'] == 'long' and last_candle['sell_signal']
                 should_close_short = pos_info['side'] == 'short' and last_candle['buy_signal']
                 
@@ -362,7 +360,7 @@ def main():
                     else:
                         state_manager.set_state(status="ok_to_trade")
                 else:
-                    manage_trailing_stop(pos_info, data)
+                    manage_supertrend_trailing_stop(pos_info, data)
         else:
             if last_candle['buy_signal'] and params.get('use_longs', True):
                 open_new_position('buy', data)
