@@ -28,6 +28,15 @@ def parse_timeframe_to_minutes(tf_str):
 
 def run_backtest(data_main_tf, data_lower_tf, params, initial_capital=1000.0, verbose=True):
     main_timeframe = params['timeframe']
+    
+    st_period = params.get('supertrend_einstellungen', {}).get('st_atr_period', 10)
+    donchian_period = params.get('stop_loss_einstellungen', {}).get('donchian_period', 20)
+    adx_period = params.get('hebel_einstellungen', {}).get('adx_period', 14)
+    min_required_candles = max(st_period, donchian_period, adx_period) + 5 # +5 als Puffer
+
+    if len(data_main_tf) < min_required_candles:
+        return None 
+
     simulation_tf_to_report = main_timeframe
     sim_data = None
     
@@ -54,6 +63,9 @@ def run_backtest(data_main_tf, data_lower_tf, params, initial_capital=1000.0, ve
     else:
         if verbose: print(f"\nFühre einfachen Backtest auf '{main_timeframe}' aus.")
         sim_data = data_main_tf_with_signals
+
+    if sim_data.empty:
+        return None
 
     fee_pct = params.get('fee_percentage', 0.05) / 100.0
     trade_size_pct = params.get('trade_size_pct', 100.0) / 100.0
