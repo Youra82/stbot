@@ -12,7 +12,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from utilities.bitget_futures import BitgetFutures
-from utilities.strategy_logic import calculate_envelope_indicators
+from utilities.strategy_logic import calculate_stochrsi_indicators
 
 def load_data(symbol, timeframe, start_date_str, end_date_str):
     cache_dir = os.path.join(os.path.dirname(__file__), '..', 'analysis', 'historical_data')
@@ -41,100 +41,101 @@ def load_data(symbol, timeframe, start_date_str, end_date_str):
     except Exception as e:
         print(f"Fehler beim Daten-Download für {timeframe}: {e}"); return pd.DataFrame()
 
-def run_envelope_backtest(data, params):
+def run_stochrsi_backtest(data, params):
     base_leverage = params.get('base_leverage', 10.0)
     target_atr_pct = params.get('target_atr_pct', 1.5)
     max_leverage = params.get('max_leverage', 50.0)
-    
-    balance_fraction = params.get('balance_fraction', 100) / 100
-    stop_loss_pct = params.get('stop_loss_pct', 0.4) / 100
-    envelopes = params.get('envelopes_pct', [])
+    balance_fraction = params.get('balance_fraction_pct', 100) / 100
     fee_pct = 0.05 / 100
-
     start_capital = params.get('start_capital', 1000)
+    sl_buffer_pct = params.get('sl_buffer_pct', 0.1) / 100
+    oversold_level = params.get('oversold_level', 20)
+    overbought_level = params.get('overbought_level', 80)
+    
+    trend_filter_cfg = params.get('trend_filter', {})
+    sideways_filter_cfg = params.get('sideways_filter', {})
+
     current_capital = start_capital
     trades_count, wins_count = 0, 0
     trade_log = []
-    
     peak_capital = start_capital
     max_drawdown_pct = 0.0
-    
-    open_positions = []
-    
+    position = None
+
     for i in range(1, len(data)):
+        prev_candle = data.iloc[i-1]
         current_candle = data.iloc[i]
-        
-        if open_positions:
-            avg_entry_price = np.mean([p['entry_price'] for p in open_positions])
-            total_amount = sum([p['amount'] for p in open_positions])
-            side = open_positions[0]['side']
-            avg_leverage = np.mean([p['leverage'] for p in open_positions])
 
-            sl_price = avg_entry_price * (1 - stop_loss_pct) if side == 'long' else avg_entry_price * (1 + stop_loss_pct)
-            tp_price = current_candle['average']
-            exit_price = None
-            reason = None
-
-            if (side == 'long' and current_candle['low'] <= sl_price) or (side == 'short' and current_candle['high'] >= sl_price):
-                exit_price = sl_price
-                reason = "Stop-Loss"
-
-            if not exit_price and ((side == 'long' and current_candle['high'] >= tp_price) or (side == 'short' and current_candle['low'] <= tp_price)):
-                exit_price = tp_price
-                reason = "Take-Profit"
+        if position:
+            exit_price, reason = None, None
+            if position['side'] == 'long' and current_candle['low'] <= position['sl_price']:
+                exit_price, reason = position['sl_price'], "Stop-Loss"
+            elif position['side'] == 'short' and current_candle['high'] >= position['sl_price']:
+                exit_price, reason = position['sl_price'], "Stop-Loss"
+            
+            if not exit_price:
+                if position['side'] == 'long' and current_candle['%k'] > overbought_level:
+                    exit_price, reason = current_candle['open'], "Take-Profit (Gegenextrem)"
+                elif position['side'] == 'short' and current_candle['%k'] < oversold_level:
+                    exit_price, reason = current_candle['open'], "Take-Profit (Gegenextrem)"
 
             if exit_price is not None:
-                pnl = (exit_price - avg_entry_price) * total_amount if side == 'long' else (avg_entry_price - exit_price) * total_amount
-                entry_value = avg_entry_price * total_amount
-                exit_value = exit_price * total_amount
-                total_fees = (entry_value * fee_pct) + (exit_value * fee_pct)
-                pnl -= total_fees
+                pnl = (exit_price - position['entry_price']) * position['amount'] if position['side'] == 'long' else (position['entry_price'] - exit_price) * position['amount']
+                notional_entry = position['entry_price'] * position['amount']
+                notional_exit = exit_price * position['amount']
+                pnl -= (notional_entry + notional_exit) * fee_pct
                 
                 current_capital += pnl
                 trades_count += 1
-                if reason == "Take-Profit": wins_count += 1
+                if reason.startswith("Take-Profit"): wins_count += 1
                 
                 trade_log.append({
-                    "timestamp": str(current_candle.name), "side": side, "entry": avg_entry_price, 
-                    "exit": exit_price, "pnl": pnl, "balance": current_capital, "reason": reason, 
-                    "leverage": avg_leverage, "stop_loss_price": sl_price, "take_profit_price": tp_price
+                    "timestamp": str(current_candle.name), "side": position['side'], "entry": position['entry_price'], 
+                    "exit": exit_price, "pnl": pnl, "balance": current_capital, "reason": reason, "leverage": position['leverage']
                 })
-                open_positions = []
+                position = None
 
-            if not open_positions:
                 if current_capital <= 0: current_capital = 0
                 peak_capital = max(peak_capital, current_capital)
                 drawdown = (peak_capital - current_capital) / peak_capital if peak_capital > 0 else 0
                 max_drawdown_pct = max(max_drawdown_pct, drawdown)
                 if current_capital == 0: break
-                continue
+        
+        if not position:
+            trend_allows_long, trend_allows_short, market_is_not_sideways = True, True, True
 
-        if not open_positions:
+            if trend_filter_cfg.get('enabled', False) and 'ema_trend' in current_candle and not pd.isna(current_candle['ema_trend']):
+                if current_candle['close'] < current_candle['ema_trend']: trend_allows_long = False
+                else: trend_allows_short = False
+            
+            if sideways_filter_cfg.get('enabled', False):
+                sideways_max_crosses = sideways_filter_cfg.get('max_crosses', 8)
+                if current_candle['sideways_cross_count'] > sideways_max_crosses: market_is_not_sideways = False
+
             current_atr_pct = current_candle['atr_pct']
             leverage = base_leverage
             if pd.notna(current_atr_pct) and current_atr_pct > 0:
                 leverage = base_leverage * (target_atr_pct / current_atr_pct)
-            
             leverage = int(round(max(1.0, min(leverage, max_leverage))))
 
-            for j, e_pct in enumerate(envelopes):
-                band_low = current_candle[f'band_low_{j+1}']
-                if current_candle['low'] <= band_low:
-                    amount = (current_capital * balance_fraction / len(envelopes)) * leverage / band_low
-                    open_positions.append({'side': 'long', 'entry_price': band_low, 'amount': amount, 'leverage': leverage})
+            if (trend_allows_long and market_is_not_sideways and prev_candle['%k'] < prev_candle['%d'] and 
+                current_candle['%k'] > current_candle['%d'] and prev_candle['%k'] < oversold_level):
+                entry_price = current_candle['close']
+                amount = (current_capital * balance_fraction * leverage) / entry_price
+                sl_price = prev_candle['swing_low'] * (1 - sl_buffer_pct)
+                position = {'side': 'long', 'entry_price': entry_price, 'amount': amount, 'sl_price': sl_price, 'leverage': leverage}
 
-            if not open_positions:
-                for j, e_pct in enumerate(envelopes):
-                    band_high = current_candle[f'band_high_{j+1}']
-                    if current_candle['high'] >= band_high:
-                        amount = (current_capital * balance_fraction / len(envelopes)) * leverage / band_high
-                        open_positions.append({'side': 'short', 'entry_price': band_high, 'amount': amount, 'leverage': leverage})
+            elif (trend_allows_short and market_is_not_sideways and prev_candle['%k'] > prev_candle['%d'] and 
+                  current_candle['%k'] < current_candle['%d'] and prev_candle['%k'] > overbought_level):
+                entry_price = current_candle['close']
+                amount = (current_capital * balance_fraction * leverage) / entry_price
+                sl_price = prev_candle['swing_high'] * (1 + sl_buffer_pct)
+                position = {'side': 'short', 'entry_price': entry_price, 'amount': amount, 'sl_price': sl_price, 'leverage': leverage}
 
     win_rate = (wins_count / trades_count * 100) if trades_count > 0 else 0
     final_pnl_pct = ((current_capital / start_capital) - 1) * 100
     
     return {
-        "total_pnl_pct": final_pnl_pct, "trades_count": trades_count,
-        "win_rate": win_rate, "params": params, "end_capital": current_capital,
-        "max_drawdown_pct": max_drawdown_pct, "trade_log": trade_log
+        "total_pnl_pct": final_pnl_pct, "trades_count": trades_count, "win_rate": win_rate, 
+        "params": params, "end_capital": current_capital, "max_drawdown_pct": max_drawdown_pct, "trade_log": trade_log
     }
