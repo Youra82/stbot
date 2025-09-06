@@ -25,8 +25,12 @@ def calculate_stochrsi_indicators(data, params):
 
     # 1. Stochastik RSI (0-100 Skala)
     stoch_rsi = ta.momentum.StochRSIIndicator(
-        close=data['close'], rsi_window=rsi_period, stoch_window=stoch_period,
-        smooth1=k_period, smooth2=d_period
+        close=data['close'],
+        # --- KORRIGIERT: 'rsi_window' wurde zu 'window' geändert ---
+        window=rsi_period,
+        stoch_window=stoch_period,
+        smooth1=k_period,
+        smooth2=d_period
     )
     indicators['%k'] = stoch_rsi.stochrsi_k() * 100
     indicators['%d'] = stoch_rsi.stochrsi_d() * 100
