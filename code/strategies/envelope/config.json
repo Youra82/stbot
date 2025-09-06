@@ -5,7 +5,6 @@
     },
     "strategy": {
         "stoch_rsi_period": 14,
-        "stoch_period": 14,
         "stoch_k": 3,
         "stoch_d": 3,
         "swing_lookback": 12,
