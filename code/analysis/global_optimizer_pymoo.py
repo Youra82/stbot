@@ -1,5 +1,4 @@
 # code/analysis/global_optimizer_pymoo.py
-# Diese Version hat die korrekte Formatierung und Einrückung.
 
 import json
 import time
@@ -119,12 +118,30 @@ def main(n_procs, n_gen_default):
             if is_trend_filter_enabled: print("   - EMA-Trendfilter: Aktiviert")
             if is_sideways_filter_enabled: print("   - Seitwärts-Filter: Aktiviert")
 
+            # --- HINZUGEFÜGT: Benchmark zur Zeitschätzung ---
+            print("\nFühre kurzen Benchmark zur Zeitschätzung durch...")
+            problem_for_benchmark = StochRSIOptimizationProblem(
+                trend_filter_enabled=is_trend_filter_enabled,
+                sideways_filter_enabled=is_sideways_filter_enabled
+            )
+            sample_individual = np.random.rand(1, 8) * (problem_for_benchmark.xu - problem_for_benchmark.xl) + problem_for_benchmark.xl
+            start_b = time.time()
+            problem_for_benchmark._evaluate(sample_individual, out={})
+            end_b = time.time()
+            time_per_eval = end_b - start_b
+            
+            pop_size = 100
+            total_evals = pop_size * n_gen
+            estimated_time = (total_evals * time_per_eval) / n_procs
+            print(f"Geschätzte Gesamtdauer für Stufe 1: {format_time(estimated_time)}")
+            # --- ENDE BENCHMARK ---
+
             with Pool(n_procs) as pool:
                 problem = StochRSIOptimizationProblem(
                     trend_filter_enabled=is_trend_filter_enabled, sideways_filter_enabled=is_sideways_filter_enabled,
                     parallelization=StarmapParallelization(pool.starmap)
                 )
-                algorithm = NSGA2(pop_size=100)
+                algorithm = NSGA2(pop_size=pop_size)
                 termination = get_termination("n_gen", n_gen)
 
                 with tqdm(total=n_gen, desc="Generationen") as pbar:
