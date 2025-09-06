@@ -7,15 +7,13 @@ def calculate_stochrsi_indicators(data, params):
     """
     Berechnet Stoch RSI, Swing Points, ATR, EMA-Trendfilter und Seitwärts-Filter.
     """
-    # Alle Parameter aus der Konfiguration holen
     rsi_period = params.get('stoch_rsi_period', 14)
-    stoch_period = params.get('stoch_period', 14)
+    # stoch_period = params.get('stoch_period', 14) # --- ENTFERNT ---
     k_period = params.get('stoch_k', 3)
     d_period = params.get('stoch_d', 3)
     swing_lookback = params.get('swing_lookback', 10)
     atr_period = params.get('atr_period', 14)
 
-    # Filter-Parameter extrahieren
     trend_filter_cfg = params.get('trend_filter', {})
     sideways_filter_cfg = params.get('sideways_filter', {})
     trend_filter_period = trend_filter_cfg.get('period', 200)
@@ -23,30 +21,24 @@ def calculate_stochrsi_indicators(data, params):
 
     indicators = pd.DataFrame(index=data.index)
 
-    # 1. Stochastik RSI (0-100 Skala)
     stoch_rsi = ta.momentum.StochRSIIndicator(
         close=data['close'],
-        # --- KORRIGIERT: 'rsi_window' wurde zu 'window' geändert ---
         window=rsi_period,
-        stoch_window=stoch_period,
+        # stoch_window=stoch_period, # --- ENTFERNT ---
         smooth1=k_period,
         smooth2=d_period
     )
     indicators['%k'] = stoch_rsi.stochrsi_k() * 100
     indicators['%d'] = stoch_rsi.stochrsi_d() * 100
 
-    # 2. Swing Lows und Highs
     indicators['swing_low'] = data['low'].rolling(window=swing_lookback).min()
     indicators['swing_high'] = data['high'].rolling(window=swing_lookback).max()
 
-    # 3. ATR für dynamischen Hebel
     atr = ta.volatility.AverageTrueRange(data['high'], data['low'], data['close'], window=atr_period).average_true_range()
     indicators['atr_pct'] = (atr / data['close']) * 100
 
-    # 4. EMA-Trendfilter
     indicators['ema_trend'] = ta.trend.ema_indicator(data['close'], window=trend_filter_period)
 
-    # 5. Seitwärtsphasen-Filter
     cross_up = (indicators['%k'].shift(1) < 50) & (indicators['%k'] >= 50)
     cross_down = (indicators['%k'].shift(1) > 50) & (indicators['%k'] <= 50)
     crosses = cross_up | cross_down
