@@ -6,7 +6,7 @@ import sys
 import pandas as pd
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-# --- GEÄNDERT: Korrekte Funktionen für stbot importieren ---
+# --- KORREKTUR: Korrekte Funktionen für stbot importieren ---
 from analysis.backtest import load_data, run_stochrsi_backtest
 from utilities.strategy_logic import calculate_stochrsi_indicators
 
@@ -15,7 +15,6 @@ def main():
     
     try:
         project_root = os.path.join(os.path.dirname(__file__), '..', '..')
-        # Pfad bleibt gleich, da der Ordnername beibehalten wurde
         config_path = os.path.join(project_root, 'code', 'strategies', 'envelope', 'config.json')
         with open(config_path, 'r') as f:
             config = json.load(f)
@@ -36,7 +35,6 @@ def main():
         print(f"Keine Daten für den Zeitraum {start_date} bis {end_date} gefunden.")
         return
 
-    # Parameter korrekt für stbot zusammenbauen
     params = {
         **config['strategy'],
         **config['risk'],
@@ -44,11 +42,10 @@ def main():
     }
 
     print("Berechne Indikatoren und führe Backtest aus...")
-    # --- GEÄNDERT: Korrekte Funktionen für stbot aufrufen ---
+    # --- KORREKTUR: Korrekte Funktionen für stbot aufrufen ---
     data_with_indicators = calculate_stochrsi_indicators(data.copy(), params)
     result = run_stochrsi_backtest(data_with_indicators.dropna(), params)
 
-    # --- Ausgabe-Sektion bleibt gleich, da sie bereits für stbot passt ---
     print("\n" + "="*50)
     print("    +++ BACKTEST-ERGEBNIS +++")
     print("="*50)
