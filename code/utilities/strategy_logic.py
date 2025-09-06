@@ -3,47 +3,49 @@
 import pandas as pd
 import ta
 
-def calculate_envelope_indicators(data, params):
+def calculate_stochrsi_indicators(data, params):
     """
-    Berechnet den gleitenden Durchschnitt, die Envelopes und den ATR-Indikator
-    und fügt sie als neue Spalten zu den Daten hinzu.
+    Berechnet Stoch RSI, Swing Points, ATR, EMA-Trendfilter und Seitwärts-Filter.
     """
-    avg_type = params.get('average_type', 'DCM')
-    avg_period = int(params.get('average_period', 5))
-    envelopes = params.get('envelopes_pct', [])
+    # Alle Parameter aus der Konfiguration holen
+    rsi_period = params.get('stoch_rsi_period', 14)
+    stoch_period = params.get('stoch_period', 14)
+    k_period = params.get('stoch_k', 3)
+    d_period = params.get('stoch_d', 3)
+    swing_lookback = params.get('swing_lookback', 10)
     atr_period = params.get('atr_period', 14)
 
-    # 1. Alle Indikator-Berechnungen durchführen
-    if avg_type == 'DCM':
-        average = ta.volatility.DonchianChannel(data['high'], data['low'], data['close'], window=avg_period).donchian_channel_mband()
-    elif avg_type == 'SMA':
-        average = ta.trend.sma_indicator(data['close'], window=avg_period)
-    elif avg_type == 'WMA':
-        average = ta.trend.wma_indicator(data['close'], window=avg_period)
-    else:
-        raise ValueError(f"Der Durchschnittstyp {avg_type} wird nicht unterstützt")
+    # Filter-Parameter extrahieren
+    trend_filter_cfg = params.get('trend_filter', {})
+    sideways_filter_cfg = params.get('sideways_filter', {})
+    trend_filter_period = trend_filter_cfg.get('period', 200)
+    sideways_lookback = sideways_filter_cfg.get('lookback', 50)
 
-    atr = ta.volatility.AverageTrueRange(data['high'], data['low'], data['close'], window=atr_period).average_true_range()
-    atr_pct = (atr / data['close']) * 100
-
-    # 2. Einen neuen, leeren DataFrame für die Indikatoren erstellen
     indicators = pd.DataFrame(index=data.index)
 
-    # 3. Dem neuen DataFrame die berechneten Spalten zuweisen
-    indicators['average'] = average
-    indicators['atr'] = atr
-    indicators['atr_pct'] = atr_pct
-    
-    for i, e_pct in enumerate(envelopes):
-        e = e_pct / 100
-        indicators[f'band_high_{i + 1}'] = average * (1 + e)
-        indicators[f'band_low_{i + 1}'] = average * (1 - e)
+    # 1. Stochastik RSI (0-100 Skala)
+    stoch_rsi = ta.momentum.StochRSIIndicator(
+        close=data['close'], rsi_window=rsi_period, stoch_window=stoch_period,
+        smooth1=k_period, smooth2=d_period
+    )
+    indicators['%k'] = stoch_rsi.stochrsi_k() * 100
+    indicators['%d'] = stoch_rsi.stochrsi_d() * 100
 
-    # <<< VERBESSERUNG 1 (Strategie): Trend-Filter-Indikator berechnen >>>
-    trend_filter_params = params.get('trend_filter', {})
-    if trend_filter_params.get('enabled', False):
-        tf_period = trend_filter_params.get('period', 200)
-        indicators['trend_sma'] = ta.trend.sma_indicator(data['close'], window=tf_period)
-    
-    # 4. Den Original-DataFrame mit dem Indikatoren-DataFrame verbinden
+    # 2. Swing Lows und Highs
+    indicators['swing_low'] = data['low'].rolling(window=swing_lookback).min()
+    indicators['swing_high'] = data['high'].rolling(window=swing_lookback).max()
+
+    # 3. ATR für dynamischen Hebel
+    atr = ta.volatility.AverageTrueRange(data['high'], data['low'], data['close'], window=atr_period).average_true_range()
+    indicators['atr_pct'] = (atr / data['close']) * 100
+
+    # 4. EMA-Trendfilter
+    indicators['ema_trend'] = ta.trend.ema_indicator(data['close'], window=trend_filter_period)
+
+    # 5. Seitwärtsphasen-Filter
+    cross_up = (indicators['%k'].shift(1) < 50) & (indicators['%k'] >= 50)
+    cross_down = (indicators['%k'].shift(1) > 50) & (indicators['%k'] <= 50)
+    crosses = cross_up | cross_down
+    indicators['sideways_cross_count'] = crosses.rolling(window=sideways_lookback).sum()
+
     return data.join(indicators)
