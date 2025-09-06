@@ -1,5 +1,3 @@
-Absolut. Hier ist die angepasste README.md-Datei für deinen neuen stbot.
-Ich habe die Strategiebeschreibung, die Architektur-Details und alle relevanten Befehle aktualisiert, um deinen neuen Bot exakt widerzuspiegeln, während die von dir gewünschte Ordnerstruktur beibehalten wird.
 Stoch RSI Trading Bot (stbot)
 Dies ist ein vollautomatischer Trading-Bot für Krypto-Futures auf der Bitget-Börse. Das System wurde für den Betrieb auf einem Ubuntu-Server entwickelt und umfasst neben dem Live-Trading-Modul eine hochentwickelte Pipeline zur Strategie-Optimierung und -Analyse.
 Kernstrategie
