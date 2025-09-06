@@ -10,8 +10,9 @@ import time
 import pandas as pd
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from analysis.backtest import run_envelope_backtest
-from utilities.strategy_logic import calculate_envelope_indicators
+# --- GEÄNDERT: Korrekte Funktionen importieren ---
+from analysis.backtest import run_stochrsi_backtest
+from utilities.strategy_logic import calculate_stochrsi_indicators
 from analysis.global_optimizer_pymoo import load_data, format_time
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -20,36 +21,41 @@ HISTORICAL_DATA = None
 START_CAPITAL = 1000.0
 BASE_PARAMS = {}
 
+# --- NEU: objective-Funktion komplett für stbot umgeschrieben ---
 def objective(trial):
-    base_avg_period = BASE_PARAMS.get('average_period', 20)
-    base_sl_pct = BASE_PARAMS.get('stop_loss_pct', 2.0)
-    base_leverage = BASE_PARAMS.get('base_leverage', 10)
-    base_target_atr = BASE_PARAMS.get('target_atr_pct', 2.0)
-    base_envelopes = BASE_PARAMS.get('envelopes_pct', [5.0, 10.0])
-
+    base_params = BASE_PARAMS['params']
+    
     params = {
-        'average_type': BASE_PARAMS['average_type'],
-        'average_period': trial.suggest_int('average_period', max(5, base_avg_period - 10), base_avg_period + 10),
-        'stop_loss_pct': trial.suggest_float('stop_loss_pct', max(0.5, base_sl_pct * 0.8), base_sl_pct * 1.2, log=True),
-        'base_leverage': trial.suggest_int('base_leverage', max(1, base_leverage - 5), base_leverage + 5),
-        'target_atr_pct': trial.suggest_float('target_atr_pct', max(0.5, base_target_atr * 0.8), base_target_atr * 1.2, log=True),
+        'stoch_rsi_period': trial.suggest_int('stoch_rsi_period', 
+            max(5, base_params['stoch_rsi_period'] - 5), base_params['stoch_rsi_period'] + 5),
+        'stoch_k': trial.suggest_int('stoch_k', 
+            max(2, base_params['stoch_k'] - 2), base_params['stoch_k'] + 2),
+        'stoch_d': trial.suggest_int('stoch_d', 
+            max(2, base_params['stoch_d'] - 2), base_params['stoch_d'] + 2),
+        'swing_lookback': trial.suggest_int('swing_lookback', 
+            max(5, base_params['swing_lookback'] - 10), base_params['swing_lookback'] + 10),
+        'sl_buffer_pct': trial.suggest_float('sl_buffer_pct', 
+            base_params['sl_buffer_pct'] * 0.5, base_params['sl_buffer_pct'] * 1.5, log=True),
+        'base_leverage': trial.suggest_int('base_leverage', 
+            max(1, base_params['base_leverage'] - 5), base_params['base_leverage'] + 5),
+        'target_atr_pct': trial.suggest_float('target_atr_pct', 
+            base_params['target_atr_pct'] * 0.8, base_params['target_atr_pct'] * 1.2, log=True),
+        'sideways_max_crosses': trial.suggest_int('sideways_max_crosses',
+            max(2, base_params['sideways_filter']['max_crosses'] - 4), base_params['sideways_filter']['max_crosses'] + 4),
+        
         'start_capital': START_CAPITAL,
-        'max_leverage': 50.0
+        'max_leverage': 50.0,
+        'balance_fraction_pct': 2.0,
+        
+        # Feste Parameter übernehmen
+        'oversold_level': base_params.get('oversold_level', 20),
+        'overbought_level': base_params.get('overbought_level', 80),
+        'trend_filter': base_params['trend_filter'],
+        'sideways_filter': {**base_params['sideways_filter'], 'max_crosses': trial.params['sideways_max_crosses']}
     }
-    
-    if not base_envelopes: return -float('inf')
-    
-    env_start = trial.suggest_float('env_start', max(0.5, base_envelopes[0] * 0.8), base_envelopes[0] * 1.2, log=True)
-    
-    if len(base_envelopes) > 1:
-        step = base_envelopes[1] - base_envelopes[0]
-        env_step = trial.suggest_float('env_step', max(0.5, step * 0.8), step * 1.2, log=True)
-        params['envelopes_pct'] = [round(env_start + i * env_step, 2) for i in range(len(base_envelopes))]
-    else:
-        params['envelopes_pct'] = [round(env_start, 2)]
 
-    data_with_indicators = calculate_envelope_indicators(HISTORICAL_DATA.copy(), params)
-    result = run_envelope_backtest(data_with_indicators.dropna(), params)
+    data_with_indicators = calculate_stochrsi_indicators(HISTORICAL_DATA.copy(), params)
+    result = run_stochrsi_backtest(data_with_indicators.dropna(), params)
 
     pnl = result.get('total_pnl_pct', -1000)
     drawdown = result.get('max_drawdown_pct', 1.0)
@@ -62,39 +68,24 @@ def main(n_jobs, n_trials):
     
     input_file = os.path.join(os.path.dirname(__file__), 'optimization_candidates.json')
     if not os.path.exists(input_file):
-        print(f"Fehler: '{input_file}' nicht gefunden.")
+        print(f"Fehler: '{input_file}' nicht gefunden. Bitte Stufe 1 zuerst ausführen.")
         return
 
     with open(input_file, 'r') as f: candidates = json.load(f)
     print(f"Lade {len(candidates)} Kandidaten zur Verfeinerung...")
     
-    if candidates:
-        print("\nFühre kurzen Benchmark zur Zeitschätzung durch...")
-        first_candidate = candidates[0]
-        global HISTORICAL_DATA, BASE_PARAMS, START_CAPITAL
-        HISTORICAL_DATA = load_data(first_candidate['symbol'], first_candidate['timeframe'], first_candidate['start_date'], first_candidate['end_date'])
-        BASE_PARAMS = first_candidate['params']
-        START_CAPITAL = first_candidate['start_capital']
-        
-        dummy_study = optuna.create_study()
-        start_b = time.time()
-        objective(dummy_study.ask())
-        end_b = time.time()
-        time_per_trial = end_b - start_b
-        
-        total_trials = n_trials * len(candidates)
-        estimated_time = (total_trials * time_per_trial) / n_jobs
-        print(f"Geschätzte Gesamtdauer für Stufe 2: {format_time(estimated_time)}")
+    if not candidates: return
 
     best_overall_trial = None
     best_overall_score = -float('inf')
     best_overall_info = {}
 
     for i, candidate in enumerate(candidates):
-        print(f"\n===== Verfeinere Kandidat {i+1}/{len(candidates)} für {candidate['symbol']} ({candidate['timeframe']}) mit {candidate['params']['average_type']} =====")
+        print(f"\n===== Verfeinere Kandidat {i+1}/{len(candidates)} für {candidate['symbol']} ({candidate['timeframe']}) =====")
         
+        global HISTORICAL_DATA, BASE_PARAMS, START_CAPITAL
         HISTORICAL_DATA = load_data(candidate['symbol'], candidate['timeframe'], candidate['start_date'], candidate['end_date'])
-        BASE_PARAMS = candidate['params']
+        BASE_PARAMS = candidate
         START_CAPITAL = candidate['start_capital']
         
         if HISTORICAL_DATA.empty: continue
@@ -112,64 +103,50 @@ def main(n_jobs, n_trials):
         print("    +++ FINALES BESTES ERGEBNIS NACH GLOBALER & LOKALER OPTIMIERUNG +++")
         print("="*80)
         
-        final_params_dict = best_overall_trial.params
-        if 'env_start' in final_params_dict:
-            base_envelopes_count = len(best_overall_info['params']['envelopes_pct'])
-            env_start = final_params_dict.pop('env_start')
-            env_step = final_params_dict.pop('env_step', 0)
-            final_params_dict['envelopes_pct'] = [round(env_start + i * env_step, 2) for i in range(base_envelopes_count)]
-
-        final_params = {**BASE_PARAMS, **final_params_dict, 'start_capital': START_CAPITAL, 'max_leverage': 50.0}
-
-        final_data = load_data(best_overall_info['symbol'], best_overall_info['timeframe'], best_overall_info['start_date'], best_overall_info['end_date'])
-        data_with_indicators = calculate_envelope_indicators(final_data.copy(), final_params)
-        final_result = run_envelope_backtest(data_with_indicators.dropna(), final_params)
+        final_params_base = best_overall_info['params']
+        final_params_tuned = best_overall_trial.params
+        
+        # --- NEU: Korrekte config.json für stbot erstellen ---
+        final_params = {
+            'stoch_rsi_period': final_params_tuned['stoch_rsi_period'],
+            'stoch_k': final_params_tuned['stoch_k'],
+            'stoch_d': final_params_tuned['stoch_d'],
+            'swing_lookback': final_params_tuned['swing_lookback'],
+            'sl_buffer_pct': round(final_params_tuned['sl_buffer_pct'], 2),
+            'base_leverage': final_params_tuned['base_leverage'],
+            'target_atr_pct': round(final_params_tuned['target_atr_pct'], 2),
+            'sideways_filter': {**final_params_base['sideways_filter'], 'max_crosses': final_params_tuned['sideways_max_crosses']},
+            'trend_filter': final_params_base['trend_filter'],
+            'oversold_level': final_params_base.get('oversold_level', 20),
+            'overbought_level': final_params_base.get('overbought_level', 80),
+            'atr_period': final_params_base.get('atr_period', 14)
+        }
+        
+        risk_params = {
+            "margin_mode": "isolated", "balance_fraction_pct": 2, "max_leverage": 50,
+            'sl_buffer_pct': final_params['sl_buffer_pct'],
+            'base_leverage': final_params['base_leverage'],
+            'target_atr_pct': final_params['target_atr_pct']
+        }
+        
+        backtest_params = {**final_params, **risk_params, 'start_capital': START_CAPITAL}
+        data_with_indicators = calculate_stochrsi_indicators(HISTORICAL_DATA.copy(), backtest_params)
+        final_result = run_stochrsi_backtest(data_with_indicators.dropna(), backtest_params)
 
         print(f"  HANDELSCOIN: {best_overall_info['symbol']} | TIMEFRAME: {best_overall_info['timeframe']}")
         print(f"  PERFORMANCE-SCORE: {best_overall_score:.2f} (PnL, gewichtet mit Drawdown)")
-
-        trade_log_df = pd.DataFrame(final_result['trade_log'])
-        if not trade_log_df.empty:
-            min_balance_row = trade_log_df.loc[trade_log_df['balance'].idxmin()]
-            print(f"  DATUM MINIMALER KONTOSTAND: {min_balance_row['timestamp']} ({min_balance_row['balance']:.2f} USDT)")
-
+        
         print("\n  FINALE PERFORMANCE-METRIKEN:")
         print(f"    - Gesamtgewinn (PnL): {final_result['total_pnl_pct']:.2f} %")
         print(f"    - Max. Drawdown:      {final_result['max_drawdown_pct']*100:.2f} %")
         print(f"    - Anzahl Trades:      {final_result['trades_count']}")
         print(f"    - Win-Rate:           {final_result['win_rate']:.2f} %")
         
-        trade_log_list = final_result.get('trade_log', [])
-        if trade_log_list:
-            print("\n  HANDELS-CHRONIK (ERSTE 10 UND LETZTE 10 TRADES):")
-            display_limit = 20
-            if len(trade_log_list) > display_limit:
-                display_list = trade_log_list[:10] + [None] + trade_log_list[-10:]
-            else:
-                display_list = trade_log_list
-            
-            print("  " + "-"*106)
-            print("  {:^28} | {:<7} | {:<7} | {:>10} | {:>15} | {:>18}".format(
-                "Datum & Uhrzeit (UTC)", "Seite", "Hebel", "Stop-Loss", "Gewinn je Trade", "Neuer Kontostand"))
-            print("  " + "-"*106)
-
-            for trade in display_list:
-                if trade is None:
-                    print("  ...".center(108))
-                    continue
-                side_str = trade['side'].capitalize().ljust(7)
-                leverage_str = f"{int(trade.get('leverage', 0))}x".ljust(7)
-                sl_price_str = f"{trade.get('stop_loss_price', 0):.4f}".rjust(10)
-                pnl_str = f"{trade['pnl']:+9.2f} USDT".rjust(15)
-                balance_str = f"{trade['balance']:.2f} USDT".rjust(18)
-                print(f"  {trade['timestamp']:<28} | {side_str} | {leverage_str} | {sl_price_str} | {pnl_str} | {balance_str}")
-            print("  " + "-"*106)
-
         print("\n  >>> EINSTELLUNGEN FÜR DEINE 'config.json' <<<")
         config_output = {
             "market": {"symbol": best_overall_info['symbol'], "timeframe": best_overall_info['timeframe']},
-            "strategy": {"average_type": final_params['average_type'], "average_period": final_params['average_period'], "envelopes_pct": final_params['envelopes_pct']},
-            "risk": {"margin_mode": "isolated", "balance_fraction_pct": 2, "stop_loss_pct": round(final_params['stop_loss_pct'], 2), "base_leverage": final_params['base_leverage'], "max_leverage": int(final_params['max_leverage']), "target_atr_pct": round(final_params['target_atr_pct'], 2)},
+            "strategy": {key: val for key, val in final_params.items() if key not in risk_params},
+            "risk": risk_params,
             "behavior": {"use_longs": True, "use_shorts": True}
         }
         print(json.dumps(config_output, indent=4))
