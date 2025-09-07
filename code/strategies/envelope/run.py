@@ -30,31 +30,31 @@ params = load_config()
 SYMBOL = params['market']['symbol']
 DB_FILE = os.path.join(os.path.dirname(__file__), f"bot_state_{SYMBOL.replace('/', '-')}.db")
 
+# --- VEREINFACHT: Datenbank-Funktionen ---
 def setup_database():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute('CREATE TABLE IF NOT EXISTS bot_state (symbol TEXT PRIMARY KEY, status TEXT)')
-    cursor.execute("INSERT OR IGNORE INTO bot_state (symbol, status) VALUES (?, ?)", (SYMBOL, 'ok_to_trade'))
+    cursor.execute('CREATE TABLE IF NOT EXISTS bot_state (symbol TEXT PRIMARY KEY, side TEXT)')
     conn.commit()
     conn.close()
 
-def get_bot_status():
+def get_open_side():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("SELECT status FROM bot_state WHERE symbol = ?", (SYMBOL,))
+    cursor.execute("SELECT side FROM bot_state WHERE symbol = ?", (SYMBOL,))
     result = cursor.fetchone()
     conn.close()
-    return result[0] if result else 'ok_to_trade'
+    return result[0] if result and result[0] != 'none' else None
 
-def update_bot_status(status: str):
+def update_open_side(side: str):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("INSERT OR REPLACE INTO bot_state (symbol, status) VALUES (?, ?)", (SYMBOL, status))
+    cursor.execute("INSERT OR REPLACE INTO bot_state (symbol, side) VALUES (?, ?)", (SYMBOL, side))
     conn.commit()
     conn.close()
 
 def main():
-    logger.info(f">>> Starte Ausführung für {SYMBOL} (stbot v1.1 mit Reentry-Logik)")
+    logger.info(f">>> Starte Ausführung für {SYMBOL} (stbot v1.2 ohne Reentry-Logik)")
     
     try:
         key_path = os.path.abspath(os.path.join(PROJECT_ROOT, 'secret.json'))
@@ -85,110 +85,96 @@ def main():
 
         positions = bitget.fetch_open_positions(SYMBOL)
         open_position = positions[0] if positions else None
-        bot_status = get_bot_status()
+        db_side = get_open_side()
 
-        if not open_position and bot_status.startswith('in_trade'):
-            side_closed = bot_status.split('_')[-1]
-            message = f"✅ Position für *{SYMBOL}* ({side_closed}) geschlossen."; send_telegram_message(bot_token, chat_id, message)
+        if not open_position and db_side:
+            message = f"✅ Position für *{SYMBOL}* ({db_side}) geschlossen."; send_telegram_message(bot_token, chat_id, message)
             logger.info(message)
-            
-            reentry_cfg = params.get('behavior', {}).get('reentry_wait_mode', {})
-            if reentry_cfg.get('enabled', False):
-                logger.info("Reentry-Wartemodus ist aktiviert. Setze Status auf 'cool_down'.")
-                update_bot_status('cool_down')
-            else:
-                update_bot_status('ok_to_trade')
-            bot_status = get_bot_status()
-            
+            update_open_side('none')
+            db_side = None
+
         if not open_position:
-            if bot_status == 'cool_down':
-                ema_value = prev_candle['ema_trend']
-                if (prev_candle['low'] <= ema_value <= prev_candle['high']):
-                    logger.info("✅ Preis ist zum Mittelwert (EMA) zurückgekehrt. Handel wird wieder freigegeben.")
-                    update_bot_status('ok_to_trade')
+            logger.info("Keine Position offen. Suche nach neuem Einstieg.")
+            trend_filter_cfg = params['strategy'].get('trend_filter', {}); sideways_filter_cfg = params['strategy'].get('sideways_filter', {})
+            trend_allows_long, trend_allows_short, market_is_not_sideways = True, True, True
+
+            if trend_filter_cfg.get('enabled', False) and not pd.isna(prev_candle['ema_trend']):
+                if prev_candle['close'] < prev_candle['ema_trend']:
+                    logger.info("Trend-Filter (Aktiv): Markt unter EMA. Longs deaktiviert."); trend_allows_long = False
                 else:
-                    logger.info(f"Status ist 'cool_down'. Warte auf Rückkehr zum Mittelwert (Preis={prev_candle['close']:.2f}, EMA={ema_value:.2f}).")
-                    return
+                    logger.info("Trend-Filter (Aktiv): Markt über EMA. Shorts deaktiviert."); trend_allows_short = False
             
-            if get_bot_status() == 'ok_to_trade':
-                logger.info("Status ist 'ok_to_trade'. Suche nach neuem Einstieg.")
-                trend_filter_cfg = params['strategy'].get('trend_filter', {}); sideways_filter_cfg = params['strategy'].get('sideways_filter', {})
-                trend_allows_long, trend_allows_short, market_is_not_sideways = True, True, True
+            if sideways_filter_cfg.get('enabled', False):
+                sideways_max_crosses = sideways_filter_cfg.get('max_crosses', 8)
+                if prev_candle['sideways_cross_count'] > sideways_max_crosses:
+                    logger.warning(f"Seitwärts-Filter (Aktiv): Markt unruhig. Kein Handel."); market_is_not_sideways = False
 
-                if trend_filter_cfg.get('enabled', False) and not pd.isna(prev_candle['ema_trend']):
-                    if prev_candle['close'] < prev_candle['ema_trend']:
-                        logger.info("Trend-Filter (Aktiv): Markt unter EMA. Longs deaktiviert."); trend_allows_long = False
-                    else:
-                        logger.info("Trend-Filter (Aktiv): Markt über EMA. Shorts deaktiviert."); trend_allows_short = False
+            base_leverage = params['risk']['base_leverage']; target_atr_pct = params['risk']['target_atr_pct']; max_leverage = params['risk']['max_leverage']
+            current_atr_pct = prev_candle['atr_pct']
+            leverage = base_leverage
+            if pd.notna(current_atr_pct) and current_atr_pct > 0:
+                leverage = base_leverage * (target_atr_pct / current_atr_pct)
+            leverage = int(round(max(1.0, min(leverage, max_leverage))))
+            
+            margin_mode = params['risk']['margin_mode']; logger.info(f"Berechneter Hebel: {leverage}x. Margin-Modus: {margin_mode}")
+            bitget.set_margin_mode(SYMBOL, margin_mode); bitget.set_leverage(SYMBOL, leverage, margin_mode)
+            
+            oversold = params['strategy']['oversold_level']; overbought = params['strategy']['overbought_level']
+            use_longs = params['behavior'].get('use_longs', True); use_shorts = params['behavior'].get('use_shorts', True)
+
+            if force_trade_side.upper() in ["LONG", "SHORT"]:
+                side_to_force = force_trade_side.upper()
+                logger.info(f"MANUELLER TEST (aus config.json): Erzwinge {side_to_force}-Signal.")
                 
-                if sideways_filter_cfg.get('enabled', False):
-                    sideways_max_crosses = sideways_filter_cfg.get('max_crosses', 8)
-                    if prev_candle['sideways_cross_count'] > sideways_max_crosses:
-                        logger.warning(f"Seitwärts-Filter (Aktiv): Markt unruhig. Kein Handel."); market_is_not_sideways = False
+                if side_to_force == "LONG":
+                    sl_price = prev_candle['swing_low'] * (1 - params['risk']['sl_buffer_pct'] / 100)
+                    bitget.create_market_order(SYMBOL, 'buy', amount);
+                    update_open_side('long');
+                else: # SHORT
+                    sl_price = prev_candle['swing_high'] * (1 + params['risk']['sl_buffer_pct'] / 100)
+                    bitget.create_market_order(SYMBOL, 'sell', amount);
+                    update_open_side('short');
 
-                base_leverage = params['risk']['base_leverage']; target_atr_pct = params['risk']['target_atr_pct']; max_leverage = params['risk']['max_leverage']
-                current_atr_pct = prev_candle['atr_pct']
-                leverage = base_leverage
-                if pd.notna(current_atr_pct) and current_atr_pct > 0:
-                    leverage = base_leverage * (target_atr_pct / current_atr_pct)
-                leverage = int(round(max(1.0, min(leverage, max_leverage))))
+                free_balance = bitget.fetch_balance()['USDT']['free']; capital_to_use = free_balance * (params['risk']['balance_fraction_pct'] / 100.0)
+                notional_value = capital_to_use * leverage; amount = notional_value / current_candle['close']
+                time.sleep(5)
+                new_pos = bitget.fetch_open_positions(SYMBOL)[0]
+                close_side = 'sell' if side_to_force == 'LONG' else 'buy'
+                bitget.place_trigger_market_order(SYMBOL, close_side, float(new_pos['contracts']), sl_price, reduce=True)
                 
-                margin_mode = params['risk']['margin_mode']; logger.info(f"Berechneter Hebel: {leverage}x. Margin-Modus: {margin_mode}")
-                bitget.set_margin_mode(SYMBOL, margin_mode); bitget.set_leverage(SYMBOL, leverage, margin_mode)
-                
-                oversold = params['strategy']['oversold_level']; overbought = params['strategy']['overbought_level']
-                use_longs = params['behavior'].get('use_longs', True); use_shorts = params['behavior'].get('use_shorts', True)
+                message = f"🔥 TEST ({side_to_force}) *{SYMBOL}* eröffnet!\n- Hebel: {leverage}x\n- Stop-Loss: ${sl_price:.4f}"
+                send_telegram_message(bot_token, chat_id, message); logger.info(message)
 
-                if force_trade_side.upper() in ["LONG", "SHORT"]:
-                    if force_trade_side.upper() == "LONG":
-                        logger.info("🟢 MANUELLER TEST (aus config.json): Erzwinge LONG-Signal.")
-                        sl_price = prev_candle['swing_low'] * (1 - params['risk']['sl_buffer_pct'] / 100)
-                        free_balance = bitget.fetch_balance()['USDT']['free']; capital_to_use = free_balance * (params['risk']['balance_fraction_pct'] / 100.0)
-                        notional_value = capital_to_use * leverage; amount = notional_value / current_candle['close']
-                        bitget.create_market_order(SYMBOL, 'buy', amount); time.sleep(5)
-                        new_pos = bitget.fetch_open_positions(SYMBOL)[0]; bitget.place_trigger_market_order(SYMBOL, 'sell', float(new_pos['contracts']), sl_price, reduce=True)
-                        update_bot_status('in_trade_long'); message = f"🔥 TEST (LONG) *{SYMBOL}* eröffnet!\n- Hebel: {leverage}x\n- Stop-Loss: ${sl_price:.4f}"
-                        send_telegram_message(bot_token, chat_id, message); logger.info(message)
-                    elif force_trade_side.upper() == "SHORT":
-                        logger.info("🔴 MANUELLER TEST (aus config.json): Erzwinge SHORT-Signal.")
-                        sl_price = prev_candle['swing_high'] * (1 + params['risk']['sl_buffer_pct'] / 100)
-                        free_balance = bitget.fetch_balance()['USDT']['free']; capital_to_use = free_balance * (params['risk']['balance_fraction_pct'] / 100.0)
-                        notional_value = capital_to_use * leverage; amount = notional_value / current_candle['close']
-                        bitget.create_market_order(SYMBOL, 'sell', amount); time.sleep(5)
-                        new_pos = bitget.fetch_open_positions(SYMBOL)[0]; bitget.place_trigger_market_order(SYMBOL, 'buy', float(new_pos['contracts']), sl_price, reduce=True)
-                        update_bot_status('in_trade_short'); message = f"🔥 TEST (SHORT) *{SYMBOL}* eröffnet!\n- Hebel: {leverage}x\n- Stop-Loss: ${sl_price:.4f}"
-                        send_telegram_message(bot_token, chat_id, message); logger.info(message)
+            elif force_trade_side.lower() == 'none':
+                if (use_longs and trend_allows_long and market_is_not_sideways and prev_candle['%k'] < prev_candle['%d'] and 
+                    current_candle['%k'] > current_candle['%d'] and prev_candle['%k'] < oversold):
+                    logger.info("🟢 LONG-Signal bestätigt. Alle Filter passiert."); sl_price = prev_candle['swing_low'] * (1 - params['risk']['sl_buffer_pct'] / 100)
+                    free_balance = bitget.fetch_balance()['USDT']['free']; capital_to_use = free_balance * (params['risk']['balance_fraction_pct'] / 100.0)
+                    notional_value = capital_to_use * leverage; amount = notional_value / current_candle['close']
+                    bitget.create_market_order(SYMBOL, 'buy', amount); time.sleep(5)
+                    new_pos = bitget.fetch_open_positions(SYMBOL)[0]; bitget.place_trigger_market_order(SYMBOL, 'sell', float(new_pos['contracts']), sl_price, reduce=True)
+                    update_open_side('long'); message = f"🔥 LONG *{SYMBOL}* eröffnet!\n- Hebel: {leverage}x\n- Stop-Loss: ${sl_price:.4f}"
+                    send_telegram_message(bot_token, chat_id, message); logger.info(message)
 
-                elif force_trade_side.lower() == 'none':
-                    if (use_longs and trend_allows_long and market_is_not_sideways and prev_candle['%k'] < prev_candle['%d'] and 
-                        current_candle['%k'] > current_candle['%d'] and prev_candle['%k'] < oversold):
-                        logger.info("🟢 LONG-Signal bestätigt. Alle Filter passiert."); sl_price = prev_candle['swing_low'] * (1 - params['risk']['sl_buffer_pct'] / 100)
-                        free_balance = bitget.fetch_balance()['USDT']['free']; capital_to_use = free_balance * (params['risk']['balance_fraction_pct'] / 100.0)
-                        notional_value = capital_to_use * leverage; amount = notional_value / current_candle['close']
-                        bitget.create_market_order(SYMBOL, 'buy', amount); time.sleep(5)
-                        new_pos = bitget.fetch_open_positions(SYMBOL)[0]; bitget.place_trigger_market_order(SYMBOL, 'sell', float(new_pos['contracts']), sl_price, reduce=True)
-                        update_bot_status('in_trade_long'); message = f"🔥 LONG *{SYMBOL}* eröffnet!\n- Hebel: {leverage}x\n- Stop-Loss: ${sl_price:.4f}"
-                        send_telegram_message(bot_token, chat_id, message); logger.info(message)
-
-                    elif (use_shorts and trend_allows_short and market_is_not_sideways and prev_candle['%k'] > prev_candle['%d'] and 
-                          current_candle['%k'] < current_candle['%d'] and prev_candle['%k'] > overbought):
-                        logger.info("🔴 SHORT-Signal bestätigt. Alle Filter passiert."); sl_price = prev_candle['swing_high'] * (1 + params['risk']['sl_buffer_pct'] / 100)
-                        free_balance = bitget.fetch_balance()['USDT']['free']; capital_to_use = free_balance * (params['risk']['balance_fraction_pct'] / 100.0)
-                        notional_value = capital_to_use * leverage; amount = notional_value / current_candle['close']
-                        bitget.create_market_order(SYMBOL, 'sell', amount); time.sleep(5)
-                        new_pos = bitget.fetch_open_positions(SYMBOL)[0]; bitget.place_trigger_market_order(SYMBOL, 'buy', float(new_pos['contracts']), sl_price, reduce=True)
-                        update_bot_status('in_trade_short'); message = f"🔥 SHORT *{SYMBOL}* eröffnet!\n- Hebel: {leverage}x\n- Stop-Loss: ${sl_price:.4f}"
-                        send_telegram_message(bot_token, chat_id, message); logger.info(message)
-                    else:
-                        logger.info("Kein gültiges Signal oder von Filtern blockiert.")
+                elif (use_shorts and trend_allows_short and market_is_not_sideways and prev_candle['%k'] > prev_candle['%d'] and 
+                      current_candle['%k'] < current_candle['%d'] and prev_candle['%k'] > overbought):
+                    logger.info("🔴 SHORT-Signal bestätigt. Alle Filter passiert."); sl_price = prev_candle['swing_high'] * (1 + params['risk']['sl_buffer_pct'] / 100)
+                    free_balance = bitget.fetch_balance()['USDT']['free']; capital_to_use = free_balance * (params['risk']['balance_fraction_pct'] / 100.0)
+                    notional_value = capital_to_use * leverage; amount = notional_value / current_candle['close']
+                    bitget.create_market_order(SYMBOL, 'sell', amount); time.sleep(5)
+                    new_pos = bitget.fetch_open_positions(SYMBOL)[0]; bitget.place_trigger_market_order(SYMBOL, 'buy', float(new_pos['contracts']), sl_price, reduce=True)
+                    update_open_side('short'); message = f"🔥 SHORT *{SYMBOL}* eröffnet!\n- Hebel: {leverage}x\n- Stop-Loss: ${sl_price:.4f}"
+                    send_telegram_message(bot_token, chat_id, message); logger.info(message)
+                else:
+                    logger.info("Kein gültiges Signal oder von Filtern blockiert.")
 
         elif open_position:
-            logger.info(f"Position offen: {bot_status}. Prüfe auf Take-Profit-Signal...")
+            logger.info(f"Position offen: {db_side}. Prüfe auf Take-Profit-Signal...")
             oversold = params['strategy']['oversold_level']; overbought = params['strategy']['overbought_level']
             
-            if bot_status == 'in_trade_long' and current_candle['%k'] > overbought:
+            if db_side == 'long' and current_candle['%k'] > overbought:
                 logger.info(f"🟢 LONG Take-Profit (%K > {overbought}). Schließe Position."); bitget.create_market_order(SYMBOL, 'sell', float(open_position['contracts']), params={'reduceOnly': True})
-            elif bot_status == 'in_trade_short' and current_candle['%k'] < oversold:
+            elif db_side == 'short' and current_candle['%k'] < oversold:
                 logger.info(f"🔴 SHORT Take-Profit (%K < {oversold}). Schließe Position."); bitget.create_market_order(SYMBOL, 'buy', float(open_position['contracts']), params={'reduceOnly': True})
 
     except Exception as e:
