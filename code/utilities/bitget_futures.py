@@ -59,14 +59,11 @@ class BitgetFutures():
         except Exception as e:
             raise Exception(f"Failed to fetch open orders: {e}")
             
-    # <<< NEUE FUNKTION START >>>
     def fetch_my_trades(self, symbol: str, limit: int = 20) -> List[Dict[str, Any]]:
-        """Holt die letzten geschlossenen Trades für ein Symbol."""
         try:
             return self.session.fetch_my_trades(symbol, limit=limit)
         except Exception as e:
             raise Exception(f"Failed to fetch my trades for {symbol}: {e}")
-    # <<< NEUE FUNKTION ENDE >>>
 
     def fetch_open_trigger_orders(self, symbol: str) -> List[Dict[str, Any]]:
         try:
@@ -121,15 +118,10 @@ class BitgetFutures():
     def get_market_info(self, symbol: str) -> Dict[str, Any]:
         if symbol not in self.markets:
             self.markets = self.session.load_markets(True)
-        
         market = self.markets.get(symbol)
         if not market:
             raise Exception(f"Markt-Informationen für {symbol} konnten nicht geladen werden.")
-        
-        return {
-            'min_amount': market['limits']['amount']['min'],
-            'amount_precision': market['precision']['amount']
-        }
+        return { 'min_amount': market['limits']['amount']['min'], 'amount_precision': market['precision']['amount'] }
 
     def fetch_recent_ohlcv(self, symbol: str, timeframe: str, limit: int = 1000) -> pd.DataFrame:
         try:
@@ -138,12 +130,9 @@ class BitgetFutures():
             all_ohlcv = self.session.fetch_ohlcv(symbol, timeframe, since=since, limit=limit)
         except Exception as e:
             raise Exception(f"Failed to fetch OHLCV data for {symbol} in timeframe {timeframe}: {e}")
-
         df = pd.DataFrame(all_ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
-        df.set_index('timestamp', inplace=True)
-        df.sort_index(inplace=True)
-        return df
+        df.set_index('timestamp', inplace=True); df.sort_index(inplace=True); return df
 
     def fetch_historical_ohlcv(self, symbol: str, timeframe: str, start_date_str: str, end_date_str: str) -> pd.DataFrame:
         from datetime import datetime, timezone
@@ -159,38 +148,37 @@ class BitgetFutures():
                 start_ts = last_timestamp + self.session.parse_timeframe(timeframe) * 1000
             except Exception as e:
                 raise Exception(f"Failed to fetch historical OHLCV data for {symbol}: {e}")
-        
         if not all_ohlcv: return pd.DataFrame()
         df = pd.DataFrame(all_ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
-        df.set_index('timestamp', inplace=True)
-        df = df[~df.index.duplicated(keep='first')]
-        df.sort_index(inplace=True)
-        return df
+        df.set_index('timestamp', inplace=True); df = df[~df.index.duplicated(keep='first')]; df.sort_index(inplace=True); return df
     
-    def place_limit_order(self, symbol: str, side: str, amount: float, price: float, leverage: int, margin_mode: str, reduce: bool = False) -> Dict[str, Any]:
+    def place_limit_order(self, symbol: str, side: str, amount: float, price: float, reduce: bool = False, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        if params is None: params = {}
         try:
-            params = {
-                'reduceOnly': reduce,
-                'marginMode': margin_mode,
-                'leverage': leverage,
-            }
+            params['reduceOnly'] = reduce
             amount_str = self.session.amount_to_precision(symbol, amount)
             price_str = self.session.price_to_precision(symbol, price)
-            
-            response = self.session.create_order(symbol, 'limit', side, float(amount_str), float(price_str), params=params)
-            return response
+            return self.session.create_order(symbol, 'limit', side, float(amount_str), float(price_str), params=params)
         except Exception as e:
             raise Exception(f"Failed to place limit order of {amount} {symbol} at price {price}: {e}")
+    
+    # --- HIER IST DIE NEUE, FEHLENDE FUNKTION ---
+    def create_market_order(self, symbol: str, side: str, amount: float, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Platziert eine Market Order."""
+        if params is None:
+            params = {}
+        try:
+            amount_str = self.session.amount_to_precision(symbol, amount)
+            return self.session.create_order(symbol, 'market', side, float(amount_str), price=None, params=params)
+        except Exception as e:
+            raise Exception(f"Failed to place market order of {amount} {symbol}: {e}")
 
     def place_trigger_market_order(self, symbol: str, side: str, amount: float, trigger_price: float, reduce: bool = False) -> Optional[Dict[str, Any]]:
         try:
             amount_str = self.session.amount_to_precision(symbol, amount)
             trigger_price_str = self.session.price_to_precision(symbol, trigger_price)
-            params = {
-                'reduceOnly': reduce,
-                'stopPrice': trigger_price_str,
-            }
+            params = { 'reduceOnly': reduce, 'stopPrice': trigger_price_str }
             return self.session.create_order(symbol, 'market', side, float(amount_str), price=None, params=params)
         except Exception as err:
             raise err
