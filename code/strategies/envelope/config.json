@@ -31,10 +31,7 @@
     },
     "behavior": {
         "use_longs": true,
-        "use_shorts": true,
-        "reentry_wait_mode": {
-            "enabled": false
-        }
+        "use_shorts": true
     },
     "development": {
         "_comment": "Werte: 'none' (Live-Betrieb), 'LONG' (erzwingt Long), 'SHORT' (erzwingt Short)",
