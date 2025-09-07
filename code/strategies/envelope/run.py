@@ -18,9 +18,9 @@ from utilities.telegram_handler import send_telegram_message
 
 LOG_DIR = os.path.join(PROJECT_ROOT, 'logs')
 os.makedirs(LOG_DIR, exist_ok=True)
-LOG_FILE = os.path.join(LOG_DIR, 'stbot.log') # Log-Datei für stbot
+LOG_FILE = os.path.join(LOG_DIR, 'stbot.log')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s UTC: %(message)s', datefmt='%Y-%m-%d %H:%M:%S', handlers=[logging.FileHandler(LOG_FILE), logging.StreamHandler()])
-logger = logging.getLogger('stbot') # Logger für stbot
+logger = logging.getLogger('stbot')
 
 def load_config():
     config_path = os.path.join(os.path.dirname(__file__), 'config.json')
@@ -65,6 +65,9 @@ def main():
     except Exception as e:
         logger.critical(f"Fehler beim Laden der API-Schlüssel: {e}"); sys.exit(1)
 
+    dev_params = params.get('development', {})
+    force_trade_side = dev_params.get('force_trade_side', 'none')
+
     bitget = BitgetFutures(api_setup)
     setup_database()
     
@@ -72,7 +75,7 @@ def main():
         timeframe = params['market']['timeframe']
         
         logger.info("Lade Marktdaten...")
-        data = bitget.fetch_recent_ohlcv(SYMBOL, timeframe, 250) # Mehr Daten für EMA200
+        data = bitget.fetch_recent_ohlcv(SYMBOL, timeframe, 250)
         data = calculate_stochrsi_indicators(data, params['strategy'])
         
         prev_candle = data.iloc[-2]
@@ -118,27 +121,50 @@ def main():
             oversold = params['strategy']['oversold_level']; overbought = params['strategy']['overbought_level']
             use_longs = params['behavior'].get('use_longs', True); use_shorts = params['behavior'].get('use_shorts', True)
 
-            if (use_longs and trend_allows_long and market_is_not_sideways and prev_candle['%k'] < prev_candle['%d'] and 
-                current_candle['%k'] > current_candle['%d'] and prev_candle['%k'] < oversold):
-                logger.info("🟢 LONG-Signal bestätigt. Alle Filter passiert."); sl_price = prev_candle['swing_low'] * (1 - params['risk']['sl_buffer_pct'] / 100)
-                free_balance = bitget.fetch_balance()['USDT']['free']; capital_to_use = free_balance * (params['risk']['balance_fraction_pct'] / 100.0)
-                notional_value = capital_to_use * leverage; amount = notional_value / current_candle['close']
-                bitget.create_market_order(SYMBOL, 'buy', amount); time.sleep(5)
-                new_pos = bitget.fetch_open_positions(SYMBOL)[0]; bitget.place_trigger_market_order(SYMBOL, 'sell', float(new_pos['contracts']), sl_price, reduce=True)
-                update_open_side('long'); message = f"🔥 LONG *{SYMBOL}* eröffnet!\n- Hebel: {leverage}x\n- Stop-Loss: ${sl_price:.4f}"
-                send_telegram_message(bot_token, chat_id, message); logger.info(message)
+            # --- Einstiegslogik ---
+            if force_trade_side.upper() in ["LONG", "SHORT"]:
+                if force_trade_side.upper() == "LONG":
+                    logger.info("🟢 MANUELLER TEST (aus config.json): Erzwinge LONG-Signal.")
+                    sl_price = prev_candle['swing_low'] * (1 - params['risk']['sl_buffer_pct'] / 100)
+                    free_balance = bitget.fetch_balance()['USDT']['free']; capital_to_use = free_balance * (params['risk']['balance_fraction_pct'] / 100.0)
+                    notional_value = capital_to_use * leverage; amount = notional_value / current_candle['close']
+                    bitget.create_market_order(SYMBOL, 'buy', amount); time.sleep(5)
+                    new_pos = bitget.fetch_open_positions(SYMBOL)[0]; bitget.place_trigger_market_order(SYMBOL, 'sell', float(new_pos['contracts']), sl_price, reduce=True)
+                    update_open_side('long'); message = f"🔥 TEST (LONG) *{SYMBOL}* eröffnet!\n- Hebel: {leverage}x\n- Stop-Loss: ${sl_price:.4f}"
+                    send_telegram_message(bot_token, chat_id, message); logger.info(message)
+                
+                elif force_trade_side.upper() == "SHORT":
+                    logger.info("🔴 MANUELLER TEST (aus config.json): Erzwinge SHORT-Signal.")
+                    sl_price = prev_candle['swing_high'] * (1 + params['risk']['sl_buffer_pct'] / 100)
+                    free_balance = bitget.fetch_balance()['USDT']['free']; capital_to_use = free_balance * (params['risk']['balance_fraction_pct'] / 100.0)
+                    notional_value = capital_to_use * leverage; amount = notional_value / current_candle['close']
+                    bitget.create_market_order(SYMBOL, 'sell', amount); time.sleep(5)
+                    new_pos = bitget.fetch_open_positions(SYMBOL)[0]; bitget.place_trigger_market_order(SYMBOL, 'buy', float(new_pos['contracts']), sl_price, reduce=True)
+                    update_open_side('short'); message = f"🔥 TEST (SHORT) *{SYMBOL}* eröffnet!\n- Hebel: {leverage}x\n- Stop-Loss: ${sl_price:.4f}"
+                    send_telegram_message(bot_token, chat_id, message); logger.info(message)
 
-            elif (use_shorts and trend_allows_short and market_is_not_sideways and prev_candle['%k'] > prev_candle['%d'] and 
-                  current_candle['%k'] < current_candle['%d'] and prev_candle['%k'] > overbought):
-                logger.info("🔴 SHORT-Signal bestätigt. Alle Filter passiert."); sl_price = prev_candle['swing_high'] * (1 + params['risk']['sl_buffer_pct'] / 100)
-                free_balance = bitget.fetch_balance()['USDT']['free']; capital_to_use = free_balance * (params['risk']['balance_fraction_pct'] / 100.0)
-                notional_value = capital_to_use * leverage; amount = notional_value / current_candle['close']
-                bitget.create_market_order(SYMBOL, 'sell', amount); time.sleep(5)
-                new_pos = bitget.fetch_open_positions(SYMBOL)[0]; bitget.place_trigger_market_order(SYMBOL, 'buy', float(new_pos['contracts']), sl_price, reduce=True)
-                update_open_side('short'); message = f"🔥 SHORT *{SYMBOL}* eröffnet!\n- Hebel: {leverage}x\n- Stop-Loss: ${sl_price:.4f}"
-                send_telegram_message(bot_token, chat_id, message); logger.info(message)
-            else:
-                logger.info("Kein gültiges Signal oder von Filtern blockiert.")
+            elif force_trade_side.lower() == 'none':
+                if (use_longs and trend_allows_long and market_is_not_sideways and prev_candle['%k'] < prev_candle['%d'] and 
+                    current_candle['%k'] > current_candle['%d'] and prev_candle['%k'] < oversold):
+                    logger.info("🟢 LONG-Signal bestätigt. Alle Filter passiert."); sl_price = prev_candle['swing_low'] * (1 - params['risk']['sl_buffer_pct'] / 100)
+                    free_balance = bitget.fetch_balance()['USDT']['free']; capital_to_use = free_balance * (params['risk']['balance_fraction_pct'] / 100.0)
+                    notional_value = capital_to_use * leverage; amount = notional_value / current_candle['close']
+                    bitget.create_market_order(SYMBOL, 'buy', amount); time.sleep(5)
+                    new_pos = bitget.fetch_open_positions(SYMBOL)[0]; bitget.place_trigger_market_order(SYMBOL, 'sell', float(new_pos['contracts']), sl_price, reduce=True)
+                    update_open_side('long'); message = f"🔥 LONG *{SYMBOL}* eröffnet!\n- Hebel: {leverage}x\n- Stop-Loss: ${sl_price:.4f}"
+                    send_telegram_message(bot_token, chat_id, message); logger.info(message)
+
+                elif (use_shorts and trend_allows_short and market_is_not_sideways and prev_candle['%k'] > prev_candle['%d'] and 
+                      current_candle['%k'] < current_candle['%d'] and prev_candle['%k'] > overbought):
+                    logger.info("🔴 SHORT-Signal bestätigt. Alle Filter passiert."); sl_price = prev_candle['swing_high'] * (1 + params['risk']['sl_buffer_pct'] / 100)
+                    free_balance = bitget.fetch_balance()['USDT']['free']; capital_to_use = free_balance * (params['risk']['balance_fraction_pct'] / 100.0)
+                    notional_value = capital_to_use * leverage; amount = notional_value / current_candle['close']
+                    bitget.create_market_order(SYMBOL, 'sell', amount); time.sleep(5)
+                    new_pos = bitget.fetch_open_positions(SYMBOL)[0]; bitget.place_trigger_market_order(SYMBOL, 'buy', float(new_pos['contracts']), sl_price, reduce=True)
+                    update_open_side('short'); message = f"🔥 SHORT *{SYMBOL}* eröffnet!\n- Hebel: {leverage}x\n- Stop-Loss: ${sl_price:.4f}"
+                    send_telegram_message(bot_token, chat_id, message); logger.info(message)
+                else:
+                    logger.info("Kein gültiges Signal oder von Filtern blockiert.")
 
         elif open_position:
             logger.info(f"Position offen: {db_side}. Prüfe auf Take-Profit-Signal...")
