@@ -99,7 +99,7 @@ def main():
             else:
                 update_bot_status('ok_to_trade')
             bot_status = get_bot_status()
-
+            
         if not open_position:
             if bot_status == 'cool_down':
                 ema_value = prev_candle['ema_trend']
