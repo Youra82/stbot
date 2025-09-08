@@ -56,6 +56,7 @@ def place_order_and_verify(bitget, symbol, side, amount, sl_price, leverage, mar
     """Eine robustere Funktion zum Platzieren und Verifizieren von Orders."""
     try:
         logger.info(f"Sende {side.upper()}-Market-Order über {amount:.5f} {symbol.split('/')[0]}...")
+        # Die create_market_order Funktion enthält jetzt die Logik, um Hebel und Modus mitzusenden
         order_result = bitget.create_market_order(symbol, side, amount, leverage, margin_mode)
         
         if order_result and order_result.get('id'):
@@ -71,7 +72,8 @@ def place_order_and_verify(bitget, symbol, side, amount, sl_price, leverage, mar
             logger.info("✅ Positionseröffnung erfolgreich bestätigt.")
             new_pos = new_pos[0]
             close_side = 'sell' if side == 'buy' else 'buy'
-            bitget.place_trigger_market_order(symbol, close_side, float(new_pos['contracts']), sl_price, leverage, margin_mode, reduce=True)
+            # Für die SL-Order sind die Params nicht nötig, da sie auf die offene Position wirkt
+            bitget.place_trigger_market_order(symbol, close_side, float(new_pos['contracts']), sl_price, reduce=True)
             db_side_map = {'buy': 'long', 'sell': 'short'}
             update_open_side(db_side_map[side])
             
@@ -103,8 +105,6 @@ def main():
         chat_id = telegram_config.get('chat_id')
     except Exception as e:
         logger.critical(f"Fehler beim Laden der API-Schlüssel: {e}"); sys.exit(1)
-
-    API_SYMBOL = SYMBOL.split(':')[0].replace('/', '')
 
     dev_params = params.get('development', {})
     force_trade_side = dev_params.get('force_trade_side', 'none')
@@ -158,7 +158,7 @@ def main():
             margin_mode = params['risk']['margin_mode']
             logger.info(f"Berechneter Hebel: {leverage}x. Margin-Modus: {margin_mode}")
 
-            # --- ENTFERNT: Die Aufrufe zum Setzen von Hebel/Modus sind unzuverlässig und werden entfernt ---
+            # --- KORREKTUR: Die unzuverlässigen Setup-Aufrufe werden hier nicht mehr benötigt ---
 
             oversold = params['strategy']['oversold_level']; overbought = params['strategy']['overbought_level']
             use_longs = params['behavior'].get('use_longs', True); use_shorts = params['behavior'].get('use_shorts', True)
@@ -201,10 +201,12 @@ def main():
             
             if db_side_map.get(db_side) == 'buy' and current_candle['%k'] > overbought:
                 logger.info(f"🟢 LONG Take-Profit (%K > {overbought}). Schließe Position."); 
-                bitget.create_market_order(SYMBOL, 'sell', float(open_position['contracts']), leverage, margin_mode, params={'reduceOnly': True})
+                # Das Schließen einer Position benötigt die Params nicht
+                bitget.create_market_order(SYMBOL, 'sell', float(open_position['contracts']), 0, '', params={'reduceOnly': True})
             elif db_side_map.get(db_side) == 'sell' and current_candle['%k'] < oversold:
                 logger.info(f"🔴 SHORT Take-Profit (%K < {oversold}). Schließe Position."); 
-                bitget.create_market_order(SYMBOL, 'buy', float(open_position['contracts']), leverage, margin_mode, params={'reduceOnly': True})
+                # Das Schließen einer Position benötigt die Params nicht
+                bitget.create_market_order(SYMBOL, 'buy', float(open_position['contracts']), 0, '', params={'reduceOnly': True})
 
     except Exception as e:
         logger.error(f"Unerwarteter Fehler im Haupt-Loop: {e}", exc_info=True)
