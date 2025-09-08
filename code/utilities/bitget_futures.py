@@ -97,7 +97,7 @@ class BitgetFutures():
 
     def set_leverage(self, symbol: str, leverage: int, margin_mode: str) -> None:
         try:
-            if margin_mode == 'isolated':
+            if margin_mode.lower() == 'isolated':
                 self.session.set_leverage(leverage, symbol, params={'holdSide': 'long'})
                 self.session.set_leverage(leverage, symbol, params={'holdSide': 'short'})
             else:
@@ -148,12 +148,12 @@ class BitgetFutures():
         df.set_index('timestamp', inplace=True); df = df[~df.index.duplicated(keep='first')]; df.sort_index(inplace=True); return df
     
     def create_market_order(self, symbol: str, side: str, amount: float, leverage: int, margin_mode: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Platziert eine Market Order und sendet Hebel/Margin-Modus direkt mit."""
         if params is None:
             params = {}
         try:
-            params['marginMode'] = margin_mode.lower() # e.g. 'isolated' or 'cross'
+            params['marginMode'] = margin_mode.lower()
             params['leverage'] = leverage
+            params['productType'] = 'USDT-FUTURES'
             
             amount_str = self.session.amount_to_precision(symbol, amount)
             return self.session.create_order(symbol, 'market', side, float(amount_str), price=None, params=params)
@@ -161,7 +161,6 @@ class BitgetFutures():
             raise Exception(f"Failed to place market order of {amount} {symbol}: {e}")
 
     def place_trigger_market_order(self, symbol: str, side: str, amount: float, trigger_price: float, leverage: int, margin_mode: str, reduce: bool = False) -> Optional[Dict[str, Any]]:
-        """Platziert eine Trigger Market Order (TP/SL) und sendet Hebel/Margin-Modus mit."""
         try:
             amount_str = self.session.amount_to_precision(symbol, amount)
             trigger_price_str = self.session.price_to_precision(symbol, trigger_price)
@@ -169,7 +168,8 @@ class BitgetFutures():
                 'reduceOnly': reduce, 
                 'stopPrice': trigger_price_str,
                 'marginMode': margin_mode.lower(),
-                'leverage': leverage
+                'leverage': leverage,
+                'productType': 'USDT-FUTURES'
             }
             return self.session.create_order(symbol, 'market', side, float(amount_str), price=None, params=params)
         except Exception as err:
