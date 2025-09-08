@@ -151,8 +151,8 @@ class BitgetFutures():
         if params is None:
             params = {}
         try:
-            params['marginMode'] = margin_mode.lower()
-            params['leverage'] = leverage
+            # WICHTIGE ÄNDERUNG: 'marginMode' und 'leverage' werden hier NICHT mehr mitgesendet,
+            # da sie vorab für das Paar gesetzt werden. Dies behebt den Fehler.
             params['productType'] = 'USDT-FUTURES'
             
             amount_str = self.session.amount_to_precision(symbol, amount)
@@ -167,10 +167,10 @@ class BitgetFutures():
             params = { 
                 'reduceOnly': reduce, 
                 'stopPrice': trigger_price_str,
-                'marginMode': margin_mode.lower(),
-                'leverage': leverage,
+                # 'marginMode' & 'leverage' sind auch hier für Futures nicht nötig
                 'productType': 'USDT-FUTURES'
             }
             return self.session.create_order(symbol, 'market', side, float(amount_str), price=None, params=params)
         except Exception as err:
             raise err
+
