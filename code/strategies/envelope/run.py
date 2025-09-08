@@ -58,12 +58,9 @@ def place_order_and_verify(bitget, symbol, side, amount, sl_price, leverage, mar
         logger.info(f"Sende {side.upper()}-Market-Order über {amount:.5f} {symbol.split('/')[0]}...")
         order_result = bitget.create_market_order(symbol, side, amount, leverage, margin_mode)
         
-        # --- KORREKTUR: Robuste Verifizierung ---
-        # Wir prüfen nur noch, ob eine Order-ID zurückkam.
-        # Die endgültige Bestätigung erfolgt durch die Abfrage der offenen Position.
         if order_result and order_result.get('id'):
             logger.info(f"✅ Market-Order an Bitget übermittelt (ID: {order_result.get('id')}). Warte auf Ausführung...")
-            time.sleep(5) # 5 Sekunden warten, damit die Position erstellt werden kann
+            time.sleep(5)
             
             new_pos = bitget.fetch_open_positions(symbol)
             if not new_pos:
@@ -161,13 +158,8 @@ def main():
             margin_mode = params['risk']['margin_mode']
             logger.info(f"Berechneter Hebel: {leverage}x. Margin-Modus: {margin_mode}")
 
-            try:
-                bitget.set_margin_mode(API_SYMBOL, margin_mode)
-                bitget.set_leverage(API_SYMBOL, leverage, margin_mode)
-            except Exception as e:
-                logger.error(f"🚨 FEHLER beim Setzen von Hebel/Margin-Modus: {e}")
-                raise e 
-            
+            # --- ENTFERNT: Die Aufrufe zum Setzen von Hebel/Modus sind unzuverlässig und werden entfernt ---
+
             oversold = params['strategy']['oversold_level']; overbought = params['strategy']['overbought_level']
             use_longs = params['behavior'].get('use_longs', True); use_shorts = params['behavior'].get('use_shorts', True)
             
@@ -222,3 +214,4 @@ def main():
 if __name__ == "__main__":
     main()
     logger.info("<<< Ausführung abgeschlossen\n")
+
