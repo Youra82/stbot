@@ -97,7 +97,6 @@ class BitgetFutures():
 
     def set_leverage(self, symbol: str, leverage: int, margin_mode: str) -> None:
         try:
-            # --- FINALE KORREKTUR: 'productType' Parameter hinzugefügt ---
             params_long = {'holdSide': 'long', 'marginCoin': 'USDT', 'productType': 'USDT-FUTURES'}
             params_short = {'holdSide': 'short', 'marginCoin': 'USDT', 'productType': 'USDT-FUTURES'}
             params_cross = {'marginCoin': 'USDT', 'productType': 'USDT-FUTURES'}
@@ -156,7 +155,10 @@ class BitgetFutures():
         if params is None:
             params = {}
         try:
-            params['productType'] = 'USDT-FUTURES'
+            # FINALE LÖSUNG: Hebel und Modus direkt mit der Order senden
+            # 'tradeMode' ist der korrekte Parameter für den Margin-Modus bei Order-Aufgabe
+            params['tradeMode'] = margin_mode.lower()
+            params['leverage'] = leverage
             
             amount_str = self.session.amount_to_precision(symbol, amount)
             return self.session.create_order(symbol, 'market', side, float(amount_str), price=None, params=params)
@@ -169,9 +171,9 @@ class BitgetFutures():
             trigger_price_str = self.session.price_to_precision(symbol, trigger_price)
             params = { 
                 'reduceOnly': reduce, 
-                'stopPrice': trigger_price_str,
-                'productType': 'USDT-FUTURES'
+                'stopPrice': trigger_price_str
             }
             return self.session.create_order(symbol, 'market', side, float(amount_str), price=None, params=params)
         except Exception as err:
             raise err
+
