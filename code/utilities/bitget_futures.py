@@ -97,10 +97,10 @@ class BitgetFutures():
 
     def set_leverage(self, symbol: str, leverage: int, margin_mode: str) -> None:
         try:
-            # --- KORREKTUR: 'marginCoin' Parameter hinzugefügt ---
-            params_long = {'holdSide': 'long', 'marginCoin': 'USDT'}
-            params_short = {'holdSide': 'short', 'marginCoin': 'USDT'}
-            params_cross = {'marginCoin': 'USDT'}
+            # --- FINALE KORREKTUR: 'productType' Parameter hinzugefügt ---
+            params_long = {'holdSide': 'long', 'marginCoin': 'USDT', 'productType': 'USDT-FUTURES'}
+            params_short = {'holdSide': 'short', 'marginCoin': 'USDT', 'productType': 'USDT-FUTURES'}
+            params_cross = {'marginCoin': 'USDT', 'productType': 'USDT-FUTURES'}
             
             if margin_mode.lower() == 'isolated':
                 self.session.set_leverage(leverage, symbol, params=params_long)
