@@ -156,6 +156,16 @@ def main():
             leverage = int(round(max(1.0, min(leverage, max_leverage))))
             margin_mode = params['risk']['margin_mode']
             logger.info(f"Berechneter Hebel: {leverage}x. Margin-Modus: {margin_mode}")
+
+            # --- HINZUGEFÜGT: Hebel und Margin-Modus vor dem Handel an Bitget senden ---
+            try:
+                bitget.set_margin_mode(API_SYMBOL, margin_mode)
+                bitget.set_leverage(API_SYMBOL, leverage, margin_mode)
+            except Exception as e:
+                logger.error(f"🚨 FEHLER beim Setzen von Hebel/Margin-Modus: {e}")
+                # Breche hier ab, um keinen Trade mit falschen Einstellungen zu platzieren
+                raise e 
+            # --- ENDE DES HINZUGEFÜGTEN ABSCHNITTS ---
             
             oversold = params['strategy']['oversold_level']; overbought = params['strategy']['overbought_level']
             use_longs = params['behavior'].get('use_longs', True); use_shorts = params['behavior'].get('use_shorts', True)
@@ -189,14 +199,20 @@ def main():
 
         elif open_position:
             db_side = get_open_side()
+            # Der Hebel muss hier erneut berechnet werden, falls die Order-Funktion ihn benötigt
+            leverage = int(open_position.get('leverage', params['risk']['base_leverage']))
+            margin_mode = params['risk']['margin_mode']
+
             logger.info(f"Position offen: {db_side}. Prüfe auf Take-Profit-Signal...")
             oversold = params['strategy']['oversold_level']; overbought = params['strategy']['overbought_level']
             db_side_map = {'long': 'buy', 'short': 'sell'}
             
             if db_side_map.get(db_side) == 'buy' and current_candle['%k'] > overbought:
-                logger.info(f"🟢 LONG Take-Profit (%K > {overbought}). Schließe Position."); bitget.create_market_order(API_SYMBOL, 'sell', float(open_position['contracts']), leverage, margin_mode, params={'reduceOnly': True})
+                logger.info(f"🟢 LONG Take-Profit (%K > {overbought}). Schließe Position."); 
+                bitget.create_market_order(API_SYMBOL, 'sell', float(open_position['contracts']), leverage, margin_mode, params={'reduceOnly': True})
             elif db_side_map.get(db_side) == 'sell' and current_candle['%k'] < oversold:
-                logger.info(f"🔴 SHORT Take-Profit (%K < {oversold}). Schließe Position."); bitget.create_market_order(API_SYMBOL, 'buy', float(open_position['contracts']), leverage, margin_mode, params={'reduceOnly': True})
+                logger.info(f"🔴 SHORT Take-Profit (%K < {oversold}). Schließe Position."); 
+                bitget.create_market_order(API_SYMBOL, 'buy', float(open_position['contracts']), leverage, margin_mode, params={'reduceOnly': True})
 
     except Exception as e:
         logger.error(f"Unerwarteter Fehler im Haupt-Loop: {e}", exc_info=True)
