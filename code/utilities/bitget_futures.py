@@ -97,11 +97,16 @@ class BitgetFutures():
 
     def set_leverage(self, symbol: str, leverage: int, margin_mode: str) -> None:
         try:
+            # --- KORREKTUR: 'marginCoin' Parameter hinzugefügt ---
+            params_long = {'holdSide': 'long', 'marginCoin': 'USDT'}
+            params_short = {'holdSide': 'short', 'marginCoin': 'USDT'}
+            params_cross = {'marginCoin': 'USDT'}
+            
             if margin_mode.lower() == 'isolated':
-                self.session.set_leverage(leverage, symbol, params={'holdSide': 'long'})
-                self.session.set_leverage(leverage, symbol, params={'holdSide': 'short'})
+                self.session.set_leverage(leverage, symbol, params=params_long)
+                self.session.set_leverage(leverage, symbol, params=params_short)
             else:
-                 self.session.set_leverage(leverage, symbol)
+                 self.session.set_leverage(leverage, symbol, params=params_cross)
             logger.info(f"Hebel für {symbol} auf {leverage}x gesetzt.")
         except Exception as e:
             if 'repeat submit' in str(e):
@@ -151,8 +156,6 @@ class BitgetFutures():
         if params is None:
             params = {}
         try:
-            # WICHTIGE ÄNDERUNG: 'marginMode' und 'leverage' werden hier NICHT mehr mitgesendet,
-            # da sie vorab für das Paar gesetzt werden. Dies behebt den Fehler.
             params['productType'] = 'USDT-FUTURES'
             
             amount_str = self.session.amount_to_precision(symbol, amount)
@@ -167,10 +170,8 @@ class BitgetFutures():
             params = { 
                 'reduceOnly': reduce, 
                 'stopPrice': trigger_price_str,
-                # 'marginMode' & 'leverage' sind auch hier für Futures nicht nötig
                 'productType': 'USDT-FUTURES'
             }
             return self.session.create_order(symbol, 'market', side, float(amount_str), price=None, params=params)
         except Exception as err:
             raise err
-
