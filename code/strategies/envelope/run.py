@@ -55,21 +55,23 @@ def update_open_side(side: str):
 def place_order_and_verify(bitget, symbol, side, amount, sl_price, leverage, margin_mode, bot_token, chat_id, is_test=False):
     """Eine robustere Funktion zum Platzieren und Verifizieren von Orders."""
     try:
-        # HINWEIS: symbol.split('/')[0] extrahiert den Base-Asset (z.B. PEPE) für die Log-Nachricht
         logger.info(f"Sende {side.upper()}-Market-Order über {amount:.5f} {symbol.split('/')[0]}...")
         order_result = bitget.create_market_order(symbol, side, amount, leverage, margin_mode)
         
-        if order_result and order_result.get('status') == 'closed':
-            logger.info("✅ Market-Order von Bitget als ERFOLGREICH bestätigt.")
-            time.sleep(3)
+        # --- KORREKTUR: Robuste Verifizierung ---
+        # Wir prüfen nur noch, ob eine Order-ID zurückkam.
+        # Die endgültige Bestätigung erfolgt durch die Abfrage der offenen Position.
+        if order_result and order_result.get('id'):
+            logger.info(f"✅ Market-Order an Bitget übermittelt (ID: {order_result.get('id')}). Warte auf Ausführung...")
+            time.sleep(5) # 5 Sekunden warten, damit die Position erstellt werden kann
             
-            # Verwende hier das vollständige Symbol, um die Position abzurufen
             new_pos = bitget.fetch_open_positions(symbol)
             if not new_pos:
-                logger.error("🚨 FEHLER: Order ausgeführt, aber keine offene Position gefunden!")
-                send_telegram_message(bot_token, chat_id, f"🚨 FEHLER bei *{symbol}*: Order ausgeführt, aber Position nicht gefunden!")
+                logger.error("🚨 FEHLER: Order übermittelt, aber nach 5s keine offene Position gefunden!")
+                send_telegram_message(bot_token, chat_id, f"🚨 FEHLER bei *{symbol}*: Order übermittelt, aber Position nicht gefunden!")
                 return False
 
+            logger.info("✅ Positionseröffnung erfolgreich bestätigt.")
             new_pos = new_pos[0]
             close_side = 'sell' if side == 'buy' else 'buy'
             bitget.place_trigger_market_order(symbol, close_side, float(new_pos['contracts']), sl_price, leverage, margin_mode, reduce=True)
@@ -105,7 +107,6 @@ def main():
     except Exception as e:
         logger.critical(f"Fehler beim Laden der API-Schlüssel: {e}"); sys.exit(1)
 
-    # API_SYMBOL wird für einige API-Aufrufe benötigt, die das einfache Format wollen
     API_SYMBOL = SYMBOL.split(':')[0].replace('/', '')
 
     dev_params = params.get('development', {})
@@ -125,7 +126,6 @@ def main():
         current_candle = data.iloc[-1]
         logger.info(f"Indikatoren: %K={prev_candle['%k']:.1f}, %D={prev_candle['%d']:.1f}, EMA={prev_candle['ema_trend']:.4f}")
 
-        # Verwende das vollständige SYMBOL, um die Position abzurufen
         positions = bitget.fetch_open_positions(SYMBOL)
         open_position = positions[0] if positions else None
         db_side = get_open_side()
@@ -162,7 +162,6 @@ def main():
             logger.info(f"Berechneter Hebel: {leverage}x. Margin-Modus: {margin_mode}")
 
             try:
-                # Verwende API_SYMBOL für diese spezifischen Setup-Calls
                 bitget.set_margin_mode(API_SYMBOL, margin_mode)
                 bitget.set_leverage(API_SYMBOL, leverage, margin_mode)
             except Exception as e:
@@ -182,7 +181,6 @@ def main():
                 logger.info(f"MANUELLER TEST (aus config.json): Erzwinge {side_to_force}-Signal.")
                 side = 'buy' if side_to_force == 'LONG' else 'sell'
                 sl_price = prev_candle['swing_low'] * (1 - params['risk']['sl_buffer_pct'] / 100) if side == 'buy' else prev_candle['swing_high'] * (1 + params['risk']['sl_buffer_pct'] / 100)
-                # KORREKTUR: Verwende das vollständige SYMBOL für die Order-Platzierung
                 place_order_and_verify(bitget, SYMBOL, side, amount, sl_price, leverage, margin_mode, bot_token, chat_id, is_test=True)
 
             elif force_trade_side.lower() == 'none':
@@ -190,14 +188,12 @@ def main():
                     current_candle['%k'] > current_candle['%d'] and prev_candle['%k'] < oversold):
                     logger.info("🟢 LONG-Signal bestätigt. Alle Filter passiert.")
                     sl_price = prev_candle['swing_low'] * (1 - params['risk']['sl_buffer_pct'] / 100)
-                    # KORREKTUR: Verwende das vollständige SYMBOL für die Order-Platzierung
                     place_order_and_verify(bitget, SYMBOL, 'buy', amount, sl_price, leverage, margin_mode, bot_token, chat_id)
 
                 elif (use_shorts and trend_allows_short and market_is_not_sideways and prev_candle['%k'] > prev_candle['%d'] and 
                       current_candle['%k'] < current_candle['%d'] and prev_candle['%k'] > overbought):
                     logger.info("🔴 SHORT-Signal bestätigt. Alle Filter passiert.")
                     sl_price = prev_candle['swing_high'] * (1 + params['risk']['sl_buffer_pct'] / 100)
-                    # KORREKTUR: Verwende das vollständige SYMBOL für die Order-Platzierung
                     place_order_and_verify(bitget, SYMBOL, 'sell', amount, sl_price, leverage, margin_mode, bot_token, chat_id)
                 else:
                     logger.info("Kein gültiges Signal oder von Filtern blockiert.")
@@ -213,11 +209,9 @@ def main():
             
             if db_side_map.get(db_side) == 'buy' and current_candle['%k'] > overbought:
                 logger.info(f"🟢 LONG Take-Profit (%K > {overbought}). Schließe Position."); 
-                # KORREKTUR: Verwende das vollständige SYMBOL zum Schließen der Order
                 bitget.create_market_order(SYMBOL, 'sell', float(open_position['contracts']), leverage, margin_mode, params={'reduceOnly': True})
             elif db_side_map.get(db_side) == 'sell' and current_candle['%k'] < oversold:
                 logger.info(f"🔴 SHORT Take-Profit (%K < {oversold}). Schließe Position."); 
-                # KORREKTUR: Verwende das vollständige SYMBOL zum Schließen der Order
                 bitget.create_market_order(SYMBOL, 'buy', float(open_position['contracts']), leverage, margin_mode, params={'reduceOnly': True})
 
     except Exception as e:
