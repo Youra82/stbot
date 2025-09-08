@@ -11,9 +11,10 @@ logger = logging.getLogger(__name__)
 class BitgetFutures():
     def __init__(self, api_setup: Optional[Dict[str, Any]] = None, demo_mode: bool = False) -> None:
         if api_setup is None:
-            self.session = ccxt.bitget()
+            # HIER IST DIE 1. KORREKTUR: 'future' wurde zu 'swap' geändert
+            self.session = ccxt.bitget({'options': {'defaultType': 'swap'}})
         else:
-            api_setup.setdefault("options", {"defaultType": "future"})
+            api_setup.setdefault("options", {"defaultType": "swap"})
             if demo_mode:
                 api_setup["options"]["productType"] = "SUSDT-FUTURES"
             self.session = ccxt.bitget(api_setup)
@@ -79,36 +80,33 @@ class BitgetFutures():
 
     def fetch_open_positions(self, symbol: str) -> List[Dict[str, Any]]:
         try:
-            positions = self.session.fetch_positions([symbol], params={'productType': 'USDT-FUTURES', 'marginCoin': 'USDT'})
+            # fetch_positions braucht bei defaultType 'swap' keine extra Parameter mehr
+            positions = self.session.fetch_positions([symbol])
             real_positions = [p for p in positions if p.get('contracts') and float(p['contracts']) > 0]
             return real_positions
         except Exception as e:
             raise Exception(f"Failed to fetch open positions: {e}")
 
+    # Die folgenden zwei Funktionen (set_margin_mode, set_leverage) sind unzuverlässig
+    # und werden nicht mehr aktiv vom Bot genutzt, bleiben aber zur Sicherheit im Code.
     def set_margin_mode(self, symbol: str, margin_mode: str = 'isolated') -> None:
         try:
-            self.session.set_margin_mode(margin_mode, symbol, params={'productType': 'USDT-FUTURES', 'marginCoin': 'USDT'})
-            logger.info(f"Margin-Modus für {symbol} auf '{margin_mode}' gesetzt.")
+            self.session.set_margin_mode(margin_mode, symbol)
         except Exception as e:
-            if 'repeat submit' in str(e):
+            if 'repeat submit' in str(e) or 'Margin mode is the same' in str(e):
                 logger.info(f"Margin-Modus für {symbol} ist bereits auf '{margin_mode}' gesetzt.")
             else:
                 raise Exception(f"Fehler beim Setzen des Margin-Modus: {e}")
 
     def set_leverage(self, symbol: str, leverage: int, margin_mode: str) -> None:
         try:
-            params_long = {'holdSide': 'long', 'marginCoin': 'USDT', 'productType': 'USDT-FUTURES'}
-            params_short = {'holdSide': 'short', 'marginCoin': 'USDT', 'productType': 'USDT-FUTURES'}
-            params_cross = {'marginCoin': 'USDT', 'productType': 'USDT-FUTURES'}
-            
             if margin_mode.lower() == 'isolated':
-                self.session.set_leverage(leverage, symbol, params=params_long)
-                self.session.set_leverage(leverage, symbol, params=params_short)
+                self.session.set_leverage(leverage, symbol, params={'holdSide': 'long'})
+                self.session.set_leverage(leverage, symbol, params={'holdSide': 'short'})
             else:
-                 self.session.set_leverage(leverage, symbol, params=params_cross)
-            logger.info(f"Hebel für {symbol} auf {leverage}x gesetzt.")
+                 self.session.set_leverage(leverage, symbol)
         except Exception as e:
-            if 'repeat submit' in str(e):
+            if 'repeat submit' in str(e) or 'Leverage is the same' in str(e):
                 logger.info(f"Hebel für {symbol} ist bereits auf {leverage}x gesetzt.")
             else:
                 raise Exception(f"Fehler beim Setzen des Hebels: {e}")
@@ -123,9 +121,7 @@ class BitgetFutures():
 
     def fetch_recent_ohlcv(self, symbol: str, timeframe: str, limit: int = 1000) -> pd.DataFrame:
         try:
-            timeframe_in_ms = self.session.parse_timeframe(timeframe) * 1000
-            since = self.session.milliseconds() - limit * timeframe_in_ms
-            all_ohlcv = self.session.fetch_ohlcv(symbol, timeframe, since=since, limit=limit)
+            all_ohlcv = self.session.fetch_ohlcv(symbol, timeframe, limit=limit)
         except Exception as e:
             raise Exception(f"Failed to fetch OHLCV data for {symbol} in timeframe {timeframe}: {e}")
         df = pd.DataFrame(all_ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
@@ -152,26 +148,28 @@ class BitgetFutures():
         df.set_index('timestamp', inplace=True); df = df[~df.index.duplicated(keep='first')]; df.sort_index(inplace=True); return df
     
     def create_market_order(self, symbol: str, side: str, amount: float, leverage: int, margin_mode: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        if params is None:
-            params = {}
         try:
-            # FINALE LÖSUNG: Hebel und Modus direkt mit der Order senden
-            # 'tradeMode' ist der korrekte Parameter für den Margin-Modus bei Order-Aufgabe
-            params['tradeMode'] = margin_mode.lower()
-            params['leverage'] = leverage
+            # HIER IST DIE 2. KORREKTUR: Hebel und Modus direkt mit der Order senden
+            order_params = {
+                'leverage': leverage,
+                # Bitget verwendet 'marginMode' in diesem Kontext
+                'marginMode': margin_mode.lower() 
+            }
+            if params:
+                order_params.update(params)
             
             amount_str = self.session.amount_to_precision(symbol, amount)
-            return self.session.create_order(symbol, 'market', side, float(amount_str), price=None, params=params)
+            return self.session.create_order(symbol, 'market', side, float(amount_str), params=order_params)
         except Exception as e:
             raise Exception(f"Failed to place market order of {amount} {symbol}: {e}")
 
-    def place_trigger_market_order(self, symbol: str, side: str, amount: float, trigger_price: float, leverage: int, margin_mode: str, reduce: bool = False) -> Optional[Dict[str, Any]]:
+    def place_trigger_market_order(self, symbol: str, side: str, amount: float, trigger_price: float, reduce: bool = False) -> Optional[Dict[str, Any]]:
         try:
             amount_str = self.session.amount_to_precision(symbol, amount)
             trigger_price_str = self.session.price_to_precision(symbol, trigger_price)
             params = { 
                 'reduceOnly': reduce, 
-                'stopPrice': trigger_price_str
+                'stopPrice': trigger_price_str,
             }
             return self.session.create_order(symbol, 'market', side, float(amount_str), price=None, params=params)
         except Exception as err:
