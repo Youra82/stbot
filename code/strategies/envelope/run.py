@@ -14,6 +14,7 @@ PROJECT_ROOT = os.path.join(os.path.dirname(__file__), '..', '..', '..')
 sys.path.append(os.path.join(PROJECT_ROOT, 'code'))
 
 from utilities.bitget_futures import BitgetFutures
+# KORREKTUR: Der richtige Funktionsname wird importiert
 from utilities.strategy_logic import calculate_smc_indicators
 from utilities.telegram_handler import send_telegram_message
 
