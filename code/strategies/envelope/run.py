@@ -56,7 +56,6 @@ def place_order_and_verify(bitget, symbol, side, amount, sl_price, leverage, mar
     """Eine robustere Funktion zum Platzieren und Verifizieren von Orders."""
     try:
         logger.info(f"Sende {side.upper()}-Market-Order über {amount:.5f} {symbol.split('/')[0]}...")
-        # Die create_market_order Funktion enthält jetzt die Logik, um Hebel und Modus mitzusenden
         order_result = bitget.create_market_order(symbol, side, amount, leverage, margin_mode)
         
         if order_result and order_result.get('id'):
@@ -72,13 +71,12 @@ def place_order_and_verify(bitget, symbol, side, amount, sl_price, leverage, mar
             logger.info("✅ Positionseröffnung erfolgreich bestätigt.")
             new_pos = new_pos[0]
             close_side = 'sell' if side == 'buy' else 'buy'
-            # Für die SL-Order sind die Params nicht nötig, da sie auf die offene Position wirkt
             bitget.place_trigger_market_order(symbol, close_side, float(new_pos['contracts']), sl_price, reduce=True)
             db_side_map = {'buy': 'long', 'sell': 'short'}
             update_open_side(db_side_map[side])
             
             test_str = "TEST (" + side.upper() + ")" if is_test else side.upper()
-            message = f"🔥 {test_str} *{symbol}* eröffnet!\n- Hebel: {leverage}x\n- Stop-Loss: ${sl_price:.4f}"
+            message = f"🔥 {test_str} *{symbol}* eröffnet!\n- Hebel: {leverage}x\n- Stop-Loss: ${sl_price:.8f}" # Mehr Nachkommastellen für SL
             send_telegram_message(bot_token, chat_id, message)
             logger.info(message)
             return True
@@ -94,7 +92,7 @@ def place_order_and_verify(bitget, symbol, side, amount, sl_price, leverage, mar
         return False
 
 def main():
-    logger.info(f">>> Starte Ausführung für {SYMBOL} (stbot v1.5 - Order-Parameter Fix)")
+    logger.info(f">>> Starte Ausführung für {SYMBOL} (stbot v1.6 - Close-Order Fix)")
     
     try:
         key_path = os.path.abspath(os.path.join(PROJECT_ROOT, 'secret.json'))
@@ -121,14 +119,14 @@ def main():
         
         prev_candle = data.iloc[-2]
         current_candle = data.iloc[-1]
-        logger.info(f"Indikatoren: %K={prev_candle['%k']:.1f}, %D={prev_candle['%d']:.1f}, EMA={prev_candle['ema_trend']:.4f}")
+        logger.info(f"Indikatoren: %K={prev_candle['%k']:.1f}, %D={prev_candle['%d']:.1f}, EMA={prev_candle['ema_trend']:.8f}")
 
         positions = bitget.fetch_open_positions(SYMBOL)
         open_position = positions[0] if positions else None
         db_side = get_open_side()
 
         if not open_position and db_side:
-            message = f"✅ Position für *{SYMBOL}* ({db_side}) geschlossen."; send_telegram_message(bot_token, chat_id, message)
+            message = f"✅ Position für *{SYMBOL}* ({db_side}) erfolgreich an der Börse geschlossen."; send_telegram_message(bot_token, chat_id, message)
             logger.info(message)
             update_open_side('none')
             db_side = None
@@ -157,8 +155,6 @@ def main():
             leverage = int(round(max(1.0, min(leverage, max_leverage))))
             margin_mode = params['risk']['margin_mode']
             logger.info(f"Berechneter Hebel: {leverage}x. Margin-Modus: {margin_mode}")
-
-            # --- KORREKTUR: Die unzuverlässigen Setup-Aufrufe werden hier nicht mehr benötigt ---
 
             oversold = params['strategy']['oversold_level']; overbought = params['strategy']['overbought_level']
             use_longs = params['behavior'].get('use_longs', True); use_shorts = params['behavior'].get('use_shorts', True)
@@ -192,8 +188,7 @@ def main():
 
         elif open_position:
             db_side = get_open_side()
-            leverage = int(open_position.get('leverage', params['risk']['base_leverage']))
-            margin_mode = params['risk']['margin_mode']
+            margin_mode = params['risk']['margin_mode'] # Margin-Modus aus der Config laden
 
             logger.info(f"Position offen: {db_side}. Prüfe auf Take-Profit-Signal...")
             oversold = params['strategy']['oversold_level']; overbought = params['strategy']['overbought_level']
@@ -201,12 +196,21 @@ def main():
             
             if db_side_map.get(db_side) == 'buy' and current_candle['%k'] > overbought:
                 logger.info(f"🟢 LONG Take-Profit (%K > {overbought}). Schließe Position."); 
-                # Das Schließen einer Position benötigt die Params nicht
-                bitget.create_market_order(SYMBOL, 'sell', float(open_position['contracts']), 0, '', params={'reduceOnly': True})
+                
+                ### KORREKTUR ###
+                # Der leere String '' wurde durch die Variable 'margin_mode' ersetzt.
+                bitget.create_market_order(SYMBOL, 'sell', float(open_position['contracts']), 0, margin_mode, params={'reduceOnly': True})
+                send_telegram_message(bot_token, chat_id, f"✅ Verkaufs-Order zum Schließen von *{SYMBOL}* gesendet.")
+                update_open_side('none') # Status sofort aktualisieren
+
             elif db_side_map.get(db_side) == 'sell' and current_candle['%k'] < oversold:
                 logger.info(f"🔴 SHORT Take-Profit (%K < {oversold}). Schließe Position."); 
-                # Das Schließen einer Position benötigt die Params nicht
-                bitget.create_market_order(SYMBOL, 'buy', float(open_position['contracts']), 0, '', params={'reduceOnly': True})
+                
+                ### KORREKTUR ###
+                # Der leere String '' wurde durch die Variable 'margin_mode' ersetzt.
+                bitget.create_market_order(SYMBOL, 'buy', float(open_position['contracts']), 0, margin_mode, params={'reduceOnly': True})
+                send_telegram_message(bot_token, chat_id, f"✅ Kauf-Order zum Schließen von *{SYMBOL}* gesendet.")
+                update_open_side('none') # Status sofort aktualisieren
 
     except Exception as e:
         logger.error(f"Unerwarteter Fehler im Haupt-Loop: {e}", exc_info=True)
@@ -216,4 +220,3 @@ def main():
 if __name__ == "__main__":
     main()
     logger.info("<<< Ausführung abgeschlossen\n")
-
