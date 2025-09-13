@@ -92,7 +92,7 @@ def place_order_and_verify(bitget, symbol, side, amount, sl_price, leverage, mar
         return False
 
 def main():
-    logger.info(f">>> Starte Ausführung für {SYMBOL} (stbot v1.6 - Close-Order Fix)")
+    logger.info(f">>> Starte Ausführung für {SYMBOL} (stbot v1.7 - Cleanup Orders Fix)")
     
     try:
         key_path = os.path.abspath(os.path.join(PROJECT_ROOT, 'secret.json'))
@@ -132,6 +132,7 @@ def main():
             db_side = None
 
         if not open_position:
+            # Code zum Eröffnen einer Position (unverändert)
             logger.info("Keine Position offen. Suche nach neuem Einstieg.")
             trend_filter_cfg = params['strategy'].get('trend_filter', {}); sideways_filter_cfg = params['strategy'].get('sideways_filter', {})
             trend_allows_long, trend_allows_short, market_is_not_sideways = True, True, True
@@ -188,7 +189,7 @@ def main():
 
         elif open_position:
             db_side = get_open_side()
-            margin_mode = params['risk']['margin_mode'] # Margin-Modus aus der Config laden
+            margin_mode = params['risk']['margin_mode']
 
             logger.info(f"Position offen: {db_side}. Prüfe auf Take-Profit-Signal...")
             oversold = params['strategy']['oversold_level']; overbought = params['strategy']['overbought_level']
@@ -196,21 +197,25 @@ def main():
             
             if db_side_map.get(db_side) == 'buy' and current_candle['%k'] > overbought:
                 logger.info(f"🟢 LONG Take-Profit (%K > {overbought}). Schließe Position."); 
-                
-                ### KORREKTUR ###
-                # Der leere String '' wurde durch die Variable 'margin_mode' ersetzt.
                 bitget.create_market_order(SYMBOL, 'sell', float(open_position['contracts']), 0, margin_mode, params={'reduceOnly': True})
-                send_telegram_message(bot_token, chat_id, f"✅ Verkaufs-Order zum Schließen von *{SYMBOL}* gesendet.")
-                update_open_side('none') # Status sofort aktualisieren
+                
+                ### NEUE KORREKTUR: Alle verbleibenden Orders löschen ###
+                logger.info(f"Lösche alle verbleibenden offenen Orders für {SYMBOL}...")
+                bitget.cancel_all_orders(SYMBOL)
+                
+                send_telegram_message(bot_token, chat_id, f"✅ Position *{SYMBOL}* geschlossen & alle SL/TP Orders gelöscht.")
+                update_open_side('none')
 
             elif db_side_map.get(db_side) == 'sell' and current_candle['%k'] < oversold:
                 logger.info(f"🔴 SHORT Take-Profit (%K < {oversold}). Schließe Position."); 
-                
-                ### KORREKTUR ###
-                # Der leere String '' wurde durch die Variable 'margin_mode' ersetzt.
                 bitget.create_market_order(SYMBOL, 'buy', float(open_position['contracts']), 0, margin_mode, params={'reduceOnly': True})
-                send_telegram_message(bot_token, chat_id, f"✅ Kauf-Order zum Schließen von *{SYMBOL}* gesendet.")
-                update_open_side('none') # Status sofort aktualisieren
+
+                ### NEUE KORREKTUR: Alle verbleibenden Orders löschen ###
+                logger.info(f"Lösche alle verbleibenden offenen Orders für {SYMBOL}...")
+                bitget.cancel_all_orders(SYMBOL)
+
+                send_telegram_message(bot_token, chat_id, f"✅ Position *{SYMBOL}* geschlossen & alle SL/TP Orders gelöscht.")
+                update_open_side('none')
 
     except Exception as e:
         logger.error(f"Unerwarteter Fehler im Haupt-Loop: {e}", exc_info=True)
@@ -220,3 +225,4 @@ def main():
 if __name__ == "__main__":
     main()
     logger.info("<<< Ausführung abgeschlossen\n")
+
