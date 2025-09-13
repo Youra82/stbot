@@ -128,6 +128,8 @@ Bash
 
 >./update_bot.sh
 
+>tail -n 100 ~/stbot/logs/cron.log
+
 Strategien finden & testen
 Dies ist deine Steuerzentrale für alle Offline-Analysen.
 
