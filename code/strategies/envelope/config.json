@@ -23,7 +23,7 @@
     },
     "risk": {
         "margin_mode": "isolated",
-        "balance_fraction_pct": 20,
+        "balance_fraction_pct":5,
         "sl_buffer_pct": 0.29,
         "base_leverage": 11,
         "max_leverage": 50,
