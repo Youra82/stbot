@@ -23,10 +23,10 @@
     },
     "risk": {
         "margin_mode": "isolated",
-        "balance_fraction_pct":5,
+        "balance_fraction_pct":50,
         "sl_buffer_pct": 0.29,
-        "base_leverage": 11,
-        "max_leverage": 50,
+        "base_leverage": 3,
+        "max_leverage": 10,
         "target_atr_pct": 4.28
     },
     "behavior": {
