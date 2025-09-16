@@ -92,7 +92,7 @@ def place_order_and_verify(bitget, symbol, side, amount, sl_price, leverage, mar
         return False
 
 def main():
-    logger.info(f">>> Starte Ausführung für {SYMBOL} (stbot v1.8 - Final Cleanup Fix)")
+    logger.info(f">>> Starte Ausführung für {SYMBOL} (stbot v1.9 - Final Order Cleanup)")
     
     try:
         key_path = os.path.abspath(os.path.join(PROJECT_ROOT, 'secret.json'))
@@ -199,9 +199,8 @@ def main():
                 logger.info(f"🟢 LONG Take-Profit (%K > {overbought}). Schließe Position."); 
                 bitget.create_market_order(SYMBOL, 'sell', float(open_position['contracts']), 0, margin_mode, params={'reduceOnly': True})
                 
-                ### FINALE KORREKTUR: Korrekter Funktionsname zum Löschen der Orders ###
                 logger.info(f"Lösche alle verbleibenden offenen Orders für {SYMBOL}...")
-                bitget.cancel_orders_for_symbol(SYMBOL)
+                bitget.cancel_all_orders_for_symbol(SYMBOL) # Aufruf der neuen Funktion
                 
                 send_telegram_message(bot_token, chat_id, f"✅ Position *{SYMBOL}* geschlossen & alle SL/TP Orders gelöscht.")
                 update_open_side('none')
@@ -210,9 +209,8 @@ def main():
                 logger.info(f"🔴 SHORT Take-Profit (%K < {oversold}). Schließe Position."); 
                 bitget.create_market_order(SYMBOL, 'buy', float(open_position['contracts']), 0, margin_mode, params={'reduceOnly': True})
 
-                ### FINALE KORREKTUR: Korrekter Funktionsname zum Löschen der Orders ###
                 logger.info(f"Lösche alle verbleibenden offenen Orders für {SYMBOL}...")
-                bitget.cancel_orders_for_symbol(SYMBOL)
+                bitget.cancel_all_orders_for_symbol(SYMBOL) # Aufruf der neuen Funktion
 
                 send_telegram_message(bot_token, chat_id, f"✅ Position *{SYMBOL}* geschlossen & alle SL/TP Orders gelöscht.")
                 update_open_side('none')
@@ -225,3 +223,5 @@ def main():
 if __name__ == "__main__":
     main()
     logger.info("<<< Ausführung abgeschlossen\n")
+
+
