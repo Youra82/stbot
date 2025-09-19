@@ -91,8 +91,42 @@ def place_order_and_verify(bitget, symbol, side, amount, sl_price, leverage, mar
         send_telegram_message(bot_token, chat_id, error_message[:4000])
         return False
 
+def close_position_and_cleanup(bitget, position, bot_token, chat_id):
+    """Schließt die offene Position und löscht alle zugehörigen offenen Orders."""
+    symbol = position['symbol']
+    side_to_close = 'sell' if position['side'] == 'long' else 'buy'
+    amount = float(position['contracts'])
+    margin_mode = params['risk']['margin_mode']
+
+    try:
+        # 1. Position schließen
+        logger.info(f"Schließe {position['side']}-Position für {symbol}...")
+        bitget.create_market_order(symbol, side_to_close, amount, 0, margin_mode, params={'reduceOnly': True})
+        
+        # 2. Alle verbleibenden Orders für das Symbol löschen (robuste Methode)
+        logger.info(f"Räume verbleibende offene Orders für {symbol} auf...")
+        open_orders = bitget.fetch_open_orders(symbol)
+        if open_orders:
+            for order in open_orders:
+                try:
+                    bitget.cancel_order(order['id'], symbol)
+                    logger.info(f"Order {order['id']} gelöscht.")
+                except Exception as e:
+                    logger.error(f"Konnte Order {order['id']} nicht löschen: {e}")
+        else:
+            logger.info("Keine offenen Orders zum Löschen gefunden.")
+
+        send_telegram_message(bot_token, chat_id, f"✅ Position *{symbol}* geschlossen & alle SL/TP Orders aufgeräumt.")
+        update_open_side('none')
+        return True
+
+    except Exception as e:
+        logger.error(f"Fehler beim Schließen der Position oder Aufräumen der Orders: {e}", exc_info=True)
+        send_telegram_message(bot_token, chat_id, f"🚨 KRITISCHER FEHLER beim Schließen der Position für *{symbol}*! Manuelle Prüfung erforderlich.\n\n`{e}`")
+        return False
+
 def main():
-    logger.info(f">>> Starte Ausführung für {SYMBOL} (stbot v1.9 - Final Order Cleanup)")
+    logger.info(f">>> Starte Ausführung für {SYMBOL} (stbot v2.0 - Robustes Aufräumen)")
     
     try:
         key_path = os.path.abspath(os.path.join(PROJECT_ROOT, 'secret.json'))
@@ -103,9 +137,6 @@ def main():
         chat_id = telegram_config.get('chat_id')
     except Exception as e:
         logger.critical(f"Fehler beim Laden der API-Schlüssel: {e}"); sys.exit(1)
-
-    dev_params = params.get('development', {})
-    force_trade_side = dev_params.get('force_trade_side', 'none')
 
     bitget = BitgetFutures(api_setup)
     setup_database()
@@ -126,13 +157,35 @@ def main():
         db_side = get_open_side()
 
         if not open_position and db_side:
-            message = f"✅ Position für *{SYMBOL}* ({db_side}) erfolgreich an der Börse geschlossen."; send_telegram_message(bot_token, chat_id, message)
+            message = f"✅ Position für *{SYMBOL}* ({db_side}) auf der Börse geschlossen bestätigt."; send_telegram_message(bot_token, chat_id, message)
             logger.info(message)
+            # Sicherheits-Aufräumen, falls Position weg ist, aber Orders nicht
+            open_orders = bitget.fetch_open_orders(SYMBOL)
+            if open_orders:
+                logger.warning("Position geschlossen, aber verwaiste Orders gefunden. Räume jetzt auf...")
+                for order in open_orders:
+                    bitget.cancel_order(order['id'], SYMBOL)
             update_open_side('none')
             db_side = None
 
-        if not open_position:
-            # Code zum Eröffnen einer Position (unverändert)
+        if open_position:
+            db_side = get_open_side()
+            logger.info(f"Position offen: {db_side}. Prüfe auf Take-Profit-Signal...")
+            oversold = params['strategy']['oversold_level']; overbought = params['strategy']['overbought_level']
+            
+            close_signal = False
+            if db_side == 'long' and current_candle['%k'] > overbought:
+                logger.info(f"🟢 LONG Take-Profit (%K > {overbought}). Schließe Position."); 
+                close_signal = True
+            elif db_side == 'short' and current_candle['%k'] < oversold:
+                logger.info(f"🔴 SHORT Take-Profit (%K < {oversold}). Schließe Position.");
+                close_signal = True
+            
+            if close_signal:
+                close_position_and_cleanup(bitget, open_position, bot_token, chat_id)
+
+        else: # Keine offene Position, suche nach Einstieg
+            # Einstiegslogik (unverändert)
             logger.info("Keine Position offen. Suche nach neuem Einstieg.")
             trend_filter_cfg = params['strategy'].get('trend_filter', {}); sideways_filter_cfg = params['strategy'].get('sideways_filter', {})
             trend_allows_long, trend_allows_short, market_is_not_sideways = True, True, True
@@ -164,56 +217,27 @@ def main():
             capital_to_use = free_balance * (params['risk']['balance_fraction_pct'] / 100.0)
             notional_value = capital_to_use * leverage
             amount = notional_value / current_candle['close']
-
-            if force_trade_side.upper() in ["LONG", "SHORT"]:
-                side_to_force = force_trade_side.upper()
-                logger.info(f"MANUELLER TEST (aus config.json): Erzwinge {side_to_force}-Signal.")
-                side = 'buy' if side_to_force == 'LONG' else 'sell'
-                sl_price = prev_candle['swing_low'] * (1 - params['risk']['sl_buffer_pct'] / 100) if side == 'buy' else prev_candle['swing_high'] * (1 + params['risk']['sl_buffer_pct'] / 100)
-                place_order_and_verify(bitget, SYMBOL, side, amount, sl_price, leverage, margin_mode, bot_token, chat_id, is_test=True)
-
-            elif force_trade_side.lower() == 'none':
-                if (use_longs and trend_allows_long and market_is_not_sideways and prev_candle['%k'] < prev_candle['%d'] and 
-                    current_candle['%k'] > current_candle['%d'] and prev_candle['%k'] < oversold):
-                    logger.info("🟢 LONG-Signal bestätigt. Alle Filter passiert.")
-                    sl_price = prev_candle['swing_low'] * (1 - params['risk']['sl_buffer_pct'] / 100)
-                    place_order_and_verify(bitget, SYMBOL, 'buy', amount, sl_price, leverage, margin_mode, bot_token, chat_id)
-
-                elif (use_shorts and trend_allows_short and market_is_not_sideways and prev_candle['%k'] > prev_candle['%d'] and 
-                      current_candle['%k'] < current_candle['%d'] and prev_candle['%k'] > overbought):
-                    logger.info("🔴 SHORT-Signal bestätigt. Alle Filter passiert.")
-                    sl_price = prev_candle['swing_high'] * (1 + params['risk']['sl_buffer_pct'] / 100)
-                    place_order_and_verify(bitget, SYMBOL, 'sell', amount, sl_price, leverage, margin_mode, bot_token, chat_id)
-                else:
-                    logger.info("Kein gültiges Signal oder von Filtern blockiert.")
-
-        elif open_position:
-            db_side = get_open_side()
-            margin_mode = params['risk']['margin_mode']
-
-            logger.info(f"Position offen: {db_side}. Prüfe auf Take-Profit-Signal...")
-            oversold = params['strategy']['oversold_level']; overbought = params['strategy']['overbought_level']
-            db_side_map = {'long': 'buy', 'short': 'sell'}
             
-            if db_side_map.get(db_side) == 'buy' and current_candle['%k'] > overbought:
-                logger.info(f"🟢 LONG Take-Profit (%K > {overbought}). Schließe Position."); 
-                bitget.create_market_order(SYMBOL, 'sell', float(open_position['contracts']), 0, margin_mode, params={'reduceOnly': True})
-                
-                logger.info(f"Lösche alle verbleibenden offenen Orders für {SYMBOL}...")
-                bitget.cancel_all_orders_for_symbol(SYMBOL) # Aufruf der neuen Funktion
-                
-                send_telegram_message(bot_token, chat_id, f"✅ Position *{SYMBOL}* geschlossen & alle SL/TP Orders gelöscht.")
-                update_open_side('none')
+            entry_signal = False
+            side = ''
+            if (use_longs and trend_allows_long and market_is_not_sideways and prev_candle['%k'] < prev_candle['%d'] and 
+                current_candle['%k'] > current_candle['%d'] and prev_candle['%k'] < oversold):
+                logger.info("🟢 LONG-Signal bestätigt. Alle Filter passiert.")
+                side = 'buy'
+                sl_price = prev_candle['swing_low'] * (1 - params['risk']['sl_buffer_pct'] / 100)
+                entry_signal = True
 
-            elif db_side_map.get(db_side) == 'sell' and current_candle['%k'] < oversold:
-                logger.info(f"🔴 SHORT Take-Profit (%K < {oversold}). Schließe Position."); 
-                bitget.create_market_order(SYMBOL, 'buy', float(open_position['contracts']), 0, margin_mode, params={'reduceOnly': True})
-
-                logger.info(f"Lösche alle verbleibenden offenen Orders für {SYMBOL}...")
-                bitget.cancel_all_orders_for_symbol(SYMBOL) # Aufruf der neuen Funktion
-
-                send_telegram_message(bot_token, chat_id, f"✅ Position *{SYMBOL}* geschlossen & alle SL/TP Orders gelöscht.")
-                update_open_side('none')
+            elif (use_shorts and trend_allows_short and market_is_not_sideways and prev_candle['%k'] > prev_candle['%d'] and 
+                  current_candle['%k'] < current_candle['%d'] and prev_candle['%k'] > overbought):
+                logger.info("🔴 SHORT-Signal bestätigt. Alle Filter passiert.")
+                side = 'sell'
+                sl_price = prev_candle['swing_high'] * (1 + params['risk']['sl_buffer_pct'] / 100)
+                entry_signal = True
+            
+            if entry_signal:
+                place_order_and_verify(bitget, SYMBOL, side, amount, sl_price, leverage, margin_mode, bot_token, chat_id)
+            else:
+                logger.info("Kein gültiges Signal oder von Filtern blockiert.")
 
     except Exception as e:
         logger.error(f"Unerwarteter Fehler im Haupt-Loop: {e}", exc_info=True)
@@ -223,5 +247,3 @@ def main():
 if __name__ == "__main__":
     main()
     logger.info("<<< Ausführung abgeschlossen\n")
-
-
