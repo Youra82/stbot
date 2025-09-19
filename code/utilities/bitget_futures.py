@@ -16,6 +16,7 @@ class BitgetFutures:
                 'defaultType': 'swap',
             },
         })
+        self.session.load_markets()
 
     def fetch_balance(self):
         try:
@@ -38,11 +39,27 @@ class BitgetFutures:
     def fetch_open_positions(self, symbol: str):
         try:
             all_positions = self.session.fetch_positions()
-            symbol_positions = [p for p in all_positions if p['info']['symbol'] == symbol.replace('/', '')]
+            symbol_positions = [p for p in all_positions if p.get('info', {}).get('symbol') == symbol.replace('/', '') and p.get('contracts') is not None and float(p['contracts']) > 0]
             return symbol_positions
         except Exception as e:
             logger.error(f"Fehler beim Abrufen der offenen Positionen: {e}")
             raise Exception(f"Failed to fetch open positions: {e}")
+    
+    def fetch_open_orders(self, symbol: str):
+        """Ruft alle offenen (nicht-getriggerten) Orders für ein Symbol ab."""
+        try:
+            return self.session.fetch_open_orders(symbol)
+        except Exception as e:
+            logger.error(f"Fehler beim Abrufen offener Orders: {e}")
+            raise
+
+    def cancel_order(self, order_id: str, symbol: str):
+        """Löscht eine einzelne Order anhand ihrer ID."""
+        try:
+            return self.session.cancel_order(order_id, symbol)
+        except Exception as e:
+            logger.error(f"Fehler beim Löschen der Order {order_id}: {e}")
+            raise
 
     def create_market_order(self, symbol: str, side: str, amount: float, leverage: int, margin_mode: str, params={}):
         try:
