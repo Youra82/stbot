@@ -38,20 +38,10 @@ class BitgetFutures:
 
     def fetch_open_positions(self, symbol: str):
         try:
-            all_positions = self.session.fetch_positions()
-            
-            # === FINALE, ROBUSTE KORREKTUR ===
-            # Dieser Filter prüft jetzt sowohl das standardisierte 'symbol'-Feld als auch
-            # das börsenspezifische 'info'-Feld, um sicherzustellen, dass die Position
-            # unter allen Umständen gefunden wird.
-            
-            clean_symbol_ccxt = symbol.replace(':', '') # z.B. "PEPE/USDTUSDT"
-            clean_symbol_bitget = symbol.replace('/', '').replace(':', '') # z.B. "PEPEUSDTUSDT"
-            
+            all_positions = self.session.fetch_positions([symbol])
             symbol_positions = [
                 p for p in all_positions 
-                if (p.get('symbol') == symbol or p.get('symbol') == clean_symbol_ccxt or p.get('info', {}).get('symbol') == clean_symbol_bitget)
-                and p.get('contracts') is not None 
+                if p.get('contracts') is not None 
                 and float(p['contracts']) > 0
             ]
             return symbol_positions
@@ -68,11 +58,26 @@ class BitgetFutures:
             raise
 
     def fetch_open_trigger_orders(self, symbol: str):
-        """Sucht gezielt nach offenen Trigger-Orders (SL/TP)."""
+        """
+        Sucht gezielt und zuverlässig nach offenen Trigger-Orders (SL/TP) für Bitget.
+        """
         try:
-            all_open_orders = self.session.fetch_open_orders(symbol)
-            trigger_orders = [o for o in all_open_orders if o.get('triggerPrice') is not None and o['triggerPrice'] > 0]
-            return trigger_orders
+            # Bitget erfordert einen speziellen API-Endpunkt für Trigger-Orders.
+            # Wir rufen diesen direkt auf.
+            clean_symbol = symbol.replace('/', '').replace(':USDT', '') # z.B. PEPEUSDT
+            params = {'productType': 'USDT-FUTURES'}
+            trigger_orders = self.session.privateMixGetV2MixOrderQueryAllPlanOrder(params)
+            
+            # Filtere die Liste nach dem korrekten Symbol und nur nach "Stop"-Orders
+            symbol_trigger_orders = [
+                o for o in trigger_orders['data'] 
+                if o.get('symbol') == clean_symbol 
+                and o.get('planType') == 'stop'
+            ]
+            
+            # Wandel das Format in das Standard-ccxt-Format um, damit run.py es versteht
+            return [self.session.parse_order(o) for o in symbol_trigger_orders]
+            
         except Exception as e:
             logger.error(f"Fehler beim Abrufen von Trigger-Orders: {e}")
             return [] 
@@ -80,10 +85,17 @@ class BitgetFutures:
     def cancel_order(self, order_id: str, symbol: str):
         """Löscht eine einzelne Order anhand ihrer ID."""
         try:
-            return self.session.cancel_order(order_id, symbol)
+            # Für Trigger-Orders benötigt Bitget einen speziellen Befehl
+            params = {'productType': 'USDT-FUTURES'}
+            return self.session.privateMixPostV2MixOrderCancelPlanOrder(self.extend({'symbol': symbol, 'orderId': order_id}, params))
         except Exception as e:
             logger.error(f"Fehler beim Löschen der Order {order_id}: {e}")
-            raise
+            # Versuche als Fallback die Standard-Löschfunktion
+            try:
+                return self.session.cancel_order(order_id, symbol)
+            except Exception as e2:
+                 logger.error(f"Auch Standard-Löschung für Order {order_id} fehlgeschlagen: {e2}")
+                 raise
 
     def create_market_order(self, symbol: str, side: str, amount: float, leverage: int, margin_mode: str, params={}):
         """
@@ -108,8 +120,12 @@ class BitgetFutures:
         try:
             params = {
                 'triggerPrice': self.session.price_to_precision(symbol, trigger_price),
-                'reduceOnly': reduce,
+                'planType': 'stop', # Explizit als Stop-Order deklarieren
             }
+            if reduce:
+                params['reduceOnly'] = 'true'
+
+            # Verwende den speziellen Endpunkt für Trigger-Orders
             order = self.session.create_order(symbol, 'market', side, amount, params=params)
             logger.info(f"Trigger-Order platziert: {side} {amount} {symbol} @ {trigger_price}")
             return order
