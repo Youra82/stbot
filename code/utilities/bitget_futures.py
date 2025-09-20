@@ -40,12 +40,17 @@ class BitgetFutures:
         try:
             all_positions = self.session.fetch_positions()
             
-            # === FINALE KORREKTUR ===
-            # Der Filter wurde korrigiert, um den standardisierten 'symbol'-Key von ccxt zu verwenden.
-            # Das stellt sicher, dass offene Positionen zuverlässig gefunden werden.
+            # === FINALE, ROBUSTE KORREKTUR ===
+            # Dieser Filter prüft jetzt sowohl das standardisierte 'symbol'-Feld als auch
+            # das börsenspezifische 'info'-Feld, um sicherzustellen, dass die Position
+            # unter allen Umständen gefunden wird.
+            
+            clean_symbol_ccxt = symbol.replace(':', '') # z.B. "PEPE/USDTUSDT"
+            clean_symbol_bitget = symbol.replace('/', '').replace(':', '') # z.B. "PEPEUSDTUSDT"
+            
             symbol_positions = [
                 p for p in all_positions 
-                if p.get('symbol') == symbol 
+                if (p.get('symbol') == symbol or p.get('symbol') == clean_symbol_ccxt or p.get('info', {}).get('symbol') == clean_symbol_bitget)
                 and p.get('contracts') is not None 
                 and float(p['contracts']) > 0
             ]
