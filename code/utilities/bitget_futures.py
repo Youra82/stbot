@@ -12,9 +12,7 @@ class BitgetFutures:
             'apiKey': api_setup['apiKey'],
             'secret': api_setup['secret'],
             'password': api_setup['password'],
-            'options': {
-                'defaultType': 'swap',
-            },
+            'options': { 'defaultType': 'swap' },
         })
         self.session.load_markets()
 
@@ -37,37 +35,33 @@ class BitgetFutures:
 
     def fetch_open_positions(self, symbol: str):
         try:
-            all_positions = self.session.fetch_positions([symbol])
-            symbol_positions = [
+            all_positions = self.session.fetch_positions([symbol]) 
+            open_positions = [
                 p for p in all_positions 
-                if p.get('contracts') is not None 
-                and float(p['contracts']) > 0
+                if p.get('contracts') is not None and float(p['contracts']) > 0
             ]
-            return symbol_positions
+            return open_positions
         except Exception as e:
             logger.error(f"Fehler beim Abrufen der offenen Positionen: {e}")
-            raise Exception(f"Failed to fetch open positions: {e}")
-    
-    def fetch_open_orders(self, symbol: str, params={}):
-        """Ruft alle offenen (inklusive Trigger-) Orders für ein Symbol ab."""
-        try:
-            return self.session.fetch_open_orders(symbol, params=params)
-        except Exception as e:
-            logger.error(f"Fehler beim Abrufen offener Orders: {e}")
             raise
 
-    def cancel_order(self, order_id: str, symbol: str, params={}):
-        """Löscht eine einzelne Order anhand ihrer ID."""
+    def fetch_open_trigger_orders(self, symbol: str):
+        """Ruft alle offenen Trigger-Orders (SL/TP) für ein Symbol ab."""
         try:
-            return self.session.cancel_order(order_id, symbol, params=params)
+            return self.session.fetch_open_orders(symbol, params={'stop': True})
         except Exception as e:
-            logger.error(f"Fehler beim Löschen der Order {order_id}: {e}")
+            logger.error(f"Fehler beim Abrufen offener Trigger-Orders: {e}")
+            raise
+
+    def cancel_trigger_order(self, order_id: str, symbol: str):
+        """Löscht eine einzelne Trigger-Order anhand ihrer ID."""
+        try:
+            return self.session.cancel_order(order_id, symbol, params={'stop': True})
+        except Exception as e:
+            logger.error(f"Fehler beim Löschen der Trigger-Order {order_id}: {e}")
             raise
 
     def create_market_order(self, symbol: str, side: str, amount: float, leverage: int, margin_mode: str, params={}):
-        """
-        Platziert eine Market-Order und sendet Hebel/Margin-Modus als Teil der Order.
-        """
         try:
             order_params = {}
             if params:
@@ -83,9 +77,7 @@ class BitgetFutures:
             raise
 
     def place_stop_order(self, symbol: str, side: str, amount: float, stop_price: float):
-        """
-        Platziert eine Stop-Market-Order (für Stop-Loss).
-        """
+        """Platziert eine Stop-Market-Order (für Stop-Loss)."""
         try:
             params = {
                 'stopPrice': self.session.price_to_precision(symbol, stop_price),
