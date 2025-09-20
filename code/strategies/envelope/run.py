@@ -135,7 +135,7 @@ def close_position_and_cleanup(bitget, position, bot_token, chat_id):
         return False
 
 def main():
-    logger.info(f">>> Starte Ausführung für {SYMBOL} (stbot v2.3 - Notfall-SL)")
+    logger.info(f">>> Starte Ausführung für {SYMBOL} (stbot v2.4 - Adoptions-Logik)")
     
     try:
         key_path = os.path.abspath(os.path.join(PROJECT_ROOT, 'secret.json'))
@@ -162,13 +162,18 @@ def main():
         open_position = positions[0] if positions else None
         trade_state = get_trade_state()
 
-        if open_position and trade_state:
+        if open_position:
+            if not trade_state:
+                logger.warning("⚠️ Fremde Position entdeckt! Übernehme die Verwaltung...")
+                update_trade_state(open_position['side']) 
+                trade_state = get_trade_state()
+                send_telegram_message(bot_token, chat_id, f"⚠️ *{SYMBOL}*: Fremde {open_position['side']}-Position entdeckt und Verwaltung übernommen.")
+
             logger.info("Position auf Börse gefunden. Prüfe auf fehlenden Stop-Loss...")
-            
             trigger_orders = bitget.fetch_open_trigger_orders(SYMBOL)
             sl_order_found = False
             
-            if trade_state.get('sl_price') and trade_state['sl_price'] > 0:
+            if trade_state and trade_state.get('sl_price') and trade_state['sl_price'] > 0:
                 expected_sl_price = Decimal(str(trade_state['sl_price']))
                 for order in trigger_orders:
                     actual_sl_price = Decimal(str(order.get('triggerPrice', 0)))
@@ -179,15 +184,15 @@ def main():
             if not sl_order_found:
                 logger.warning(f"⚠️ FEHLENDER STOP-LOSS ENTDECKT! Platziere ihn jetzt...")
                 
-                sl_to_place = trade_state.get('sl_price')
+                sl_to_place = trade_state.get('sl_price') if trade_state else None
 
                 if not sl_to_place or sl_to_place <= 0:
                     logger.warning("Kein SL-Preis in der Datenbank. Berechne Notfall-SL...")
-                    if trade_state['side'] == 'long':
+                    if open_position['side'] == 'long':
                         sl_to_place = prev_candle['swing_low'] * (1 - params['risk']['sl_buffer_pct'] / 100)
                     else: # short
                         sl_to_place = prev_candle['swing_high'] * (1 + params['risk']['sl_buffer_pct'] / 100)
-                    update_trade_state(trade_state['side'], sl_to_place)
+                    update_trade_state(open_position['side'], sl_to_place)
 
                 close_side = 'sell' if open_position['side'] == 'long' else 'buy'
                 bitget.place_trigger_market_order(SYMBOL, close_side, float(open_position['contracts']), sl_to_place, reduce=True)
