@@ -20,8 +20,7 @@ class BitgetFutures:
 
     def fetch_balance(self):
         try:
-            balance = self.session.fetch_balance()
-            return balance
+            return self.session.fetch_balance()
         except Exception as e:
             logger.error(f"Fehler beim Abrufen des Guthabens: {e}")
             raise
@@ -38,37 +37,33 @@ class BitgetFutures:
 
     def fetch_open_positions(self, symbol: str):
         try:
-            all_positions = self.session.fetch_positions([symbol])
-            symbol_positions = [
+            # fetch_positions(symbols) ist zuverlässiger
+            all_positions = self.session.fetch_positions([symbol]) 
+            open_positions = [
                 p for p in all_positions 
-                if p.get('contracts') is not None 
-                and float(p['contracts']) > 0
+                if p.get('contracts') is not None and float(p['contracts']) > 0
             ]
-            return symbol_positions
+            return open_positions
         except Exception as e:
             logger.error(f"Fehler beim Abrufen der offenen Positionen: {e}")
-            raise Exception(f"Failed to fetch open positions: {e}")
-    
-    def fetch_open_orders(self, symbol: str, params={}):
-        """Ruft alle offenen Orders für ein Symbol ab, kann durch params spezifiziert werden."""
+            raise
+
+    def fetch_open_orders(self, symbol: str):
         try:
-            return self.session.fetch_open_orders(symbol, params=params)
+            # Ruft alle Order-Typen ab
+            return self.session.fetch_open_orders(symbol)
         except Exception as e:
             logger.error(f"Fehler beim Abrufen offener Orders: {e}")
             raise
 
-    def cancel_order(self, order_id: str, symbol: str, params={}):
-        """Löscht eine einzelne Order anhand ihrer ID, kann durch params spezifiziert werden."""
+    def cancel_order(self, order_id: str, symbol: str):
         try:
-            return self.session.cancel_order(order_id, symbol, params=params)
+            return self.session.cancel_order(order_id, symbol)
         except Exception as e:
             logger.error(f"Fehler beim Löschen der Order {order_id}: {e}")
             raise
 
     def create_market_order(self, symbol: str, side: str, amount: float, leverage: int, margin_mode: str, params={}):
-        """
-        Platziert eine Market-Order und sendet Hebel/Margin-Modus als Teil der Order.
-        """
         try:
             order_params = {}
             if params:
@@ -78,22 +73,19 @@ class BitgetFutures:
             if leverage > 0:
                 order_params['leverage'] = leverage
 
-            order = self.session.create_order(symbol, 'market', side, amount, params=order_params)
-            return order
+            return self.session.create_order(symbol, 'market', side, amount, params=order_params)
         except Exception as e:
             logger.error(f"Fehler beim Erstellen der Market-Order: {e}")
             raise
 
-    def place_trigger_market_order(self, symbol: str, side: str, amount: float, trigger_price: float, reduce: bool = False):
+    def place_stop_order(self, symbol: str, side: str, amount: float, stop_price: float):
         try:
-            # Dies ist der korrekte Weg, eine Stop-Order bei Bitget via ccxt zu platzieren
             params = {
-                'stopPrice': self.session.price_to_precision(symbol, trigger_price),
-                'reduceOnly': reduce,
+                'stopPrice': self.session.price_to_precision(symbol, stop_price),
+                'reduceOnly': True,
             }
-            order = self.session.create_order(symbol, 'market', side, amount, params=params)
-            logger.info(f"Trigger-Order platziert: {side} {amount} {symbol} @ {trigger_price}")
-            return order
+            # 'stop-market' ist der korrekte Typ für SL-Orders, die als Market-Order ausgeführt werden sollen
+            return self.session.create_order(symbol, 'market', side, amount, params)
         except Exception as e:
-            logger.error(f"Fehler beim Platzieren der Trigger-Order: {e}")
+            logger.error(f"Fehler beim Platzieren der Stop-Order: {e}")
             raise
