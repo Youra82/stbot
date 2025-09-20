@@ -39,9 +39,13 @@ class BitgetFutures:
     def fetch_open_positions(self, symbol: str):
         try:
             all_positions = self.session.fetch_positions()
+            
+            # === FINALE KORREKTUR ===
+            # Der Filter wurde korrigiert, um den standardisierten 'symbol'-Key von ccxt zu verwenden.
+            # Das stellt sicher, dass offene Positionen zuverlässig gefunden werden.
             symbol_positions = [
                 p for p in all_positions 
-                if p.get('info', {}).get('symbol') == symbol.replace('/', '') 
+                if p.get('symbol') == symbol 
                 and p.get('contracts') is not None 
                 and float(p['contracts']) > 0
             ]
@@ -78,8 +82,7 @@ class BitgetFutures:
 
     def create_market_order(self, symbol: str, side: str, amount: float, leverage: int, margin_mode: str, params={}):
         """
-        Platziert eine Market-Order und sendet Hebel/Margin-Modus als Teil der Order,
-        um Konflikte zu vermeiden.
+        Platziert eine Market-Order und sendet Hebel/Margin-Modus als Teil der Order.
         """
         try:
             order_params = {}
