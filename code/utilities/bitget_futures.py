@@ -49,29 +49,18 @@ class BitgetFutures:
             logger.error(f"Fehler beim Abrufen der offenen Positionen: {e}")
             raise Exception(f"Failed to fetch open positions: {e}")
     
-    def fetch_open_orders(self, symbol: str):
-        """Ruft alle offenen (inklusive Trigger-) Orders für ein Symbol ab."""
+    def fetch_open_orders(self, symbol: str, params={}):
+        """Ruft alle offenen Orders für ein Symbol ab, kann durch params spezifiziert werden."""
         try:
-            return self.session.fetch_open_orders(symbol)
+            return self.session.fetch_open_orders(symbol, params=params)
         except Exception as e:
             logger.error(f"Fehler beim Abrufen offener Orders: {e}")
             raise
 
-    def fetch_open_trigger_orders(self, symbol: str):
-        """Sucht zuverlässig nach offenen Trigger-Orders (SL/TP)."""
+    def cancel_order(self, order_id: str, symbol: str, params={}):
+        """Löscht eine einzelne Order anhand ihrer ID, kann durch params spezifiziert werden."""
         try:
-            # Wir rufen alle offenen Orders ab und filtern sie dann im Code. Das ist am sichersten.
-            all_open_orders = self.fetch_open_orders(symbol)
-            trigger_orders = [o for o in all_open_orders if o.get('triggerPrice') is not None and o['triggerPrice'] > 0]
-            return trigger_orders
-        except Exception as e:
-            logger.error(f"Fehler beim Filtern von Trigger-Orders: {e}")
-            return [] 
-
-    def cancel_order(self, order_id: str, symbol: str):
-        """Löscht eine einzelne Order anhand ihrer ID."""
-        try:
-            return self.session.cancel_order(order_id, symbol)
+            return self.session.cancel_order(order_id, symbol, params=params)
         except Exception as e:
             logger.error(f"Fehler beim Löschen der Order {order_id}: {e}")
             raise
@@ -97,8 +86,9 @@ class BitgetFutures:
 
     def place_trigger_market_order(self, symbol: str, side: str, amount: float, trigger_price: float, reduce: bool = False):
         try:
+            # Dies ist der korrekte Weg, eine Stop-Order bei Bitget via ccxt zu platzieren
             params = {
-                'triggerPrice': self.session.price_to_precision(symbol, trigger_price),
+                'stopPrice': self.session.price_to_precision(symbol, trigger_price),
                 'reduceOnly': reduce,
             }
             order = self.session.create_order(symbol, 'market', side, amount, params=params)
