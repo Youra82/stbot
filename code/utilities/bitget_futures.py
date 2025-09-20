@@ -50,7 +50,7 @@ class BitgetFutures:
             raise Exception(f"Failed to fetch open positions: {e}")
     
     def fetch_open_orders(self, symbol: str):
-        """Ruft alle offenen (nicht-getriggerten) Orders für ein Symbol ab."""
+        """Ruft alle offenen (inklusive Trigger-) Orders für ein Symbol ab."""
         try:
             return self.session.fetch_open_orders(symbol)
         except Exception as e:
@@ -58,44 +58,23 @@ class BitgetFutures:
             raise
 
     def fetch_open_trigger_orders(self, symbol: str):
-        """
-        Sucht gezielt und zuverlässig nach offenen Trigger-Orders (SL/TP) für Bitget.
-        """
+        """Sucht zuverlässig nach offenen Trigger-Orders (SL/TP)."""
         try:
-            # Bitget erfordert einen speziellen API-Endpunkt für Trigger-Orders.
-            # Wir rufen diesen direkt auf.
-            clean_symbol = symbol.replace('/', '').replace(':USDT', '') # z.B. PEPEUSDT
-            params = {'productType': 'USDT-FUTURES'}
-            trigger_orders = self.session.privateMixGetV2MixOrderQueryAllPlanOrder(params)
-            
-            # Filtere die Liste nach dem korrekten Symbol und nur nach "Stop"-Orders
-            symbol_trigger_orders = [
-                o for o in trigger_orders['data'] 
-                if o.get('symbol') == clean_symbol 
-                and o.get('planType') == 'stop'
-            ]
-            
-            # Wandel das Format in das Standard-ccxt-Format um, damit run.py es versteht
-            return [self.session.parse_order(o) for o in symbol_trigger_orders]
-            
+            # Wir rufen alle offenen Orders ab und filtern sie dann im Code. Das ist am sichersten.
+            all_open_orders = self.fetch_open_orders(symbol)
+            trigger_orders = [o for o in all_open_orders if o.get('triggerPrice') is not None and o['triggerPrice'] > 0]
+            return trigger_orders
         except Exception as e:
-            logger.error(f"Fehler beim Abrufen von Trigger-Orders: {e}")
+            logger.error(f"Fehler beim Filtern von Trigger-Orders: {e}")
             return [] 
 
     def cancel_order(self, order_id: str, symbol: str):
         """Löscht eine einzelne Order anhand ihrer ID."""
         try:
-            # Für Trigger-Orders benötigt Bitget einen speziellen Befehl
-            params = {'productType': 'USDT-FUTURES'}
-            return self.session.privateMixPostV2MixOrderCancelPlanOrder(self.extend({'symbol': symbol, 'orderId': order_id}, params))
+            return self.session.cancel_order(order_id, symbol)
         except Exception as e:
             logger.error(f"Fehler beim Löschen der Order {order_id}: {e}")
-            # Versuche als Fallback die Standard-Löschfunktion
-            try:
-                return self.session.cancel_order(order_id, symbol)
-            except Exception as e2:
-                 logger.error(f"Auch Standard-Löschung für Order {order_id} fehlgeschlagen: {e2}")
-                 raise
+            raise
 
     def create_market_order(self, symbol: str, side: str, amount: float, leverage: int, margin_mode: str, params={}):
         """
@@ -118,14 +97,13 @@ class BitgetFutures:
 
     def place_trigger_market_order(self, symbol: str, side: str, amount: float, trigger_price: float, reduce: bool = False):
         try:
+            # === FINALE KORREKTUR ===
+            # Der fehlerhafte 'planType'-Parameter wird entfernt.
+            # ccxt fügt die notwendigen Parameter für eine Standard-Stop-Order selbst hinzu.
             params = {
                 'triggerPrice': self.session.price_to_precision(symbol, trigger_price),
-                'planType': 'stop', # Explizit als Stop-Order deklarieren
+                'reduceOnly': reduce,
             }
-            if reduce:
-                params['reduceOnly'] = 'true'
-
-            # Verwende den speziellen Endpunkt für Trigger-Orders
             order = self.session.create_order(symbol, 'market', side, amount, params=params)
             logger.info(f"Trigger-Order platziert: {side} {amount} {symbol} @ {trigger_price}")
             return order
