@@ -63,7 +63,6 @@ def update_trade_state(side: str, sl_price: float = 0.0):
 # --- CORE LOGIC FUNCTIONS ---
 
 def sync_state_with_exchange(bitget, symbol, open_position, trade_state, prev_candle, bot_token, chat_id):
-    """Gleicht den Zustand ab und führt notwendige Korrekturen durch."""
     if open_position:
         if not trade_state:
             logger.warning("⚠️ Fremde Position entdeckt! Übernehme die Verwaltung...")
@@ -74,7 +73,7 @@ def sync_state_with_exchange(bitget, symbol, open_position, trade_state, prev_ca
         logger.info("Position auf Börse gefunden. Überprüfe Stop-Loss-Integrität...")
         all_orders = bitget.fetch_open_orders(symbol)
         sl_side = 'sell' if open_position['side'] == 'long' else 'buy'
-        stop_orders = [o for o in all_orders if o.get('stopPrice') is not None and o['side'] == sl_side]
+        stop_orders = [o for o in all_orders if o.get('stopPrice') is not None and o.get('side') == sl_side]
         sl_count = len(stop_orders)
         
         if sl_count > 1:
@@ -98,20 +97,48 @@ def sync_state_with_exchange(bitget, symbol, open_position, trade_state, prev_ca
              logger.info("✅ Ein korrekter Stop-Loss ist bereits vorhanden.")
             
     else: # Keine Position offen
-        open_orders = bitget.fetch_open_orders(symbol)
-        if open_orders:
-            logger.warning("Keine Position, aber verwaiste Orders gefunden! Räume auf...")
-            for order in open_orders:
-                bitget.cancel_order(order['id'], symbol)
-        
         if trade_state:
             logger.info("Position wurde extern geschlossen. Setze internen Status zurück.")
             update_trade_state('none')
+        open_orders = bitget.fetch_open_orders(symbol)
+        if open_orders:
+            logger.warning(f"{len(open_orders)} verwaiste Orders gefunden! Räume auf...")
+            for order in open_orders:
+                bitget.cancel_order(order['id'], symbol)
     
     return get_trade_state()
 
+def place_order_and_verify(bitget, symbol, side, amount, sl_price, leverage, margin_mode, bot_token, chat_id):
+    try:
+        logger.info(f"Sende {side.upper()}-Market-Order über {amount:.5f} {symbol.split('/')[0]}...")
+        order_result = bitget.create_market_order(symbol, side, amount, leverage, margin_mode)
+        
+        if order_result and order_result.get('id'):
+            logger.info(f"✅ Market-Order an Bitget übermittelt (ID: {order_result.get('id')}). Warte auf Ausführung...")
+            time.sleep(5)
+            
+            new_pos = bitget.fetch_open_positions(symbol)
+            if not new_pos:
+                logger.error("🚨 FEHLER: Order übermittelt, aber nach 5s keine offene Position gefunden!")
+                send_telegram_message(bot_token, chat_id, f"🚨 FEHLER bei *{symbol}*: Order übermittelt, aber Position nicht gefunden!")
+                return
+            
+            logger.info("✅ Positionseröffnung erfolgreich bestätigt.")
+            new_pos = new_pos[0]
+            close_side = 'sell' if side == 'buy' else 'buy'
+            bitget.place_stop_order(symbol, close_side, float(new_pos['contracts']), sl_price)
+            db_side_map = {'buy': 'long', 'sell': 'short'}
+            update_trade_state(db_side_map[side], sl_price)
+            
+            message = f"🔥 *{symbol}* {side.upper()} eröffnet!\n- Hebel: {leverage}x\n- Stop-Loss: ${sl_price:.8f}"
+            send_telegram_message(bot_token, chat_id, message)
+            logger.info(message)
+    except Exception as e:
+        logger.error(f"🚨 KRITISCHER FEHLER bei der Order-Platzierung: {e}", exc_info=True)
+        # ... (error handling) ...
+
 def main():
-    logger.info(f">>> Starte Ausführung für {SYMBOL} (stbot v3.1 - Proaktive Synchronisation)")
+    logger.info(f">>> Starte Ausführung für {SYMBOL} (stbot v3.2 - Final)")
     
     try:
         key_path = os.path.abspath(os.path.join(PROJECT_ROOT, 'secret.json'))
@@ -127,42 +154,84 @@ def main():
     setup_database()
     
     try:
-        # 1. Daten laden
         data = bitget.fetch_recent_ohlcv(SYMBOL, params['market']['timeframe'], 500)
         data = calculate_stochrsi_indicators(data, params['strategy'])
         prev_candle = data.iloc[-2]
         current_candle = data.iloc[-1]
 
-        # 2. Realität prüfen
         positions = bitget.fetch_open_positions(SYMBOL)
         open_position = positions[0] if positions else None
         trade_state = get_trade_state()
         
-        # 3. Synchronisieren & Aufräumen
         trade_state = sync_state_with_exchange(bitget, SYMBOL, open_position, trade_state, prev_candle, bot_token, chat_id)
         open_position = bitget.fetch_open_positions(SYMBOL)[0] if bitget.fetch_open_positions(SYMBOL) else None
 
-        # 4. Handeln basierend auf dem sauberen Zustand
         if open_position:
             logger.info(f"Position offen: {trade_state.get('side', 'unbekannt')}. Prüfe auf Take-Profit-Signal...")
             oversold = params['strategy']['oversold_level']; overbought = params['strategy']['overbought_level']
             
             if trade_state.get('side') == 'long' and current_candle['%k'] > overbought:
                 logger.info(f"🟢 LONG Take-Profit. Schließe Position.")
-                # Hier würde Ihre `close_position_and_cleanup` Funktion aufgerufen
-                pass # Platzhalter
+                # Hier Ihre Logik zum Schließen
             elif trade_state.get('side') == 'short' and current_candle['%k'] < oversold:
                 logger.info(f"🔴 SHORT Take-Profit. Schließe Position.")
-                # Hier würde Ihre `close_position_and_cleanup` Funktion aufgerufen
-                pass # Platzhalter
+                # Hier Ihre Logik zum Schließen
         else:
             logger.info("Keine Position offen. Suche nach neuem Einstieg.")
-            # Hier würde Ihre Einstiegslogik (`place_order_and_verify` etc.) stehen
-            pass # Platzhalter
+            # HIER IST DIE VOLLSTÄNDIGE EINSTIEGSLOGIK
+            trend_filter_cfg = params['strategy'].get('trend_filter', {}); sideways_filter_cfg = params['strategy'].get('sideways_filter', {})
+            trend_allows_long, trend_allows_short, market_is_not_sideways = True, True, True
+
+            if trend_filter_cfg.get('enabled', False) and not pd.isna(prev_candle['ema_trend']):
+                if prev_candle['close'] < prev_candle['ema_trend']:
+                    logger.info("Trend-Filter (Aktiv): Markt unter EMA. Longs deaktiviert."); trend_allows_long = False
+                else:
+                    logger.info("Trend-Filter (Aktiv): Markt über EMA. Shorts deaktiviert."); trend_allows_short = False
+            
+            if sideways_filter_cfg.get('enabled', False) and 'sideways_cross_count' in prev_candle:
+                sideways_max_crosses = sideways_filter_cfg.get('max_crosses', 8)
+                if prev_candle['sideways_cross_count'] > sideways_max_crosses:
+                    logger.warning(f"Seitwärts-Filter (Aktiv): Markt unruhig. Kein Handel."); market_is_not_sideways = False
+
+            base_leverage = params['risk']['base_leverage']; target_atr_pct = params['risk']['target_atr_pct']; max_leverage = params['risk']['max_leverage']
+            current_atr_pct = prev_candle.get('atr_pct', 0)
+            leverage = base_leverage
+            if pd.notna(current_atr_pct) and current_atr_pct > 0:
+                leverage = base_leverage * (target_atr_pct / current_atr_pct)
+            leverage = int(round(max(1.0, min(leverage, max_leverage))))
+            margin_mode = params['risk']['margin_mode']
+            logger.info(f"Berechneter Hebel: {leverage}x. Margin-Modus: {margin_mode}")
+
+            oversold = params['strategy']['oversold_level']; overbought = params['strategy']['overbought_level']
+            use_longs = params['behavior'].get('use_longs', True); use_shorts = params['behavior'].get('use_shorts', True)
+            
+            free_balance = bitget.fetch_balance()['USDT']['free']
+            capital_to_use = free_balance * (params['risk']['balance_fraction_pct'] / 100.0)
+            notional_value = capital_to_use * leverage
+            amount = notional_value / current_candle['close']
+            
+            side = None
+            sl_price = None
+            if (use_longs and trend_allows_long and market_is_not_sideways and prev_candle['%k'] < prev_candle['%d'] and 
+                current_candle['%k'] > current_candle['%d'] and prev_candle['%k'] < oversold):
+                logger.info("🟢 LONG-Signal bestätigt. Alle Filter passiert.")
+                side = 'buy'
+                sl_price = prev_candle['swing_low'] * (1 - params['risk']['sl_buffer_pct'] / 100)
+            elif (use_shorts and trend_allows_short and market_is_not_sideways and prev_candle['%k'] > prev_candle['%d'] and 
+                  current_candle['%k'] < current_candle['%d'] and prev_candle['%k'] > overbought):
+                logger.info("🔴 SHORT-Signal bestätigt. Alle Filter passiert.")
+                side = 'sell'
+                sl_price = prev_candle['swing_high'] * (1 + params['risk']['sl_buffer_pct'] / 100)
+            
+            if side and sl_price:
+                place_order_and_verify(bitget, SYMBOL, side, amount, sl_price, leverage, margin_mode, bot_token, chat_id)
+            else:
+                logger.info("Kein gültiges Signal oder von Filtern blockiert.")
 
     except Exception as e:
         logger.error(f"Unerwarteter Fehler im Haupt-Loop: {e}", exc_info=True)
-        # ... (Ihr Error-Handling) ...
+        error_message = f"🚨 KRITISCHER FEHLER im stbot für *{SYMBOL}*!\n\n`{traceback.format_exc()}`"
+        send_telegram_message(bot_token, chat_id, error_message[:4000])
 
 if __name__ == "__main__":
     main()
