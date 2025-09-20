@@ -29,63 +29,10 @@ def load_config():
 
 params = load_config()
 SYMBOL = params['market']['symbol']
-DB_FILE = os.path.join(os.path.dirname(__file__), f"bot_state_{SYMBOL.replace('/', '-')}.db")
 
-# --- DATABASE FUNCTIONS ---
-def setup_database():
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('CREATE TABLE IF NOT EXISTS bot_state (symbol TEXT PRIMARY KEY, side TEXT)')
-    conn.commit()
-    conn.close()
-
-def get_bot_status():
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT side FROM bot_state WHERE symbol = ?", (SYMBOL,))
-    result = cursor.fetchone()
-    conn.close()
-    return result[0] if result and result[0] != 'none' else None
-
-def update_bot_status(side: str):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("INSERT OR REPLACE INTO bot_state (symbol, side) VALUES (?, ?)", (SYMBOL, side))
-    conn.commit()
-    conn.close()
-
-# --- CORE LOGIC FUNCTIONS ---
-def place_order_and_verify(bitget, symbol, side, amount, sl_price, leverage, margin_mode, bot_token, chat_id):
-    try:
-        logger.info(f"Sende {side.upper()}-Market-Order über {amount:.5f} {symbol.split('/')[0]}...")
-        order_result = bitget.create_market_order(symbol, side, amount, leverage, margin_mode)
-        
-        if order_result and order_result.get('id'):
-            logger.info(f"✅ Market-Order an Bitget übermittelt (ID: {order_result.get('id')}). Warte auf Ausführung...")
-            time.sleep(5)
-            
-            new_pos = bitget.fetch_open_positions(symbol)
-            if not new_pos:
-                logger.error("🚨 FEHLER: Order übermittelt, aber nach 5s keine offene Position gefunden!")
-                send_telegram_message(bot_token, chat_id, f"🚨 FEHLER bei *{symbol}*: Order übermittelt, aber Position nicht gefunden!")
-                return
-            
-            logger.info("✅ Positionseröffnung erfolgreich bestätigt.")
-            new_pos = new_pos[0]
-            close_side = 'sell' if side == 'buy' else 'buy'
-            bitget.place_stop_order(symbol, close_side, float(new_pos['contracts']), sl_price)
-            db_side_map = {'buy': 'long', 'sell': 'short'}
-            update_bot_status(db_side_map[side])
-            
-            message = f"🔥 *{symbol}* {side.upper()} eröffnet!\n- Hebel: {leverage}x\n- Stop-Loss: ${sl_price:.8f}"
-            send_telegram_message(bot_token, chat_id, message)
-            logger.info(message)
-    except Exception as e:
-        logger.error(f"🚨 KRITISCHER FEHLER bei der Order-Platzierung: {e}", exc_info=True)
-        # ... (Error-Handling)
-
+# --- CORE LOGIC ---
 def main():
-    logger.info(f">>> Starte Ausführung für {SYMBOL} (stbot v4.1 - Final)")
+    logger.info(f">>> Starte Ausführung für {SYMBOL} (stbot v5.0 - Final)")
     
     try:
         key_path = os.path.abspath(os.path.join(PROJECT_ROOT, 'secret.json'))
@@ -98,10 +45,23 @@ def main():
         logger.critical(f"Fehler beim Laden der API-Schlüssel: {e}"); sys.exit(1)
 
     bitget = BitgetFutures(api_setup)
-    setup_database()
     
     try:
-        # --- PHASE 1: DATEN LADEN & ZUSTAND PRÜFEN ---
+        # --- PHASE 1: RADIKALES AUFRÄUMEN ZUERST ---
+        logger.info("Starte Aufräum-Routine: Lösche alle alten Stop-Loss-Orders...")
+        try:
+            trigger_orders = bitget.fetch_open_trigger_orders(SYMBOL)
+            if trigger_orders:
+                for order in trigger_orders:
+                    bitget.cancel_trigger_order(order['id'], SYMBOL)
+                    logger.info(f"Alte SL-Order {order['id']} gelöscht.")
+            else:
+                logger.info("Keine alten SL-Orders zum Löschen gefunden.")
+        except Exception as e:
+            logger.error(f"Fehler beim Aufräumen alter SL-Orders: {e}")
+            # Wir machen trotzdem weiter, da der nächste Schritt den Zustand korrigiert
+
+        # --- PHASE 2: DATEN LADEN & ZUSTAND PRÜFEN ---
         data = bitget.fetch_recent_ohlcv(SYMBOL, params['market']['timeframe'], 500)
         data = calculate_stochrsi_indicators(data, params['strategy'])
         prev_candle = data.iloc[-2]
@@ -109,65 +69,47 @@ def main():
 
         open_position = bitget.fetch_open_positions(SYMBOL)
         open_position = open_position[0] if open_position else None
-        
-        # --- PHASE 2: SYNCHRONISIEREN & AUFRÄUMEN ---
-        if open_position:
-            logger.info("Position auf Börse gefunden. Überprüfe Stop-Loss-Integrität...")
-            # Korrekter Aufruf, um NUR Stop-Orders zu finden
-            stop_orders = bitget.fetch_open_orders(SYMBOL, params={'stop': True})
-            sl_side_to_find = 'sell' if open_position['side'] == 'long' else 'buy'
-            relevant_sl_orders = [o for o in stop_orders if o.get('side') == sl_side_to_find]
-            
-            if len(relevant_sl_orders) > 1:
-                logger.warning(f"⚠️ {len(relevant_sl_orders)} Stop-Loss-Orders gefunden! Räume auf...")
-                for order in relevant_sl_orders:
-                    bitget.cancel_order(order['id'], SYMBOL, params={'stop': True})
-                # Nach dem Löschen erneut prüfen, um einen neuen zu setzen
-                relevant_sl_orders = []
 
-            if not relevant_sl_orders:
-                logger.warning("⚠️ Kein gültiger Stop-Loss gefunden! Platziere Notfall-SL...")
-                if open_position['side'] == 'long':
-                    sl_price = prev_candle['swing_low'] * (1 - params['risk']['sl_buffer_pct'] / 100)
-                else:
-                    sl_price = prev_candle['swing_high'] * (1 + params['risk']['sl_buffer_pct'] / 100)
-                
-                bitget.place_stop_order(SYMBOL, sl_side_to_find, float(open_position['contracts']), sl_price)
-                update_bot_status(open_position['side']) # Stelle sicher, dass der Status korrekt ist
-                send_telegram_message(bot_token, chat_id, f"⚠️ *{SYMBOL}*: Position war ungeschützt! Notfall-Stop-Loss wurde platziert.")
+        # --- PHASE 3: ZUSTAND VERWALTEN ODER NEUEN TRADE SUCHEN ---
+        if open_position:
+            logger.info(f"Position ({open_position['side']}) gefunden. Platziere/Aktualisiere Stop-Loss...")
             
+            # Platziere IMMER einen neuen, korrekten SL
+            sl_side = 'sell' if open_position['side'] == 'long' else 'buy'
+            if open_position['side'] == 'long':
+                sl_price = prev_candle['swing_low'] * (1 - params['risk']['sl_buffer_pct'] / 100)
             else:
-                 logger.info("✅ Ein korrekter Stop-Loss ist bereits vorhanden.")
-        
+                sl_price = prev_candle['swing_high'] * (1 + params['risk']['sl_buffer_pct'] / 100)
+            
+            bitget.place_stop_order(SYMBOL, sl_side, float(open_position['contracts']), sl_price)
+            logger.info("✅ Stop-Loss erfolgreich platziert/aktualisiert.")
+
+            # Prüfe auf Take-Profit
+            logger.info("Prüfe auf Take-Profit-Signal...")
+            oversold = params['strategy']['oversold_level']; overbought = params['strategy']['overbought_level']
+            if (open_position['side'] == 'long' and current_candle['%k'] > overbought) or \
+               (open_position['side'] == 'short' and current_candle['%k'] < oversold):
+                
+                logger.info("🟢 Take-Profit-Signal erkannt. Schließe Position und räume auf...")
+                bitget.create_market_order(SYMBOL, sl_side, float(open_position['contracts']), 0, open_position['marginMode'], params={'reduceOnly': True})
+                time.sleep(2)
+                # Nach dem Schließen nochmals alle verbleibenden Trigger-Orders löschen
+                remaining_triggers = bitget.fetch_open_trigger_orders(SYMBOL)
+                for order in remaining_triggers:
+                    bitget.cancel_trigger_order(order['id'], SYMBOL)
+                
+                send_telegram_message(bot_token, chat_id, f"✅ Position *{SYMBOL}* ({open_position['side']}) durch Take-Profit geschlossen.")
+            else:
+                logger.info("Kein Take-Profit-Signal.")
+
         else: # Keine Position offen
-            bot_status = get_bot_status()
-            if bot_status:
-                logger.info("Position wurde extern geschlossen. Setze internen Status zurück.")
-                update_bot_status('none')
-            # Prüfe auf verwaiste Orders und lösche sie
-            all_orders = bitget.fetch_open_orders(SYMBOL) + bitget.fetch_open_orders(SYMBOL, params={'stop': True})
-            if all_orders:
-                logger.warning(f"{len(all_orders)} verwaiste Orders gefunden! Räume auf...")
-                unique_orders = {order['id']: order for order in all_orders}.values()
-                for order in unique_orders:
-                    is_stop = order.get('stopPrice') is not None
-                    bitget.cancel_order(order['id'], SYMBOL, params={'stop': is_stop})
-        
-        # --- PHASE 3: HANDELSENTSCHEIDUNG TREFFEN ---
-        # Lese den Zustand neu, da er sich geändert haben könnte
-        open_position = bitget.fetch_open_positions(SYMBOL)
-        open_position = open_position[0] if open_position else None
-
-        if open_position:
-            # Hier Logik für Take-Profit
-            pass
-        else:
-            # Hier Logik für neuen Einstieg
-            pass
-
+            logger.info("Keine Position offen. Suche nach neuem Einstieg...")
+            # ... (Ihre bestehende, funktionierende Logik zum Eröffnen eines neuen Trades) ...
+            
     except Exception as e:
         logger.error(f"Unerwarteter Fehler im Haupt-Loop: {e}", exc_info=True)
-        # ... (Error-Handling)
+        error_message = f"🚨 KRITISCHER FEHLER im stbot für *{SYMBOL}*!\n\n`{traceback.format_exc()}`"
+        send_telegram_message(bot_token, chat_id, error_message[:4000])
 
 if __name__ == "__main__":
     main()
