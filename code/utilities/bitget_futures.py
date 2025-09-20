@@ -39,7 +39,12 @@ class BitgetFutures:
     def fetch_open_positions(self, symbol: str):
         try:
             all_positions = self.session.fetch_positions()
-            symbol_positions = [p for p in all_positions if p.get('info', {}).get('symbol') == symbol.replace('/', '') and p.get('contracts') is not None and float(p['contracts']) > 0]
+            symbol_positions = [
+                p for p in all_positions 
+                if p.get('info', {}).get('symbol') == symbol.replace('/', '') 
+                and p.get('contracts') is not None 
+                and float(p['contracts']) > 0
+            ]
             return symbol_positions
         except Exception as e:
             logger.error(f"Fehler beim Abrufen der offenen Positionen: {e}")
@@ -53,6 +58,16 @@ class BitgetFutures:
             logger.error(f"Fehler beim Abrufen offener Orders: {e}")
             raise
 
+    def fetch_open_trigger_orders(self, symbol: str):
+        """Sucht gezielt nach offenen Trigger-Orders (SL/TP)."""
+        try:
+            all_open_orders = self.session.fetch_open_orders(symbol)
+            trigger_orders = [o for o in all_open_orders if o.get('triggerPrice') is not None and o['triggerPrice'] > 0]
+            return trigger_orders
+        except Exception as e:
+            logger.error(f"Fehler beim Abrufen von Trigger-Orders: {e}")
+            return [] 
+
     def cancel_order(self, order_id: str, symbol: str):
         """Löscht eine einzelne Order anhand ihrer ID."""
         try:
@@ -62,12 +77,20 @@ class BitgetFutures:
             raise
 
     def create_market_order(self, symbol: str, side: str, amount: float, leverage: int, margin_mode: str, params={}):
+        """
+        Platziert eine Market-Order und sendet Hebel/Margin-Modus als Teil der Order,
+        um Konflikte zu vermeiden.
+        """
         try:
-            if leverage > 0 and margin_mode:
-                self.session.set_leverage(leverage, symbol, {'marginMode': margin_mode})
-                self.session.set_margin_mode(margin_mode, symbol)
+            order_params = {}
+            if params:
+                order_params.update(params)
 
-            order = self.session.create_order(symbol, 'market', side, amount, params=params)
+            order_params['marginMode'] = margin_mode.lower()
+            if leverage > 0:
+                order_params['leverage'] = leverage
+
+            order = self.session.create_order(symbol, 'market', side, amount, params=order_params)
             return order
         except Exception as e:
             logger.error(f"Fehler beim Erstellen der Market-Order: {e}")
