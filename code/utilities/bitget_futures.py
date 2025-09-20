@@ -50,7 +50,7 @@ class BitgetFutures:
             raise Exception(f"Failed to fetch open positions: {e}")
     
     def fetch_open_orders(self, symbol: str):
-        """Ruft alle offenen (inklusive Trigger-) Orders für ein Symbol ab."""
+        """Ruft alle offenen (nicht-getriggerten) Orders für ein Symbol ab."""
         try:
             return self.session.fetch_open_orders(symbol)
         except Exception as e:
@@ -58,28 +58,44 @@ class BitgetFutures:
             raise
 
     def fetch_open_trigger_orders(self, symbol: str):
-        """Sucht zuverlässig nach offenen Trigger-Orders (SL/TP)."""
+        """
+        Sucht gezielt und zuverlässig nach offenen Trigger-Orders (SL/TP) für Bitget
+        unter Verwendung eines spezifischen API-Endpunkts.
+        """
         try:
-            # Wir rufen alle offenen Orders ab und filtern sie dann im Code. Das ist am sichersten.
-            all_open_orders = self.fetch_open_orders(symbol)
-            trigger_orders = [o for o in all_open_orders if o.get('triggerPrice') is not None and o['triggerPrice'] > 0]
-            return trigger_orders
+            clean_symbol = symbol.replace('/', '').replace(':USDT', '')
+            params = {'productType': 'USDT-FUTURES', 'symbol': clean_symbol}
+            
+            # Dies ist der spezifische, interne ccxt-Aufruf für Plan-Orders
+            response = self.session.privateMixGetV2MixPlanCurrentPlan(params)
+            
+            # Filtere nur nach Stop-Orders
+            stop_orders_data = [o for o in response.get('data', []) if o.get('planType') == 'stop']
+            
+            # Wandel das Format in das Standard-ccxt-Format um
+            return [self.session.parse_order(order) for order in stop_orders_data]
+            
         except Exception as e:
-            logger.error(f"Fehler beim Filtern von Trigger-Orders: {e}")
+            logger.error(f"Fehler beim Abrufen von Trigger-Orders: {e}")
             return [] 
 
-    def cancel_order(self, order_id: str, symbol: str):
-        """Löscht eine einzelne Order anhand ihrer ID."""
+    def cancel_order(self, order_id: str, symbol: str, is_trigger_order: bool = False):
+        """
+        Löscht eine einzelne Order anhand ihrer ID. Unterscheidet jetzt zwischen
+        normalen und Trigger-Orders.
+        """
         try:
-            return self.session.cancel_order(order_id, symbol)
+            if is_trigger_order:
+                clean_symbol = symbol.replace('/', '').replace(':USDT', '')
+                params = {'productType': 'USDT-FUTURES', 'symbol': clean_symbol, 'orderId': order_id}
+                return self.session.privateMixPostV2MixPlanCancelPlan(params)
+            else:
+                return self.session.cancel_order(order_id, symbol)
         except Exception as e:
             logger.error(f"Fehler beim Löschen der Order {order_id}: {e}")
             raise
 
     def create_market_order(self, symbol: str, side: str, amount: float, leverage: int, margin_mode: str, params={}):
-        """
-        Platziert eine Market-Order und sendet Hebel/Margin-Modus als Teil der Order.
-        """
         try:
             order_params = {}
             if params:
@@ -97,13 +113,14 @@ class BitgetFutures:
 
     def place_trigger_market_order(self, symbol: str, side: str, amount: float, trigger_price: float, reduce: bool = False):
         try:
-            # === FINALE KORREKTUR ===
-            # Der fehlerhafte 'planType'-Parameter wird entfernt.
-            # ccxt fügt die notwendigen Parameter für eine Standard-Stop-Order selbst hinzu.
             params = {
                 'triggerPrice': self.session.price_to_precision(symbol, trigger_price),
-                'reduceOnly': reduce,
+                'planType': 'stop',
             }
+            if reduce:
+                # Bitget verwendet 'reduceOnly' im Haupt-Params-Objekt für Trigger-Orders
+                params['reduceOnly'] = 'true'
+
             order = self.session.create_order(symbol, 'market', side, amount, params=params)
             logger.info(f"Trigger-Order platziert: {side} {amount} {symbol} @ {trigger_price}")
             return order
