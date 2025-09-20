@@ -109,17 +109,11 @@ def close_position_and_cleanup(bitget, position, bot_token, chat_id):
         
         logger.info(f"Räume verbleibende offene Orders für {symbol} auf...")
         time.sleep(2)
-        # Rufe alle Order-Typen ab, um sicher zu sein
         open_orders = bitget.fetch_open_orders(symbol)
-        trigger_orders = bitget.fetch_open_trigger_orders(symbol)
-        all_orders_to_cancel = open_orders + trigger_orders
-        
-        if all_orders_to_cancel:
-            for order in all_orders_to_cancel:
+        if open_orders:
+            for order in open_orders:
                 try:
-                    # Unterscheide, ob es eine Trigger-Order ist
-                    is_trigger = order.get('triggerPrice') is not None
-                    bitget.cancel_order(order['id'], symbol, is_trigger_order=is_trigger)
+                    bitget.cancel_order(order['id'], symbol)
                     logger.info(f"Order {order['id']} gelöscht.")
                 except Exception as e:
                     logger.error(f"Konnte Order {order['id']} nicht löschen: {e}")
@@ -192,7 +186,7 @@ def main():
             elif sl_order_count > 1:
                 logger.warning(f"⚠️ MEHRERE STOP-LOSS ORDERS ({sl_order_count}) ENTDECKT! Räume auf und setze einen neuen...")
                 for order in sl_orders:
-                    bitget.cancel_order(order['id'], SYMBOL, is_trigger_order=True)
+                    bitget.cancel_order(order['id'], SYMBOL)
                 
                 sl_to_place = trade_state.get('sl_price') if trade_state else None
                 if not sl_to_place or sl_to_place <= 0:
@@ -210,14 +204,11 @@ def main():
         if not open_position and trade_state:
             message = f"✅ Position für *{SYMBOL}* ({trade_state['side']}) auf der Börse geschlossen bestätigt."; send_telegram_message(bot_token, chat_id, message)
             logger.info(message)
-            open_orders = bitget.fetch_open_orders(SYMBOL)
-            trigger_orders = bitget.fetch_open_trigger_orders(SYMBOL)
-            all_orders = open_orders + trigger_orders
+            all_orders = bitget.fetch_open_orders(SYMBOL)
             if all_orders:
                 logger.warning("Position geschlossen, aber verwaiste Orders gefunden. Räume jetzt auf...")
                 for order in all_orders:
-                    is_trigger = order.get('triggerPrice') is not None
-                    bitget.cancel_order(order['id'], SYMBOL, is_trigger_order=is_trigger)
+                    bitget.cancel_order(order['id'], SYMBOL)
             update_trade_state('none')
             trade_state = None
 
@@ -243,8 +234,7 @@ def main():
 
         else: 
             logger.info("Keine Position offen. Suche nach neuem Einstieg.")
-            # Die komplette Einstiegslogik
-            # ... (Code bleibt gleich, hier zur Übersichtlichkeit gekürzt) ...
+            # ... (Die Einstiegslogik bleibt unverändert) ...
 
     except Exception as e:
         logger.error(f"Unerwarteter Fehler im Haupt-Loop: {e}", exc_info=True)
