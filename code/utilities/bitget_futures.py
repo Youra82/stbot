@@ -37,7 +37,6 @@ class BitgetFutures:
 
     def fetch_open_positions(self, symbol: str):
         try:
-            # fetch_positions(symbols) ist zuverlässiger
             all_positions = self.session.fetch_positions([symbol]) 
             open_positions = [
                 p for p in all_positions 
@@ -50,7 +49,6 @@ class BitgetFutures:
 
     def fetch_open_orders(self, symbol: str):
         try:
-            # Ruft alle Order-Typen ab
             return self.session.fetch_open_orders(symbol)
         except Exception as e:
             logger.error(f"Fehler beim Abrufen offener Orders: {e}")
@@ -84,8 +82,7 @@ class BitgetFutures:
                 'stopPrice': self.session.price_to_precision(symbol, stop_price),
                 'reduceOnly': True,
             }
-            # 'stop-market' ist der korrekte Typ für SL-Orders, die als Market-Order ausgeführt werden sollen
-            return self.session.create_order(symbol, 'market', side, amount, params)
+            return self.session.create_order(symbol, 'market', side, amount, params=params)
         except Exception as e:
             logger.error(f"Fehler beim Platzieren der Stop-Order: {e}")
             raise
