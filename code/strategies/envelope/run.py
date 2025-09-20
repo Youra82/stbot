@@ -8,7 +8,6 @@ import pandas as pd
 import traceback
 import sqlite3
 import time
-from decimal import Decimal
 
 PROJECT_ROOT = os.path.join(os.path.dirname(__file__), '..', '..', '..')
 sys.path.append(os.path.join(PROJECT_ROOT, 'code'))
@@ -130,7 +129,7 @@ def close_position_and_cleanup(bitget, position, bot_token, chat_id):
         return False
 
 def main():
-    logger.info(f">>> Starte Ausführung für {SYMBOL} (stbot v2.6 - Finale Bereinigung)")
+    logger.info(f">>> Starte Ausführung für {SYMBOL} (stbot v2.5 - Robuster SL-Check)")
     
     try:
         key_path = os.path.abspath(os.path.join(PROJECT_ROOT, 'secret.json'))
@@ -163,16 +162,21 @@ def main():
                 trade_state = get_trade_state()
                 send_telegram_message(bot_token, chat_id, f"⚠️ *{SYMBOL}*: Fremde {open_position['side']}-Position entdeckt und Verwaltung übernommen.")
 
-            logger.info("Position auf Börse gefunden. Prüfe Stop-Loss-Status...")
+            logger.info("Position auf Börse gefunden. Prüfe auf fehlenden Stop-Loss...")
             trigger_orders = bitget.fetch_open_trigger_orders(SYMBOL)
+            
+            # === FINALE KORREKTUR: Robuster SL-Check ===
+            # Prüft nur noch, ob irgendeine SL-Order in die richtige Richtung existiert.
+            
+            sl_order_found = False
             correct_sl_side = 'sell' if open_position['side'] == 'long' else 'buy'
+            for order in trigger_orders:
+                if order.get('side') == correct_sl_side:
+                    logger.info(f"Passende SL-Order {order['id']} gefunden. Alles in Ordnung.")
+                    sl_order_found = True
+                    break
             
-            # Zähle nur die relevanten SL-Orders
-            sl_orders = [o for o in trigger_orders if o.get('side') == correct_sl_side]
-            sl_order_count = len(sl_orders)
-            
-            # === FINALE KORREKTUR: Logik basierend auf der ANZAHL der SLs ===
-            if sl_order_count == 0:
+            if not sl_order_found:
                 logger.warning(f"⚠️ FEHLENDER STOP-LOSS ENTDECKT! Platziere ihn jetzt...")
                 sl_to_place = trade_state.get('sl_price') if trade_state else None
                 if not sl_to_place or sl_to_place <= 0:
@@ -184,26 +188,6 @@ def main():
                     update_trade_state(open_position['side'], sl_to_place)
                 bitget.place_trigger_market_order(SYMBOL, correct_sl_side, float(open_position['contracts']), sl_to_place, reduce=True)
                 send_telegram_message(bot_token, chat_id, f"⚠️ *{SYMBOL}*: Fehlender Stop-Loss wurde automatisch nachplatziert.")
-            
-            elif sl_order_count > 1:
-                logger.warning(f"⚠️ MEHRERE STOP-LOSS ORDERS ({sl_order_count}) ENTDECKT! Räume auf und setze einen neuen...")
-                # Lösche alle überflüssigen Orders
-                for order in sl_orders:
-                    bitget.cancel_order(order['id'], SYMBOL)
-                
-                # Platziere einen einzigen, korrekten SL neu (gleiche Logik wie oben)
-                sl_to_place = trade_state.get('sl_price') if trade_state else None
-                if not sl_to_place or sl_to_place <= 0:
-                    if open_position['side'] == 'long':
-                        sl_to_place = prev_candle['swing_low'] * (1 - params['risk']['sl_buffer_pct'] / 100)
-                    else: # short
-                        sl_to_place = prev_candle['swing_high'] * (1 + params['risk']['sl_buffer_pct'] / 100)
-                    update_trade_state(open_position['side'], sl_to_place)
-                bitget.place_trigger_market_order(SYMBOL, correct_sl_side, float(open_position['contracts']), sl_to_place, reduce=True)
-                send_telegram_message(bot_token, chat_id, f"⚠️ *{SYMBOL}*: Überflüssige Stop-Loss-Orders gelöscht und einen neuen, korrekten SL platziert.")
-
-            else: # sl_order_count == 1
-                 logger.info("✅ Ein korrekter Stop-Loss ist bereits vorhanden. Alles in Ordnung.")
         
         if not open_position and trade_state:
             message = f"✅ Position für *{SYMBOL}* ({trade_state['side']}) auf der Börse geschlossen bestätigt."; send_telegram_message(bot_token, chat_id, message)
