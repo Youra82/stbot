@@ -3,17 +3,22 @@
 import ccxt
 import logging
 import pandas as pd
+from datetime import datetime, timezone
 
 logger = logging.getLogger('stbot')
 
 class BitgetFutures:
-    def __init__(self, api_setup):
-        self.session = ccxt.bitget({
-            'apiKey': api_setup['apiKey'],
-            'secret': api_setup['secret'],
-            'password': api_setup['password'],
-            'options': { 'defaultType': 'swap' },
-        })
+    def __init__(self, api_setup=None):
+        if api_setup:
+            self.session = ccxt.bitget({
+                'apiKey': api_setup['apiKey'],
+                'secret': api_setup['secret'],
+                'password': api_setup['password'],
+                'options': { 'defaultType': 'swap' },
+            })
+        else:
+            self.session = ccxt.bitget({'options': { 'defaultType': 'swap' }})
+            
         self.session.load_markets()
 
     def fetch_balance(self):
@@ -33,9 +38,49 @@ class BitgetFutures:
             logger.error(f"Fehler beim Laden der Kerzendaten: {e}")
             raise
 
+    def fetch_historical_ohlcv(self, symbol: str, timeframe: str, start_date_str: str, end_date_str: str) -> pd.DataFrame:
+        """
+        Lädt historische Kerzendaten für einen gegebenen Zeitraum herunter.
+        """
+        try:
+            start_ts = int(datetime.strptime(start_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
+            end_ts = int(datetime.strptime(end_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
+            
+            all_ohlcv = []
+            limit = 1000
+            
+            while start_ts < end_ts:
+                ohlcv = self.session.fetch_ohlcv(symbol, timeframe, since=start_ts, limit=limit)
+                if not ohlcv:
+                    break 
+                
+                all_ohlcv.extend(ohlcv)
+                last_timestamp = ohlcv[-1][0]
+                
+                if last_timestamp >= end_ts:
+                    break
+                    
+                start_ts = last_timestamp + 1
+                
+            if not all_ohlcv:
+                return pd.DataFrame()
+                
+            df = pd.DataFrame(all_ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
+            
+            df = df[(df['timestamp'] >= pd.to_datetime(start_date_str, utc=True)) & (df['timestamp'] <= pd.to_datetime(end_date_str, utc=True))]
+
+            df.set_index('timestamp', inplace=True)
+            df = df[~df.index.duplicated(keep='first')]
+            df.sort_index(inplace=True)
+            return df
+        except Exception as e:
+            logger.error(f"Fehler beim Laden historischer Daten: {e}")
+            raise
+
     def fetch_open_positions(self, symbol: str):
         try:
-            all_positions = self.session.fetch_positions([symbol]) 
+            all_positions = self.session.fetch_positions([symbol])
             open_positions = [
                 p for p in all_positions 
                 if p.get('contracts') is not None and float(p['contracts']) > 0
@@ -45,20 +90,18 @@ class BitgetFutures:
             logger.error(f"Fehler beim Abrufen der offenen Positionen: {e}")
             raise
 
-    def fetch_open_trigger_orders(self, symbol: str):
-        """Ruft alle offenen Trigger-Orders (SL/TP) für ein Symbol ab."""
+    def fetch_open_orders(self, symbol: str, params={}):
         try:
-            return self.session.fetch_open_orders(symbol, params={'stop': True})
+            return self.session.fetch_open_orders(symbol, params=params)
         except Exception as e:
-            logger.error(f"Fehler beim Abrufen offener Trigger-Orders: {e}")
+            logger.error(f"Fehler beim Abrufen offener Orders: {e}")
             raise
 
-    def cancel_trigger_order(self, order_id: str, symbol: str):
-        """Löscht eine einzelne Trigger-Order anhand ihrer ID."""
+    def cancel_order(self, order_id: str, symbol: str, params={}):
         try:
-            return self.session.cancel_order(order_id, symbol, params={'stop': True})
+            return self.session.cancel_order(order_id, symbol, params=params)
         except Exception as e:
-            logger.error(f"Fehler beim Löschen der Trigger-Order {order_id}: {e}")
+            logger.error(f"Fehler beim Löschen der Order {order_id}: {e}")
             raise
 
     def create_market_order(self, symbol: str, side: str, amount: float, leverage: int, margin_mode: str, params={}):
@@ -77,7 +120,6 @@ class BitgetFutures:
             raise
 
     def place_stop_order(self, symbol: str, side: str, amount: float, stop_price: float):
-        """Platziert eine Stop-Market-Order (für Stop-Loss)."""
         try:
             params = {
                 'stopPrice': self.session.price_to_precision(symbol, stop_price),
