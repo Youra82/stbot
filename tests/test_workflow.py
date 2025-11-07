@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pandas as pd
 import numpy as np 
 import ccxt
+import time # Hinzugefügt für sleep
 
 # Füge das Projektverzeichnis zum Python-Pfad hinzu
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -20,7 +21,7 @@ from stbot.utils.trade_manager import check_and_open_new_position, housekeeper_r
 from stbot.utils.trade_manager import set_trade_lock, is_trade_locked 
 
 # =========================================================================
-# FIXTURE DEFINITION (KOPF DES TESTS)
+# FIXTURE DEFINITION (Behebt "fixture 'test_setup' not found")
 # =========================================================================
 @pytest.fixture(scope="module")
 def test_setup():
@@ -143,6 +144,8 @@ def test_full_stbot_workflow_on_bitget(test_setup):
     with patch('stbot.utils.trade_manager.set_trade_lock'), \
         patch('stbot.utils.trade_manager.is_trade_locked', return_value=False), \
         patch.object(exchange, 'fetch_recent_ohlcv', return_value=mock_df), \
+        # NEU: Mocke das Guthaben, um sicherzustellen, dass genügend Kapital verfügbar ist (z.B. 10000 USDT)
+        patch.object(exchange, 'fetch_balance_usdt', return_value=10000.00), \
         patch.object(exchange, 'fetch_ticker', return_value={'last': 0.5, 'symbol': symbol}), \
         patch('stbot.strategy.trade_logic.get_titan_signal', return_value=('buy', 0.5)): 
 
