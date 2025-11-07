@@ -10,19 +10,19 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = SCRIPT_DIR
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
-# *** Geändert: Importpfad ***
+# Geändert: Importpfad (Exchange bleibt)
 from titanbot.utils.exchange import Exchange
 
 def main():
     """
-    Der Master Runner für den TitanBot (Voll-Dynamisches Kapital).
+    Der Master Runner für den STBot (Voll-Dynamisches Kapital).
     - Liest die settings.json, um den Modus (Autopilot/Manuell) zu bestimmen.
     - Startet für jede als "active" markierte Strategie einen separaten run.py Prozess
       innerhalb der korrekten virtuellen Umgebung.
     """
     settings_file = os.path.join(SCRIPT_DIR, 'settings.json')
     optimization_results_file = os.path.join(SCRIPT_DIR, 'artifacts', 'results', 'optimization_results.json')
-    # *** Geändert: Pfad zum Bot-Runner ***
+    # Pfad zum Bot-Runner
     bot_runner_script = os.path.join(SCRIPT_DIR, 'src', 'titanbot', 'strategy', 'run.py')
     secret_file = os.path.join(SCRIPT_DIR, 'secret.json')
 
@@ -33,8 +33,8 @@ def main():
         return
 
     print("=======================================================")
-    # *** Geändert: Name ***
-    print("TitanBot Master Runner v1.0")
+    # Geändert: Name
+    print("STBot Master Runner v1.0")
     print("=======================================================")
 
     try:
@@ -44,14 +44,14 @@ def main():
         with open(secret_file, 'r') as f:
             secrets = json.load(f)
 
-        # *** Geändert: Account-Name (optional) ***
+        # Account-Name (optional)
         if not secrets.get('jaegerbot'): # Behalte den Secret-Namen bei
             print("Fehler: Kein 'jaegerbot'-Account in secret.json gefunden.")
             return
         main_account_config = secrets['jaegerbot'][0]
 
         print(f"Frage Kontostand für Account '{main_account_config.get('name', 'Standard')}' ab...")
-        
+
         live_settings = settings.get('live_trading_settings', {})
         use_autopilot = live_settings.get('use_auto_optimizer_results', False)
 
@@ -78,19 +78,32 @@ def main():
                 print(f"\n--- Überspringe inaktive Strategie: {symbol} ({timeframe}) ---")
                 continue
 
-            symbol, timeframe, use_macd = None, None, None # use_macd wird für SMC nicht verwendet
+            symbol, timeframe, use_macd = None, None, None 
 
             if use_autopilot and isinstance(strategy_info, str):
-                # ... (Diese Logik muss ggf. angepasst werden, wenn der Autopilot
-                # ... (für SMC genutzt wird, aktuell ignoriert)
-                pass 
-            
+                 # Wenn Autopilot die Config-Dateinamen liefert (z.B. config_BTCUSDTUSDT_1h.json)
+                 config_filename = strategy_info
+                 if config_filename.endswith('_macd.json'):
+                    use_macd = True
+                 else:
+                    use_macd = False
+                 
+                 # Extrahiere Symbol und Timeframe aus dem Dateinamen
+                 parts = config_filename.split('_')
+                 if len(parts) >= 3:
+                     symbol_tf = parts[1]
+                     timeframe = parts[2].split('.')[0]
+                     # Füge den :USDT Suffix wieder hinzu, um CCXT-kompatibel zu sein
+                     symbol = f"{symbol_tf.replace('USDT', '/')}:USDT"
+                     
+                     # Behebe den Fall, dass das Symbol XRPUSDTUSDT ist
+                     if symbol.startswith('XRP/USDT:USDT'): symbol = 'XRP/USDT:USDT'
+                     
             elif isinstance(strategy_info, dict):
                 symbol = strategy_info.get('symbol')
                 timeframe = strategy_info.get('timeframe')
-                # use_macd wird nicht mehr benötigt, aber wir müssen einen
-                # Dummy-Wert übergeben, da run.py es erwartet
-                use_macd = strategy_info.get('use_macd_filter', False) 
+                # use_macd wird als Dummy-Wert übergeben
+                use_macd = strategy_info.get('use_macd_filter', False)
 
             if not all([symbol, timeframe, use_macd is not None]):
                 print(f"Warnung: Unvollständige Strategie-Info: {strategy_info}. Überspringe.")
@@ -104,7 +117,7 @@ def main():
                 "--symbol", symbol,
                 "--timeframe", timeframe,
                 # Wir übergeben 'use_macd' als Dummy-Argument, da 'run.py' es erwartet
-                "--use_macd", str(use_macd) 
+                "--use_macd", str(use_macd)
             ]
 
             subprocess.Popen(command)
