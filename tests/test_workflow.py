@@ -1,7 +1,6 @@
 # Pfad: /home/matola/stbot/tests/test_workflow.py
 
 # tests/test_workflow.py
-# FÜR 30 USDT, XRP/USDT:USDT, TSL FUNKTIONIERT
 import pytest
 import os
 import sys
@@ -15,20 +14,18 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
 # Korrekter Import der tatsächlich existierenden Funktionen
-# *** ÄNDERUNG: titanbot durch stbot ersetzt ***
 from stbot.utils.exchange import Exchange
 from stbot.utils.trade_manager import check_and_open_new_position, housekeeper_routine
-from stbot.utils.trade_manager import set_trade_lock, is_trade_locked # is_trade_locked wird jetzt gemockt
+from stbot.utils.trade_manager import set_trade_lock, is_trade_locked 
 
 @pytest.fixture(scope="module")
 def test_setup():
-    # *** ÄNDERUNG: Bot-Name von TitanBot zu STBot ***
     print("\n--- Starte umfassenden LIVE STBot-Workflow-Test ---")
     print("\n[Setup] Bereite Testumgebung vor...")
 
     secret_path = os.path.join(PROJECT_ROOT, 'secret.json')
     if not os.path.exists(secret_path):
-         pytest.skip("secret.json nicht gefunden. Überspringe Live-Workflow-Test.")
+        pytest.skip("secret.json nicht gefunden. Überspringe Live-Workflow-Test.")
 
     with open(secret_path, 'r') as f:
         secrets = json.load(f)
@@ -48,9 +45,6 @@ def test_setup():
 
     # XRP FÜR TEST (ANGEPASSTE PARAMETER FÜR NIEDRIGERES RISIKO UND MARGIN)
     symbol = 'XRP/USDT:USDT'
-    # Die Strategie-Parameter werden hier beibehalten, obwohl sie alt sind, 
-    # da die Testlogik nur das Fehlen eines Signals (MOCK) prüft. 
-    # Nach der Optimierung sollten diese mit echten Werten überschrieben werden.
     params = {
         'market': {'symbol': symbol, 'timeframe': '5m'},
         'strategy': { 'ema_short': 9, 'ema_long': 21, 'rsi_period': 14, 'volume_ma_period': 20 },
@@ -120,8 +114,7 @@ def test_setup():
 def test_full_titanbot_workflow_on_bitget(test_setup):
     exchange, params, telegram_config, symbol, logger = test_setup
 
-    # NEU: Der Trade-Lock-Check wird für den Test immer auf FALSE gesetzt
-    # *** ÄNDERUNG: titanbot durch stbot ersetzt (an 3 Stellen) ***
+    # Der Trade-Lock-Check wird für den Test immer auf FALSE gesetzt
     with patch('stbot.utils.trade_manager.set_trade_lock'), \
         patch('stbot.utils.trade_manager.is_trade_locked', return_value=False), \
         patch('stbot.strategy.trade_logic.get_titan_signal', return_value=('buy', None)):
