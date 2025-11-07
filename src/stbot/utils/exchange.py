@@ -1,5 +1,6 @@
 # /root/titanbot/src/titanbot/utils/exchange.py
-# KORRIGIERTE VERSION V3 - NUTZT DIE BITGET-SPEZIFISCHEN PARAMETER INNERHALB EINER MARKET ORDER (WIE IM ERFOLGREICHEN BEISPIEL)
+# KORRIGIERTE VERSION V3 - NUTZT DIE BITGET-SPEZIFISCHEN PARAMETER INNERHALB EINER MARKET ORDER
+# ANGEPASST: Methoden werfen bei kritischen Fehlern Ausnahmen (Exceptions)
 import ccxt
 import pandas as pd
 from datetime import datetime, timezone, timedelta
@@ -115,7 +116,6 @@ class Exchange:
             logger.error(f"Fehler bei fetch_ticker für {symbol}: {e}")
             return None
 
-    # *** START: 1:1 JAEGERBOT LOGIK ***
     def set_margin_mode(self, symbol, mode='isolated'):
         if not self.markets: return False
         try:
@@ -139,41 +139,41 @@ class Exchange:
             else:
                 return True # War bereits gesetzt, ist OK
             return False # Expliziter Fehler
-    # *** ENDE: 1:1 JAEGERBOT LOGIK ***
 
     def create_market_order(self, symbol, side, amount, params={}):
-        if not self.markets: return None
+        if not self.markets: 
+            raise ccxt.ExchangeNotAvailable("Märkte (self.markets) sind nicht geladen.")
         try:
             order_params = {**params}
             if 'productType' not in order_params:
-                order_params['productType'] = 'USDT-FUTURES' # Behalten wir zur Sicherheit bei
+                order_params['productType'] = 'USDT-FUTURES'
             rounded_amount = float(self.exchange.amount_to_precision(symbol, amount))
             if rounded_amount <= 0:
                 logger.error(f"FEHLER: Berechneter Order-Betrag ist Null oder negativ ({rounded_amount}).")
-                return None
+                raise ValueError(f"Ungültiger Order-Betrag: {rounded_amount}")
+                
             order = self.exchange.create_order(symbol, 'market', side, rounded_amount, params=order_params)
             return order
         except ccxt.InsufficientFunds as e:
             logger.error(f"FEHLER: Nicht genügend Guthaben (InsufficientFunds): {e}")
-            raise e
+            raise e # Fehler weitergeben
         except Exception as e:
             logger.error(f"FEHLER beim Erstellen der Market Order ({symbol}, {side}, {amount}): {e}")
-            return None
+            raise e # Fehler weitergeben
 
-    # *** KORRIGIERTE TRIGGER ORDER FUNKTION - 1:1 WIE JAEGERBOT ***
     def place_trigger_market_order(self, symbol, side, amount, trigger_price, params={}):
         """
         Platziert eine Standard Trigger-Order (Stop-Loss oder Take-Profit).
         """
-        if not self.markets: return None
+        if not self.markets: 
+             raise ccxt.ExchangeNotAvailable("Märkte (self.markets) sind nicht geladen.")
         try:
             rounded_price = float(self.exchange.price_to_precision(symbol, trigger_price))
             rounded_amount = float(self.exchange.amount_to_precision(symbol, amount))
             if rounded_amount <= 0:
                 logger.error(f"FEHLER: Berechneter Trigger-Order-Betrag ist Null ({rounded_amount}).")
-                return None
+                raise ValueError(f"Ungültiger Trigger-Order-Betrag: {rounded_amount}")
 
-            # Dies ist die exakte JaegerBot Parameterstruktur
             order_params = {
                 'triggerPrice': rounded_price,
                 'reduceOnly': params.get('reduceOnly', False)
@@ -185,7 +185,7 @@ class Exchange:
 
         except Exception as e:
             logger.error(f"FEHLER beim Platzieren der Trigger Order ({symbol}, {side}, Params={order_params}): {e}", exc_info=True)
-            return None
+            raise e # Fehler weitergeben
 
     def fetch_open_positions(self, symbol):
         if not self.markets: return []
@@ -241,7 +241,6 @@ class Exchange:
             logger.error(f"FEHLER beim Abrufen des USDT-Kontostandes: {e}", exc_info=True)
             return 0
 
-    # *** KORRIGIERTE CANCEL ORDERS FUNKTION - 1:1 WIE JAEGERBOT ***
     def cancel_all_orders_for_symbol(self, symbol):
         """Storniert alle offenen Orders (normal und trigger) für ein Symbol."""
         if not self.markets: return 0
@@ -286,21 +285,26 @@ class Exchange:
     def cleanup_all_open_orders(self, symbol):
         return self.cancel_all_orders_for_symbol(symbol)
 
-    # *** KORRIGIERTE TRAILING STOP FUNKTION - NUTZT BITGET SPEZIFISCHE PARAMETER (WIE BEI ERFOLG) ***
+    # *** KORRIGIERTE TRAILING STOP FUNKTION - MIT FEHLER-WEITERGABE (raise) ***
     def place_trailing_stop_order(self, symbol, side, amount, activation_price, callback_rate_decimal, params={}):
         """
         Platziert eine Trailing Stop Market Order (Stop-Loss) über ccxt für Bitget.
         Nutzt die Bitget-spezifischen 'trailingTriggerPrice' und 'trailingPercent'-Parameter.
         :param callback_rate_decimal: Die Callback-Rate als Dezimalzahl (z.B. 0.01 für 1%)
         """
-        if not self.markets: return None
+        if not self.markets: 
+            logger.error("FEHLER: place_trailing_stop_order aufgerufen, aber Märkte sind nicht geladen.")
+            # Kritischer Fehler, wenn Märkte nicht geladen sind.
+            raise ccxt.ExchangeNotAvailable("Märkte (self.markets) sind nicht geladen.")
+
         try:
             # Runden der Werte
             rounded_activation = float(self.exchange.price_to_precision(symbol, activation_price))
             rounded_amount = float(self.exchange.amount_to_precision(symbol, amount))
             if rounded_amount <= 0:
                 logger.error(f"FEHLER: Berechneter TSL-Betrag ist Null ({rounded_amount}).")
-                return None
+                # Logischer Fehler, Ausnahme auslösen.
+                raise ValueError(f"Ungültiger TSL-Betrag: {rounded_amount}")
 
             # Bitget TrailingPercent erwartet eine Zahl (float oder int), CCXT konvertiert sie intern
             callback_rate_float = callback_rate_decimal * 100 # In Prozent umwandeln (z.B. 0.5%)
@@ -320,4 +324,5 @@ class Exchange:
 
         except Exception as e:
             logger.error(f"FEHLER beim Platzieren des Trailing Stop ({symbol}, {side}): {e} | Params: {order_params}", exc_info=True)
-            return None
+            # Fehler an den aufrufenden Code weitergeben
+            raise e
