@@ -1,4 +1,4 @@
-# src/titanbot/analysis/backtester.py (Mit DYNAMISCHER Margin/Risiko vom CURRENT Capital)
+# src/stbot/analysis/backtester.py (Angepasst für STBot EMA/MACD/RSI Strategie)
 import os
 import pandas as pd
 import numpy as np
@@ -11,13 +11,15 @@ import math
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
-from titanbot.utils.exchange import Exchange
-from titanbot.strategy.smc_engine import SMCEngine, Bias
-from titanbot.strategy.trade_logic import get_titan_signal
+# --- NEUE IMPORTE ---
+from stbot.utils.exchange import Exchange
+from stbot.strategy.indicators import STBotEngine, calculate_macd, calculate_rsi # Neu: Importiere Indikator-Funktionen
+from stbot.strategy.trade_logic import get_titan_signal # Nutzt die neue Logik
+# --- ENDE NEUE IMPORTE ---
 
 secrets_cache = None
 
-# --- load_data Funktion bleibt unverändert ---
+# --- load_data Funktion bleibt unverändert (wegen Modul-Pfad muss sie kopiert werden) ---
 def load_data(symbol, timeframe, start_date_str, end_date_str):
     global secrets_cache
     data_dir = os.path.join(PROJECT_ROOT, 'data')
@@ -68,48 +70,66 @@ def load_data(symbol, timeframe, start_date_str, end_date_str):
     except Exception as e: print(f"FEHLER beim Daten-Download: {e}"); import traceback; traceback.print_exc(); return pd.DataFrame()
 
 
-def run_smc_backtest(data, smc_params, risk_params, start_capital=1000, verbose=False):
+def run_smc_backtest(data, strategy_params, risk_params, start_capital=1000, verbose=False):
     if data.empty or len(data) < 15:
         return {"total_pnl_pct": -100, "trades_count": 0, "win_rate": 0, "max_drawdown_pct": 1.0, "end_capital": start_capital}
+
+    # --- INDIKATOR BERECHNUNG (ANGEPASST) ---
+    ema_short = strategy_params.get('ema_short', 9)
+    ema_long = strategy_params.get('ema_long', 21)
+    rsi_period = strategy_params.get('rsi_period', 14)
+    volume_ma_period = strategy_params.get('volume_ma_period', 20)
+    adx_period = 14 # ATR/ADX ist immer noch für SL-Berechnung erforderlich
     
-    # --- NEU: ADX-Periode aus smc_params holen ---
-    adx_period = smc_params.get('adx_period', 14)
-    
+    # Sicherstellen, dass Spalten 'Close' und 'Volume' heißen für generate_signals
+    data = data.rename(columns={'close': 'Close', 'volume': 'Volume'}).copy()
+
     try:
-        # ATR-Berechnung
-        atr_indicator = ta.volatility.AverageTrueRange(high=data['high'], low=data['low'], close=data['close'], window=14)
+        # MACD, RSI, EMA, Volume MA Berechnungen
+        from stbot.strategy.indicators import calculate_ema # Lokaler Import
+        data['EMA_short'] = calculate_ema(data['Close'], ema_short)
+        data['EMA_long'] = calculate_ema(data['Close'], ema_long)
+        data['MACD'], data['MACD_Signal'], data['MACD_Hist'] = calculate_macd(data['Close'])
+        data['RSI'] = calculate_rsi(data['Close'], rsi_period)
+        data['Volume_MA'] = data['Volume'].rolling(window=volume_ma_period).mean()
+
+        # ATR & ADX MÜSSEN für die dynamische SL-Berechnung beibehalten werden
+        atr_indicator = ta.volatility.AverageTrueRange(high=data['high'], low=data['low'], close=data['Close'], window=14)
         data['atr'] = atr_indicator.average_true_range()
         
-        # --- NEU: ADX-Berechnung ---
-        adx_indicator = ta.trend.ADXIndicator(high=data['high'], low=data['low'], close=data['close'], window=adx_period)
+        adx_indicator = ta.trend.ADXIndicator(high=data['high'], low=data['low'], close=data['Close'], window=adx_period)
         data['adx'] = adx_indicator.adx()
         data['adx_pos'] = adx_indicator.adx_pos()
         data['adx_neg'] = adx_indicator.adx_neg()
-        # --- ENDE NEU ---
         
-        data.dropna(subset=['atr', 'adx'], inplace=True) # Stelle sicher, dass beide Indikatoren berechnet wurden
-        
+        # Sicherstellen, dass alle Indikatoren vorhanden sind
+        data.dropna(subset=['atr', 'adx', 'EMA_short', 'MACD', 'RSI'], inplace=True) 
+
         if data.empty:
             return {"total_pnl_pct": -100, "trades_count": 0, "win_rate": 0, "max_drawdown_pct": 1.0, "end_capital": start_capital}
     except Exception as e:
         print(f"FEHLER bei Indikator-Berechnung: {e}")
         return {"total_pnl_pct": -999, "trades_count": 0, "win_rate": 0, "max_drawdown_pct": 1.0, "end_capital": start_capital}
+    # --- ENDE INDIKATOR BERECHNUNG ---
+    
+    # Initialisiere die Engine (jetzt nur ein Wrapper) und führe die Logik aus
+    engine = STBotEngine(settings=strategy_params)
+    # WICHTIG: data_with_indicators ist jetzt das vollständige DataFrame
+    data_with_indicators = engine.process_dataframe(data[['open', 'high', 'low', 'Close', 'Volume']].copy())
 
+    # ... (Der Rest der Backtest-Logik bleibt gleich, da er Indikatoren aus current_candle holt)
     risk_reward_ratio = risk_params.get('risk_reward_ratio', 1.5)
     risk_per_trade_pct = risk_params.get('risk_per_trade_pct', 1.0) / 100
     activation_rr = risk_params.get('trailing_stop_activation_rr', 2.0)
     callback_rate = risk_params.get('trailing_stop_callback_rate_pct', 1.0) / 100
-    leverage = risk_params.get('leverage', 10) 
+    leverage = risk_params.get('leverage', 10)
     fee_pct = 0.05 / 100
-    
-    atr_multiplier_sl = risk_params.get('atr_multiplier_sl', 2.0) 
+
+    atr_multiplier_sl = risk_params.get('atr_multiplier_sl', 2.0)
     min_sl_pct = risk_params.get('min_sl_pct', 0.5) / 100.0
-    
+
     max_allowed_effective_leverage = 10
     absolute_max_notional_value = 1000000
-
-    engine = SMCEngine(settings=smc_params)
-    smc_results = engine.process_dataframe(data[['open', 'high', 'low', 'close']].copy())
 
     current_capital = start_capital
     peak_capital = start_capital
@@ -118,16 +138,16 @@ def run_smc_backtest(data, smc_params, risk_params, start_capital=1000, verbose=
     wins_count = 0
     position = None
 
-    # --- NEU: Kombiniere Parameter für die Logik-Funktion ---
-    params_for_logic = {"strategy": smc_params, "risk": risk_params}
+    params_for_logic = {"strategy": strategy_params, "risk": risk_params}
 
-    iterator = data.iterrows()
+    # Verwende das berechnete DataFrame für den Loop
+    iterator = data_with_indicators.iterrows()
 
     # --- Backtest Loop ---
     for timestamp, current_candle in iterator:
         if current_capital <= 0: break
 
-        # --- Positions-Management (bleibt gleich) ---
+        # --- Positions-Management (Unverändert) ---
         if position:
             exit_price = None
             if position['side'] == 'long':
@@ -164,11 +184,11 @@ def run_smc_backtest(data, smc_params, risk_params, start_capital=1000, verbose=
 
         # --- Einstiegs-Logik ---
         if not position and current_capital > 0:
-            # --- NEU: Übergebe params_for_logic an die Signalfunktion ---
-            side, _ = get_titan_signal(smc_results, current_candle, params=params_for_logic)
+            # data_with_indicators dient hier als Dummy für smc_results
+            side, _ = get_titan_signal(data_with_indicators, current_candle, params=params_for_logic)
 
             if side:
-                entry_price = current_candle['close']
+                entry_price = current_candle['Close'] # NEU: Nutze 'Close' aus dem vorbereiteten DF
                 current_atr = current_candle.get('atr')
                 if pd.isna(current_atr) or current_atr <= 0: continue
 
