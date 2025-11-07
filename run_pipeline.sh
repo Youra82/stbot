@@ -6,12 +6,12 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 echo -e "${BLUE}======================================================="
-echo "       TitanBot SMC Optimierungs-Pipeline"
+echo "        STBot Indikator-Optimierungs-Pipeline" 
 echo -e "=======================================================${NC}"
 
 # --- Pfade definieren ---
 VENV_PATH=".venv/bin/activate"
-OPTIMIZER="src/titanbot/analysis/optimizer.py" 
+OPTIMIZER="src/titanbot/analysis/optimizer.py"
 
 # --- Umgebung aktivieren ---
 source "$VENV_PATH"
@@ -32,7 +32,7 @@ read -p "Zeitfenster eingeben (z.B. 1h 4h): " TIMEFRAMES
 
 # *** HIER IST DIE WIEDER EINGEFÜGTE TABELLE UND DATUMSLOGIK ***
 echo -e "\n${BLUE}--- Empfehlung: Optimaler Rückblick-Zeitraum ---${NC}"
-printf "+-------------+--------------------------------+\n"; printf "| Zeitfenster | Empfohlener Rückblick (Tage)   |\n"; printf "+-------------+--------------------------------+\n"; printf "| 5m, 15m     | 15 - 90 Tage                   |\n"; printf "| 30m, 1h     | 180 - 365 Tage                 |\n"; printf "| 2h, 4h      | 550 - 730 Tage                 |\n"; printf "| 6h, 1d      | 1095 - 1825 Tage               |\n"; printf "+-------------+--------------------------------+\n"
+printf "+-------------+--------------------------------+\n"; printf "| Zeitfenster | Empfohlener Rückblick (Tage)    |\n"; printf "+-------------+--------------------------------+\n"; printf "| 5m, 15m     | 15 - 90 Tage                    |\n"; printf "| 30m, 1h     | 180 - 365 Tage                  |\n"; printf "| 2h, 4h      | 550 - 730 Tage                  |\n"; printf "| 6h, 1d      | 1095 - 1825 Tage                |\n"; printf "+-------------+--------------------------------+\n"
 read -p "Startdatum (JJJJ-MM-TT) oder 'a' für Automatik [Standard: a]: " START_DATE_INPUT; START_DATE_INPUT=${START_DATE_INPUT:-a}
 # *** ENDE DER EINFÜGUNG ***
 
@@ -54,18 +54,18 @@ for symbol in $SYMBOLS; do
 
         # *** HIER WIRD DAS STARTDATUM BERECHNET (FALLS 'a') ***
         if [ "$START_DATE_INPUT" == "a" ]; then
-             lookback_days=365 # Standard-Fallback
-             case "$timeframe" in 
-                 5m|15m) lookback_days=60 ;; 
-                 30m|1h) lookback_days=365 ;; 
-                 2h|4h) lookback_days=730 ;; 
-                 6h|1d) lookback_days=1095 ;; 
-             esac
-             # Berechne das Startdatum basierend auf dem Lookback
-             FINAL_START_DATE=$(date -d "$lookback_days days ago" +%F)
-             echo -e "${YELLOW}INFO: Automatisches Startdatum für $timeframe (${lookback_days} Tage Rückblick) gesetzt auf: $FINAL_START_DATE${NC}"
+            lookback_days=365 # Standard-Fallback
+            case "$timeframe" in
+                5m|15m) lookback_days=60 ;;
+                30m|1h) lookback_days=365 ;;
+                2h|4h) lookback_days=730 ;;
+                6h|1d) lookback_days=1095 ;;
+            esac
+            # Berechne das Startdatum basierend auf dem Lookback
+            FINAL_START_DATE=$(date -d "$lookback_days days ago" +%F)
+            echo -e "${YELLOW}INFO: Automatisches Startdatum für $timeframe (${lookback_days} Tage Rückblick) gesetzt auf: $FINAL_START_DATE${NC}"
         else
-             FINAL_START_DATE=$START_DATE_INPUT
+            FINAL_START_DATE=$START_DATE_INPUT
         fi
         # *** ENDE DATUMSBRECHNUNG ***
 
@@ -75,13 +75,13 @@ for symbol in $SYMBOLS; do
         echo -e "${BLUE}  Datenzeitraum: $FINAL_START_DATE bis $END_DATE${NC}";
         echo -e "${BLUE}=======================================================${NC}"
 
-        echo -e "\n${GREEN}>>> Starte SMC-Optimierung für $symbol ($timeframe)...${NC}"
+        echo -e "\n${GREEN}>>> Starte Indikator-Optimierung für $symbol ($timeframe)...${NC}"
         python3 "$OPTIMIZER" --symbols "$symbol" --timeframes "$timeframe" \
             --start_date "$FINAL_START_DATE" --end_date "$END_DATE" \
             --jobs "$N_CORES" --max_drawdown "$MAX_DD" \
             --start_capital "$START_CAPITAL" --min_win_rate "$MIN_WR" \
             --trials "$N_TRIALS" --min_pnl "$MIN_PNL" --mode "$OPTIM_MODE_ARG"
-        
+
         if [ $? -ne 0 ]; then
             echo -e "${RED}Fehler im Optimierer für $symbol ($timeframe). Überspringe...${NC}";
         fi
