@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pandas as pd
 import numpy as np 
 import ccxt
-import time # Hinzugefügt für sleep
+import time
 
 # Füge das Projektverzeichnis zum Python-Pfad hinzu
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -21,7 +21,7 @@ from stbot.utils.trade_manager import check_and_open_new_position, housekeeper_r
 from stbot.utils.trade_manager import set_trade_lock, is_trade_locked 
 
 # =========================================================================
-# FIXTURE DEFINITION (Behebt "fixture 'test_setup' not found")
+# FIXTURE DEFINITION 
 # =========================================================================
 @pytest.fixture(scope="module")
 def test_setup():
@@ -50,13 +50,12 @@ def test_setup():
 
     # XRP FÜR TEST (ANGEPASSTE PARAMETER FÜR NIEDRIGERES RISIKO UND MARGIN)
     symbol = 'XRP/USDT:USDT'
-    # Dummy-Parameter für die neue EMA/MACD-Strategie
     params = {
         'market': {'symbol': symbol, 'timeframe': '5m'},
         'strategy': { 'ema_short': 9, 'ema_long': 21, 'rsi_period': 14, 'volume_ma_period': 20 },
         'risk': {
             'margin_mode': 'isolated',
-            'risk_per_trade_pct': 1.0, # 1.0% Risk (erhöht, um Min. Kontraktgröße zu erreichen)
+            'risk_per_trade_pct': 1.0, 
             'risk_reward_ratio': 2.0,
             'leverage': 15,
             'trailing_stop_activation_rr': 1.5,
@@ -124,27 +123,24 @@ def test_setup():
 def test_full_stbot_workflow_on_bitget(test_setup):
     exchange, params, telegram_config, symbol, logger = test_setup
 
-    # --- Korrigierter Mock zur Erzwingung der Mindest-Kerzenanzahl (mind. 150) ---
+    # --- MOCK ZUR SIMULATION DER MARKT- UND SALDOBEDINGUNGEN ---
     num_candles = 200 
     mock_index = pd.to_datetime(pd.date_range(end=pd.Timestamp.now(), periods=num_candles, freq='5min'))
 
     mock_data = {
-        # ATR/ADX benötigt 'high', 'low', 'close', 'volume'
         'open': np.full(num_candles, 0.49), 
         'high': np.full(num_candles, 0.51), 
         'low': np.full(num_candles, 0.48), 
         'close': np.full(num_candles, 0.5), 
         'volume': np.full(num_candles, 100),
-        'atr': np.full(num_candles, 0.01) # Erhöhter ATR-Wert (wird für SL-Distanz benötigt)
+        'atr': np.full(num_candles, 0.01) 
     }
-    # Der Mock für fetch_recent_ohlcv muss ein DataFrame zurückgeben.
     mock_df = pd.DataFrame(mock_data, index=mock_index)
 
     # Der Trade-Lock-Check wird für den Test immer auf FALSE gesetzt
     with patch('stbot.utils.trade_manager.set_trade_lock'), \
         patch('stbot.utils.trade_manager.is_trade_locked', return_value=False), \
         patch.object(exchange, 'fetch_recent_ohlcv', return_value=mock_df), \
-        # NEU: Mocke das Guthaben, um sicherzustellen, dass genügend Kapital verfügbar ist (z.B. 10000 USDT)
         patch.object(exchange, 'fetch_balance_usdt', return_value=10000.00), \
         patch.object(exchange, 'fetch_ticker', return_value={'last': 0.5, 'symbol': symbol}), \
         patch('stbot.strategy.trade_logic.get_titan_signal', return_value=('buy', 0.5)): 
