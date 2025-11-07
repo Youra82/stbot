@@ -1,11 +1,12 @@
+# Pfad: /home/matola/stbot/run_pipeline_automated.sh
 #!/bin/bash
 
 # --- Pfade und Skripte ---
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 VENV_PATH="$SCRIPT_DIR/.venv/bin/activate"
 SETTINGS_FILE="$SCRIPT_DIR/settings.json"
-# *** Korrigierte Pfade, Trainer entfernt ***
-OPTIMIZER="src/titanbot/analysis/optimizer.py"
+# *** ÄNDERUNG: Pfad von titanbot zu stbot ***
+OPTIMIZER="src/stbot/analysis/optimizer.py" 
 CACHE_DIR="$SCRIPT_DIR/data/cache"
 TIMESTAMP_FILE="$CACHE_DIR/.last_cleaned"
 
@@ -17,7 +18,8 @@ if [ ! -f "$VENV_PATH" ]; then
 fi
 source "$VENV_PATH"
 
-echo "--- Starte automatischen Pipeline-Lauf (TitanBot SMC) ---"
+# *** ÄNDERUNG: Titel angepasst ***
+echo "--- Starte automatischen Pipeline-Lauf (STBot Indikatoren) ---"
 
 # --- Prüfen ob settings.json existiert ---
 if [ ! -f "$SETTINGS_FILE" ]; then
@@ -114,7 +116,7 @@ echo "Trials: $N_TRIALS | Kerne: $N_CORES | Startkapital: $START_CAPITAL"
 
 # *** Trainer-Aufruf entfernt ***
 
-echo ">>> Starte Handelsparameter-Optimierung (SMC)..."
+echo ">>> Starte Handelsparameter-Optimierung (Indikatoren)..."
 python3 "$OPTIMIZER" \
     --symbols "$SYMBOLS" \
     --timeframes "$TIMEFRAMES" \
