@@ -1,4 +1,4 @@
-# src/titanbot/analysis/optimizer.py (Leverage BEGRENZT auf 5-15)
+# src/stbot/analysis/optimizer.py (Angepasst für STBot EMA/MACD/RSI Strategie)
 import os
 import sys
 import json
@@ -16,8 +16,10 @@ warnings.filterwarnings('ignore', category=UserWarning, module='keras')
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
-from titanbot.analysis.backtester import load_data, run_smc_backtest
-from titanbot.analysis.evaluator import evaluate_dataset
+# --- NEUE IMPORTE ---
+from stbot.analysis.backtester import load_data, run_smc_backtest 
+from stbot.analysis.evaluator import evaluate_dataset # Evaluator muss auch angepasst werden
+# --- ENDE NEUE IMPORTE ---
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -34,34 +36,39 @@ def create_safe_filename(symbol, timeframe):
     return f"{symbol.replace('/', '').replace(':', '')}_{timeframe}"
 
 def objective(trial):
-    smc_params = {
-        'swingsLength': trial.suggest_int('swingsLength', 10, 100),
-        'ob_mitigation': trial.suggest_categorical('ob_mitigation', ['High/Low', 'Close']),
+    # --- NEUE STRATEGIE-PARAMETER ---
+    strategy_params = {
+        'ema_short': trial.suggest_int('ema_short', 5, 15),
+        'ema_long': trial.suggest_int('ema_long', 18, 30),
+        'rsi_period': trial.suggest_int('rsi_period', 10, 20),
+        'volume_ma_period': trial.suggest_int('volume_ma_period', 15, 30),
         
-        # --- NEU: ADX-Filter-Parameter zur Optimierung hinzugefügt ---
-        'use_adx_filter': trial.suggest_categorical('use_adx_filter', [True, False]),
-        'adx_period': trial.suggest_int('adx_period', 10, 20), # z.B. Standard 14
-        'adx_threshold': trial.suggest_int('adx_threshold', 20, 30) # z.B. Standard 25
-        # --- ENDE NEU ---
+        # SMC-spezifische Parameter werden entfernt
+        # Zur Kompatibilität behalten wir die Namen bei, die im Code verwendet werden, 
+        # die aber in der Strategie-Logik ignoriert werden.
     }
+    # --- ENDE NEUE STRATEGIE-PARAMETER ---
+    
     risk_params = {
         'risk_reward_ratio': trial.suggest_float('risk_reward_ratio', 1.0, 5.0),
         'risk_per_trade_pct': trial.suggest_float('risk_per_trade_pct', 0.5, 2.0),
-        'leverage': trial.suggest_int('leverage', 5, 15), # Leverage zwischen 5x und 15x
+        'leverage': trial.suggest_int('leverage', 5, 15), 
         'trailing_stop_activation_rr': trial.suggest_float('trailing_stop_activation_rr', 1.0, 4.0),
         'trailing_stop_callback_rate_pct': trial.suggest_float('trailing_stop_callback_rate_pct', 0.5, 3.0),
+        # ATR/SL Parameter bleiben für die dynamische SL-Berechnung
         'atr_multiplier_sl': trial.suggest_float('atr_multiplier_sl', 1.0, 4.0),
-        'min_sl_pct': trial.suggest_float('min_sl_pct', 0.3, 2.0) # Als % (0.3% bis 2.0%)
+        'min_sl_pct': trial.suggest_float('min_sl_pct', 0.3, 2.0) 
     }
 
-    # Übergebe BEIDE Parameter-Dictionaries an den Backtester
-    result = run_smc_backtest( HISTORICAL_DATA.copy(), smc_params, risk_params, START_CAPITAL, verbose=False )
+    # HINWEIS: run_smc_backtest wird umbenannt in run_backtest, sobald der Code umgestellt ist.
+    # Bis dahin nutzen wir den alten Namen, um den Aufruf zu erhalten.
+    result = run_smc_backtest( HISTORICAL_DATA.copy(), strategy_params, risk_params, START_CAPITAL, verbose=False )
     pnl = result.get('total_pnl_pct', -1000)
-    drawdown = result.get('max_drawdown_pct', 1.0) # Backtester gibt Dezimal zurück
+    drawdown = result.get('max_drawdown_pct', 1.0) 
     trades = result.get('trades_count', 0)
     win_rate = result.get('win_rate', 0)
 
-    # Pruning
+    # Pruning (Bleibt gleich)
     if OPTIM_MODE == "strict" and (
         drawdown > MAX_DRAWDOWN_CONSTRAINT or win_rate < MIN_WIN_RATE_CONSTRAINT or
         pnl < MIN_PNL_CONSTRAINT or trades < 50):
@@ -74,7 +81,7 @@ def objective(trial):
 
 def main():
     global HISTORICAL_DATA, CURRENT_TIMEFRAME, CONFIG_SUFFIX, MAX_DRAWDOWN_CONSTRAINT, MIN_WIN_RATE_CONSTRAINT, MIN_PNL_CONSTRAINT, START_CAPITAL, OPTIM_MODE
-    parser = argparse.ArgumentParser(description="Parameter-Optimierung für TitanBot (SMC)")
+    parser = argparse.ArgumentParser(description="Parameter-Optimierung für STBot (EMA/MACD/RSI)")
     parser.add_argument('--symbols', required=True, type=str)
     parser.add_argument('--timeframes', required=True, type=str)
     parser.add_argument('--start_date', required=True, type=str)
@@ -104,21 +111,22 @@ def main():
         if HISTORICAL_DATA.empty: print("Keine Daten geladen. Überspringe."); continue
 
         print("\n--- Bewertung der Datensatz-Qualität ---")
-        evaluation = evaluate_dataset(HISTORICAL_DATA.copy(), timeframe)
+        # WICHTIG: Evaluator.py muss noch angepasst werden, um Indikatoren statt SMC zu verwenden
+        evaluation = evaluate_dataset(HISTORICAL_DATA.copy(), timeframe) 
         print(f"Note: {evaluation['score']} / 10\n" + "\n".join(evaluation['justification']) + "\n----------------------------------------")
         if evaluation['score'] < 3: print(f"Datensatz-Qualität zu gering. Überspringe Optimierung."); continue
 
-        DB_FILE = os.path.join(PROJECT_ROOT, 'artifacts', 'db', 'optuna_studies_smc.db')
+        DB_FILE = os.path.join(PROJECT_ROOT, 'artifacts', 'db', 'optuna_studies_stbot.db') # NEU: DB-Name geändert
         os.makedirs(os.path.dirname(DB_FILE), exist_ok=True)
         STORAGE_URL = f"sqlite:///{DB_FILE}?timeout=60"
-        study_name = f"smc_{create_safe_filename(symbol, timeframe)}{CONFIG_SUFFIX}_{OPTIM_MODE}"
+        study_name = f"stbot_{create_safe_filename(symbol, timeframe)}{CONFIG_SUFFIX}_{OPTIM_MODE}" # NEU: Study-Name geändert
 
         study = optuna.create_study(storage=STORAGE_URL, study_name=study_name, direction="maximize", load_if_exists=True)
         try:
             study.optimize(objective, n_trials=N_TRIALS, n_jobs=args.jobs, show_progress_bar=True)
         except Exception as e_opt:
             print(f"FEHLER während Optuna optimize: {e_opt}")
-            continue # Nächsten Task versuchen
+            continue 
 
         valid_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
         if not valid_trials: print(f"\n❌ FEHLER: Für {symbol} ({timeframe}) konnte keine Konfiguration gefunden werden."); continue
@@ -126,24 +134,25 @@ def main():
         best_trial = max(valid_trials, key=lambda t: t.value)
         best_params = best_trial.params
 
-        config_dir = os.path.join(PROJECT_ROOT, 'src', 'titanbot', 'strategy', 'configs')
+        config_dir = os.path.join(PROJECT_ROOT, 'src', 'stbot', 'strategy', 'configs') # NEU: Pfad geändert
         os.makedirs(config_dir, exist_ok=True)
         config_output_path = os.path.join(config_dir, f'config_{create_safe_filename(symbol, timeframe)}{CONFIG_SUFFIX}.json')
 
-        # --- NEU: ADX-Parameter werden hier ausgelesen und gespeichert ---
-        strategy_config = { 
-            'swingsLength': best_params['swingsLength'], 
-            'ob_mitigation': best_params['ob_mitigation'],
-            'use_adx_filter': best_params['use_adx_filter'],
-            'adx_period': best_params['adx_period'],
-            'adx_threshold': best_params['adx_threshold']
+        # --- NEUE STRATEGIE-CONFIG ---
+        strategy_config = {
+            'ema_short': best_params['ema_short'],
+            'ema_long': best_params['ema_long'],
+            'rsi_period': best_params['rsi_period'],
+            'volume_ma_period': best_params['volume_ma_period'],
+            # Wir behalten die alten Parameter, die jetzt ignoriert werden, NICHT bei.
+            # Dadurch wird die Config schlanker und sauberer.
         }
-        # --- ENDE NEU ---
-        
+        # --- ENDE NEUE STRATEGIE-CONFIG ---
+
         risk_config = {
-            'margin_mode': "isolated", 
+            'margin_mode': "isolated",
             'risk_per_trade_pct': round(best_params['risk_per_trade_pct'], 2),
-            'risk_reward_ratio': round(best_params['risk_reward_ratio'], 2), 
+            'risk_reward_ratio': round(best_params['risk_reward_ratio'], 2),
             'leverage': best_params['leverage'],
             'trailing_stop_activation_rr': round(best_params['trailing_stop_activation_rr'], 2),
             'trailing_stop_callback_rate_pct': round(best_params['trailing_stop_callback_rate_pct'], 2),
