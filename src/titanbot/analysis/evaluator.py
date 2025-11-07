@@ -7,25 +7,27 @@ import os
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
-from titanbot.strategy.smc_engine import SMCEngine # Importiere die neue Engine
+
+# SMC-Importe entfernt
+
 
 def evaluate_dataset(data: pd.DataFrame, timeframe: str):
     """
     Bewertet einen Datensatz für die Optimierung und gibt eine Note von 0-10,
-    basierend auf Volatilität, Marktphasen und SMC-Event-Dichte.
+    basierend auf Marktphasen und Volatilität (ATR). Die SMC-Dichte wurde entfernt.
     """
     if data.empty or len(data) < 200:
         return {
             "score": 0,
             "justification": [
                 "- Phasen-Verteilung (0/4): Nicht bewertbar. Zu wenig Daten.",
-                "- Handelbarkeit (0/4): Nicht bewertbar. Zu wenig Daten.",
+                "- Handelbarkeit/Volatilität (0/4): Nicht bewertbar. Zu wenig Daten.",
                 "- Datenmenge (0/2): Mangelhaft. Weniger als 200 Kerzen."
             ],
             "phase_dist": {}
         }
 
-    # --- Metrik 1: Phasen-Verteilung (max. 4 Punkte) ---
+    # --- Metrik 1: Phasen-Verteilung (max. 4 Punkte) (Unverändert) ---
     data['ema_50'] = ta.trend.ema_indicator(data['close'], window=50)
     data['ema_200'] = ta.trend.ema_indicator(data['close'], window=200)
     data.dropna(inplace=True)
@@ -49,26 +51,28 @@ def evaluate_dataset(data: pd.DataFrame, timeframe: str):
     dist_text = ", ".join([f"{name}: {pct:.0%}" for name, pct in phase_dist.items()])
     just1 = f"- Phasen-Verteilung ({score1}/4): {'Exzellent' if score1==4 else 'Gut' if score1==3 else 'Mäßig' if score1==2 else 'Einseitig'}. ({dist_text})"
 
-    # --- Metrik 2: Handelbarkeit / SMC-Event-Dichte (max. 4 Punkte) ---
+    # --- Metrik 2: Handelbarkeit / Volatilität (max. 4 Punkte) (Angepasst) ---
     try:
-        # Lasse die SMC-Engine laufen, um Events zu finden
-        engine = SMCEngine(settings={'swingsLength': 20}) # Kurze Länge für Event-Findung
-        results = engine.process_dataframe(data.copy())
-        event_count = len(results.get('events', []))
+        atr_indicator = ta.volatility.AverageTrueRange(high=data['high'], low=data['low'], close=data['close'], window=14)
+        data['atr'] = atr_indicator.average_true_range()
+        data.dropna(subset=['atr'], inplace=True)
         
-        # Berechne Events pro 1000 Kerzen
-        event_density = (event_count / len(data)) * 1000 if len(data) > 0 else 0
+        # Normiere ATR nach dem aktuellen Preis
+        data['atr_pct'] = (data['atr'] / data['close']) * 100
+        avg_volatility = data['atr_pct'].mean()
     except Exception:
-        event_density = 0
+        avg_volatility = 0
+    
+    # Bewertung basierend auf typischer Volatilität (grob geschätzt für Altcoins/stabile Märkte)
+    if avg_volatility < 0.1: score2 = 0 # Zu wenig Volatilität
+    elif avg_volatility < 0.3: score2 = 1
+    elif avg_volatility < 0.6: score2 = 2 # Gute Volatilität
+    elif avg_volatility < 1.0: score2 = 3
+    else: score2 = 4 # Sehr hohe Volatilität
 
-    if event_density < 10: score2 = 0  # Weniger als 10 Events pro 1000 Kerzen
-    elif event_density < 25: score2 = 1
-    elif event_density < 50: score2 = 2
-    elif event_density < 100: score2 = 3
-    else: score2 = 4
-    just2 = f"- Handelbarkeit ({score2}/4): {'Exzellent' if score2==4 else 'Gut' if score2==3 else 'Mäßig' if score2==2 else 'Gering' if score2==1 else 'Sehr Gering'}. {event_density:.1f} Events/1000 Kerzen."
+    just2 = f"- Handelbarkeit/Volatilität ({score2}/4): Durchschnittliche ATR (relativ): {avg_volatility:.2f}%. {'Sehr Gut' if score2 >= 3 else 'OK' if score2 >= 2 else 'Gering'}."
 
-    # --- Metrik 3: Datenmenge (max. 2 Punkte) ---
+    # --- Metrik 3: Datenmenge (max. 2 Punkte) (Unverändert) ---
     num_candles = len(data)
     if num_candles < 2000: score3 = 0
     elif num_candles < 5000: score3 = 1
