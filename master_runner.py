@@ -1,3 +1,4 @@
+# Pfad: /home/matola/stbot/master_runner.py
 # master_runner.py
 import json
 import subprocess
@@ -10,8 +11,8 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = SCRIPT_DIR
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
-# Geändert: Importpfad (Exchange bleibt)
-from titanbot.utils.exchange import Exchange
+# *** ÄNDERUNG: Importpfad von titanbot zu stbot ***
+from stbot.utils.exchange import Exchange
 
 def main():
     """
@@ -22,8 +23,8 @@ def main():
     """
     settings_file = os.path.join(SCRIPT_DIR, 'settings.json')
     optimization_results_file = os.path.join(SCRIPT_DIR, 'artifacts', 'results', 'optimization_results.json')
-    # Pfad zum Bot-Runner
-    bot_runner_script = os.path.join(SCRIPT_DIR, 'src', 'titanbot', 'strategy', 'run.py')
+    # *** ÄNDERUNG: Pfad zum Bot-Runner von titanbot zu stbot ***
+    bot_runner_script = os.path.join(SCRIPT_DIR, 'src', 'stbot', 'strategy', 'run.py')
     secret_file = os.path.join(SCRIPT_DIR, 'secret.json')
 
     # Finde den exakten Pfad zum Python-Interpreter in der virtuellen Umgebung
@@ -33,7 +34,7 @@ def main():
         return
 
     print("=======================================================")
-    # Geändert: Name
+    # *** ÄNDERUNG: Name ***
     print("STBot Master Runner v1.0")
     print("=======================================================")
 
@@ -78,27 +79,27 @@ def main():
                 print(f"\n--- Überspringe inaktive Strategie: {symbol} ({timeframe}) ---")
                 continue
 
-            symbol, timeframe, use_macd = None, None, None 
+            symbol, timeframe, use_macd = None, None, None
 
             if use_autopilot and isinstance(strategy_info, str):
-                 # Wenn Autopilot die Config-Dateinamen liefert (z.B. config_BTCUSDTUSDT_1h.json)
-                 config_filename = strategy_info
-                 if config_filename.endswith('_macd.json'):
+                # Wenn Autopilot die Config-Dateinamen liefert (z.B. config_BTCUSDTUSDT_1h.json)
+                config_filename = strategy_info
+                if config_filename.endswith('_macd.json'):
                     use_macd = True
-                 else:
+                else:
                     use_macd = False
-                 
-                 # Extrahiere Symbol und Timeframe aus dem Dateinamen
-                 parts = config_filename.split('_')
-                 if len(parts) >= 3:
-                     symbol_tf = parts[1]
-                     timeframe = parts[2].split('.')[0]
-                     # Füge den :USDT Suffix wieder hinzu, um CCXT-kompatibel zu sein
-                     symbol = f"{symbol_tf.replace('USDT', '/')}:USDT"
-                     
-                     # Behebe den Fall, dass das Symbol XRPUSDTUSDT ist
-                     if symbol.startswith('XRP/USDT:USDT'): symbol = 'XRP/USDT:USDT'
-                     
+
+                # Extrahiere Symbol und Timeframe aus dem Dateinamen
+                parts = config_filename.split('_')
+                if len(parts) >= 3:
+                    symbol_tf = parts[1]
+                    timeframe = parts[2].split('.')[0]
+                    # Füge den :USDT Suffix wieder hinzu, um CCXT-kompatibel zu sein
+                    symbol = f"{symbol_tf.replace('USDT', '/')}:USDT"
+
+                    # Behebe den Fall, dass das Symbol XRPUSDTUSDT ist
+                    if symbol.startswith('XRP/USDT:USDT'): symbol = 'XRP/USDT:USDT'
+
             elif isinstance(strategy_info, dict):
                 symbol = strategy_info.get('symbol')
                 timeframe = strategy_info.get('timeframe')
