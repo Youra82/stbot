@@ -1,3 +1,4 @@
+# Pfad: /home/matola/stbot/run_pipeline.sh
 #!/bin/bash
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -6,12 +7,13 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 echo -e "${BLUE}======================================================="
-echo "        STBot Indikator-Optimierungs-Pipeline" 
+echo "        STBot Indikator-Optimierungs-Pipeline"
 echo -e "=======================================================${NC}"
 
 # --- Pfade definieren ---
 VENV_PATH=".venv/bin/activate"
-OPTIMIZER="src/titanbot/analysis/optimizer.py"
+# *** ÄNDERUNG: Pfad von titanbot zu stbot ***
+OPTIMIZER="src/stbot/analysis/optimizer.py" 
 
 # --- Umgebung aktivieren ---
 source "$VENV_PATH"
@@ -21,7 +23,8 @@ echo -e "${GREEN}✔ Virtuelle Umgebung wurde erfolgreich aktiviert.${NC}"
 echo -e "\n${YELLOW}Möchtest du alle alten, generierten Configs vor dem Start löschen?${NC}"
 read -p "Dies wird für einen kompletten Neustart empfohlen. (j/n) [Standard: n]: " CLEANUP_CHOICE; CLEANUP_CHOICE=${CLEANUP_CHOICE:-n}
 if [[ "$CLEANUP_CHOICE" == "j" || "$CLEANUP_CHOICE" == "J" ]]; then
-    echo -e "${YELLOW}Lösche alte Konfigurationen...${NC}"; rm -f src/titanbot/strategy/configs/config_*.json; echo -e "${GREEN}✔ Aufräumen abgeschlossen.${NC}"
+    # *** ÄNDERUNG: Pfad von titanbot zu stbot ***
+    echo -e "${YELLOW}Lösche alte Konfigurationen...${NC}"; rm -f src/stbot/strategy/configs/config_*.json; echo -e "${GREEN}✔ Aufräumen abgeschlossen.${NC}"
 else
     echo -e "${GREEN}✔ Alte Ergebnisse werden beibehalten.${NC}"
 fi
@@ -32,7 +35,7 @@ read -p "Zeitfenster eingeben (z.B. 1h 4h): " TIMEFRAMES
 
 # *** HIER IST DIE WIEDER EINGEFÜGTE TABELLE UND DATUMSLOGIK ***
 echo -e "\n${BLUE}--- Empfehlung: Optimaler Rückblick-Zeitraum ---${NC}"
-printf "+-------------+--------------------------------+\n"; printf "| Zeitfenster | Empfohlener Rückblick (Tage)    |\n"; printf "+-------------+--------------------------------+\n"; printf "| 5m, 15m     | 15 - 90 Tage                    |\n"; printf "| 30m, 1h     | 180 - 365 Tage                  |\n"; printf "| 2h, 4h      | 550 - 730 Tage                  |\n"; printf "| 6h, 1d      | 1095 - 1825 Tage                |\n"; printf "+-------------+--------------------------------+\n"
+printf "+-------------+--------------------------------+\n"; printf "| Zeitfenster | Empfohlener Rückblick (Tage)   |\n"; printf "+-------------+--------------------------------+\n"; printf "| 5m, 15m     | 15 - 90 Tage                   |\n"; printf "| 30m, 1h     | 180 - 365 Tage                 |\n"; printf "| 2h, 4h      | 550 - 730 Tage                 |\n"; printf "| 6h, 1d      | 1095 - 1825 Tage               |\n"; printf "+-------------+--------------------------------+\n"
 read -p "Startdatum (JJJJ-MM-TT) oder 'a' für Automatik [Standard: a]: " START_DATE_INPUT; START_DATE_INPUT=${START_DATE_INPUT:-a}
 # *** ENDE DER EINFÜGUNG ***
 
@@ -41,7 +44,7 @@ read -p "Startkapital in USDT [Standard: 1000]: " START_CAPITAL; START_CAPITAL=$
 read -p "CPU-Kerne [Standard: -1 für alle]: " N_CORES; N_CORES=${N_CORES:--1}
 read -p "Anzahl Trials [Standard: 200]: " N_TRIALS; N_TRIALS=${N_TRIALS:-200}
 
-echo -e "\n${YELLOW}Wähle einen Optimierungs-Modus:${NC}"; echo "  1) Strenger Modus (Profitabel & Sicher)"; echo "  2) 'Finde das Beste'-Modus (Max Profit)"
+echo -e "\n${YELLOW}Wähle einen Optimierungs-Modus:${NC}"; echo "  1) Strenger Modus (Profitabel & Sicher)"; echo "  2) 'Finde das Beste'-Modus (Max Profit)"
 read -p "Auswahl (1-2) [Standard: 1]: " OPTIM_MODE; OPTIM_MODE=${OPTIM_MODE:-1}
 if [ "$OPTIM_MODE" == "1" ]; then
     OPTIM_MODE_ARG="strict"; read -p "Max Drawdown % [Standard: 30]: " MAX_DD; MAX_DD=${MAX_DD:-30}; read -p "Min Win-Rate % [Standard: 55]: " MIN_WR; MIN_WR=${MIN_WR:-55}; read -p "Min PnL % [Standard: 0]: " MIN_PNL; MIN_PNL=${MIN_PNL:-0}
@@ -70,9 +73,9 @@ for symbol in $SYMBOLS; do
         # *** ENDE DATUMSBRECHNUNG ***
 
         echo -e "\n${BLUE}=======================================================${NC}";
-        echo -e "${BLUE}  Bearbeite Pipeline für: $symbol ($timeframe)${NC}";
+        echo -e "${BLUE}  Bearbeite Pipeline für: $symbol ($timeframe)${NC}";
         # *** Angepasst: Zeige das finale Startdatum an ***
-        echo -e "${BLUE}  Datenzeitraum: $FINAL_START_DATE bis $END_DATE${NC}";
+        echo -e "${BLUE}  Datenzeitraum: $FINAL_START_DATE bis $END_DATE${NC}";
         echo -e "${BLUE}=======================================================${NC}"
 
         echo -e "\n${GREEN}>>> Starte Indikator-Optimierung für $symbol ($timeframe)...${NC}"
