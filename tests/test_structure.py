@@ -14,7 +14,7 @@ def test_project_structure():
     assert os.path.isdir(os.path.join(PROJECT_ROOT, 'src')), "Das 'src'-Verzeichnis fehlt."
     assert os.path.isdir(os.path.join(PROJECT_ROOT, 'artifacts')), "Das 'artifacts'-Verzeichnis fehlt."
     assert os.path.isdir(os.path.join(PROJECT_ROOT, 'tests')), "Das 'tests'-Verzeichnis fehlt."
-    # *** ÄNDERUNG: titanbot durch stbot ersetzt ***
+    # ÄNDERUNG: titanbot durch stbot ersetzt
     assert os.path.isdir(os.path.join(PROJECT_ROOT, 'src', 'stbot')), "Das 'src/stbot'-Verzeichnis fehlt."
     assert os.path.isdir(os.path.join(PROJECT_ROOT, 'src', 'stbot', 'strategy')), "Das 'src/stbot/strategy'-Verzeichnis fehlt."
     assert os.path.isdir(os.path.join(PROJECT_ROOT, 'src', 'stbot', 'analysis')), "Das 'src/stbot/analysis'-Verzeichnis fehlt."
@@ -28,10 +28,11 @@ def test_core_script_imports():
     """
     try:
         # Importiere Kernkomponenten von STBot
-        # *** ÄNDERUNG: titanbot durch stbot ersetzt (alle Importe) ***
+        # ÄNDERUNG: titanbot durch stbot ersetzt (alle Importe)
         from stbot.utils.trade_manager import housekeeper_routine, check_and_open_new_position, full_trade_cycle
         from stbot.utils.exchange import Exchange
-        from stbot.strategy.indicators import STBotEngine # Neue Engine
+        # Der Import von smc_engine wird durch indicators.py ersetzt
+        from stbot.strategy.indicators import STBotEngine
         from stbot.strategy.trade_logic import get_titan_signal
         from stbot.analysis.backtester import run_smc_backtest
         # Importiere 'main' aus dem optimizer und gib ihr einen Alias
