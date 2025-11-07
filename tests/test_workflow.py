@@ -1,15 +1,134 @@
-# Ersetze die gesamte Funktion test_full_stbot_workflow_on_bitget in tests/test_workflow.py:
+# Pfad: /home/matola/stbot/tests/test_workflow.py
+import pytest
+import os
+import sys
+import json
+import logging
+import time
+from unittest.mock import patch
+import pandas as pd
+import numpy as np 
+import ccxt
 
+# Füge das Projektverzeichnis zum Python-Pfad hinzu
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
+
+# Korrekter Import der tatsächlich existierenden Funktionen
+from stbot.utils.exchange import Exchange
+from stbot.utils.trade_manager import check_and_open_new_position, housekeeper_routine
+from stbot.utils.trade_manager import set_trade_lock, is_trade_locked 
+
+# =========================================================================
+# FIXTURE DEFINITION (KOPF DES TESTS)
+# =========================================================================
+@pytest.fixture(scope="module")
+def test_setup():
+    print("\n--- Starte umfassenden LIVE STBot-Workflow-Test ---")
+    print("\n[Setup] Bereite Testumgebung vor...")
+
+    secret_path = os.path.join(PROJECT_ROOT, 'secret.json')
+    if not os.path.exists(secret_path):
+        pytest.skip("secret.json nicht gefunden. Überspringe Live-Workflow-Test.")
+
+    with open(secret_path, 'r') as f:
+        secrets = json.load(f)
+
+    if not secrets.get('jaegerbot') or not secrets['jaegerbot']:
+        pytest.skip("Es wird mindestens ein Account unter 'jaegerbot' in secret.json für den Workflow-Test benötigt.")
+
+    test_account = secrets['jaegerbot'][0]
+    telegram_config = secrets.get('telegram', {})
+
+    try:
+        exchange = Exchange(test_account)
+        if not exchange.markets:
+            pytest.fail("Exchange konnte nicht initialisiert werden (Märkte nicht geladen).")
+    except Exception as e:
+        pytest.fail(f"Exchange konnte nicht initialisiert werden: {e}")
+
+    # XRP FÜR TEST (ANGEPASSTE PARAMETER FÜR NIEDRIGERES RISIKO UND MARGIN)
+    symbol = 'XRP/USDT:USDT'
+    # Dummy-Parameter für die neue EMA/MACD-Strategie
+    params = {
+        'market': {'symbol': symbol, 'timeframe': '5m'},
+        'strategy': { 'ema_short': 9, 'ema_long': 21, 'rsi_period': 14, 'volume_ma_period': 20 },
+        'risk': {
+            'margin_mode': 'isolated',
+            'risk_per_trade_pct': 1.0, # 1.0% Risk (erhöht, um Min. Kontraktgröße zu erreichen)
+            'risk_reward_ratio': 2.0,
+            'leverage': 15,
+            'trailing_stop_activation_rr': 1.5,
+            'trailing_stop_callback_rate_pct': 0.5,
+            'atr_multiplier_sl': 1.0,
+            'min_sl_pct': 0.1
+        },
+        'behavior': { 'use_longs': True, 'use_shorts': True }
+    }
+
+    test_logger = logging.getLogger("test-logger")
+    test_logger.setLevel(logging.INFO)
+    if not test_logger.handlers:
+        test_logger.addHandler(logging.StreamHandler(sys.stdout))
+
+    print("-> Führe initiales Aufräumen durch...")
+    try:
+        housekeeper_routine(exchange, symbol, test_logger)
+        time.sleep(2)
+        pos_check = exchange.fetch_open_positions(symbol)
+        if pos_check:
+            print(f"WARNUNG: Position für {symbol} nach initialem Aufräumen noch vorhanden. Schließe sie...")
+            exchange.create_market_order(symbol, 'sell' if pos_check[0]['side'] == 'long' else 'buy', float(pos_check[0]['contracts']), {'reduceOnly': True})
+            time.sleep(3)
+            pos_check_after = exchange.fetch_open_positions(symbol)
+            if pos_check_after:
+                pytest.fail(f"Konnte initiale Position für {symbol} nicht schließen.")
+            else:
+                print("-> Initiale Position erfolgreich geschlossen.")
+                housekeeper_routine(exchange, symbol, test_logger)
+                time.sleep(1)
+
+        print("-> Ausgangszustand ist sauber.")
+    except Exception as e:
+        pytest.fail(f"Fehler beim initialen Aufräumen: {e}")
+
+    yield exchange, params, telegram_config, symbol, test_logger
+
+    print("\n[Teardown] Räume nach dem Test auf...")
+    try:
+        print("-> Lösche offene Trigger Orders...")
+        exchange.cancel_all_orders_for_symbol(symbol)
+        time.sleep(2)
+
+        print("-> Prüfe auf offene Positionen...")
+        position = exchange.fetch_open_positions(symbol)
+        if position:
+            print(f"-> Position nach Test noch offen. Schließe sie...")
+            exchange.create_market_order(symbol, 'sell' if position[0]['side'] == 'long' else 'buy', float(position[0]['contracts']), {'reduceOnly': True})
+            time.sleep(3)
+        else:
+            print("-> Keine offene Position gefunden.")
+
+        print("-> Führe finale Order-Löschung durch...")
+        exchange.cancel_all_orders_for_symbol(symbol)
+        print("-> Aufräumen abgeschlossen.")
+
+    except Exception as e:
+        print(f"FEHLER beim Aufräumen nach dem Test: {e}")
+
+
+# =========================================================================
+# TEST FUNKTION
+# =========================================================================
 def test_full_stbot_workflow_on_bitget(test_setup):
     exchange, params, telegram_config, symbol, logger = test_setup
 
-    # --- KORRIGIERTER MOCK zur Erzwingung der Mindest-Größe ---
+    # --- Korrigierter Mock zur Erzwingung der Mindest-Kerzenanzahl (mind. 150) ---
     num_candles = 200 
     mock_index = pd.to_datetime(pd.date_range(end=pd.Timestamp.now(), periods=num_candles, freq='5min'))
-    
-    # *Wichtig:* ATR auf einen höheren Wert setzen (z.B. 0.01 statt 0.005) 
-    # und Risk erhöhen (z.B. 1.0% statt 0.5% im params Dict), um eine größere Position zu erzwingen.
+
     mock_data = {
+        # ATR/ADX benötigt 'high', 'low', 'close', 'volume'
         'open': np.full(num_candles, 0.49), 
         'high': np.full(num_candles, 0.51), 
         'low': np.full(num_candles, 0.48), 
@@ -17,11 +136,8 @@ def test_full_stbot_workflow_on_bitget(test_setup):
         'volume': np.full(num_candles, 100),
         'atr': np.full(num_candles, 0.01) # Erhöhter ATR-Wert (wird für SL-Distanz benötigt)
     }
+    # Der Mock für fetch_recent_ohlcv muss ein DataFrame zurückgeben.
     mock_df = pd.DataFrame(mock_data, index=mock_index)
-
-    # **Zusätzlich Risk im Params-Dict für den Test erhöhen**
-    test_params = params.copy()
-    test_params['risk']['risk_per_trade_pct'] = 1.0 # 1.0% Risk (war 0.5)
 
     # Der Trade-Lock-Check wird für den Test immer auf FALSE gesetzt
     with patch('stbot.utils.trade_manager.set_trade_lock'), \
@@ -32,8 +148,8 @@ def test_full_stbot_workflow_on_bitget(test_setup):
 
         print("\n[Schritt 1/3] Mocke Signal und prüfe Trade-Eröffnung...")
 
-        # Führe den Check-Zyklus aus mit den angepassten Parametern
-        check_and_open_new_position(exchange, None, None, test_params, telegram_config, logger)
+        # Führe den Check-Zyklus aus
+        check_and_open_new_position(exchange, None, None, params, telegram_config, logger)
 
     print("-> Warte 5s auf Order-Ausführung...")
     time.sleep(5)
