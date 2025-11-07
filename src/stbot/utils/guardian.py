@@ -1,8 +1,9 @@
-# src/titanbot/utils/guardian.py
+# Pfad: /home/matola/stbot/src/stbot/utils/guardian.py
+# src/stbot/utils/guardian.py
 import logging
 from functools import wraps
-# *** Geänderter Importpfad ***
-from titanbot.utils.telegram import send_message
+# *** ÄNDERUNG: Korrigierter Importpfad von titanbot zu stbot ***
+from stbot.utils.telegram import send_message
 
 def guardian_decorator(func):
     """
@@ -50,8 +51,8 @@ def guardian_decorator(func):
 
             # Sende eine Telegram-Nachricht
             try:
-                # *** Geänderter Name ***
-                telegram_message = f"🚨 *Kritischer Systemfehler* im Guardian-Decorator für *{symbol} ({timeframe})*."
+                # *** ÄNDERUNG: Name von TitanBot zu STBot ***
+                telegram_message = f"🚨 *Kritischer Systemfehler* im STBot-Guardian für *{symbol} ({timeframe})*."
                 send_message(
                     telegram_config.get('bot_token'),
                     telegram_config.get('chat_id'),
@@ -59,4 +60,4 @@ def guardian_decorator(func):
                 )
             except Exception as tel_e:
                 logger.error(f"Konnte keine Telegram-Nachricht senden: {tel_e}")
-    return wrapper
+        return wrapper
