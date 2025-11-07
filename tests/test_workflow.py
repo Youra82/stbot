@@ -1,3 +1,5 @@
+# Pfad: /home/matola/stbot/tests/test_workflow.py
+
 # tests/test_workflow.py
 # FÜR 30 USDT, XRP/USDT:USDT, TSL FUNKTIONIERT
 import pytest
@@ -13,18 +15,20 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
 # Korrekter Import der tatsächlich existierenden Funktionen
-from titanbot.utils.exchange import Exchange
-from titanbot.utils.trade_manager import check_and_open_new_position, housekeeper_routine
-from titanbot.utils.trade_manager import set_trade_lock, is_trade_locked # is_trade_locked wird jetzt gemockt
+# *** ÄNDERUNG: titanbot durch stbot ersetzt ***
+from stbot.utils.exchange import Exchange
+from stbot.utils.trade_manager import check_and_open_new_position, housekeeper_routine
+from stbot.utils.trade_manager import set_trade_lock, is_trade_locked # is_trade_locked wird jetzt gemockt
 
 @pytest.fixture(scope="module")
 def test_setup():
-    print("\n--- Starte umfassenden LIVE TitanBot-Workflow-Test ---")
+    # *** ÄNDERUNG: Bot-Name von TitanBot zu STBot ***
+    print("\n--- Starte umfassenden LIVE STBot-Workflow-Test ---")
     print("\n[Setup] Bereite Testumgebung vor...")
 
     secret_path = os.path.join(PROJECT_ROOT, 'secret.json')
     if not os.path.exists(secret_path):
-            pytest.skip("secret.json nicht gefunden. Überspringe Live-Workflow-Test.")
+         pytest.skip("secret.json nicht gefunden. Überspringe Live-Workflow-Test.")
 
     with open(secret_path, 'r') as f:
         secrets = json.load(f)
@@ -44,18 +48,21 @@ def test_setup():
 
     # XRP FÜR TEST (ANGEPASSTE PARAMETER FÜR NIEDRIGERES RISIKO UND MARGIN)
     symbol = 'XRP/USDT:USDT'
+    # Die Strategie-Parameter werden hier beibehalten, obwohl sie alt sind, 
+    # da die Testlogik nur das Fehlen eines Signals (MOCK) prüft. 
+    # Nach der Optimierung sollten diese mit echten Werten überschrieben werden.
     params = {
         'market': {'symbol': symbol, 'timeframe': '5m'},
-        'strategy': { 'swingsLength': 20, 'ob_mitigation': 'High/Low' },
+        'strategy': { 'ema_short': 9, 'ema_long': 21, 'rsi_period': 14, 'volume_ma_period': 20 },
         'risk': {
             'margin_mode': 'isolated',
-            'risk_per_trade_pct': 0.5,           
+            'risk_per_trade_pct': 0.5,
             'risk_reward_ratio': 2.0,
-            'leverage': 15,                      
+            'leverage': 15,
             'trailing_stop_activation_rr': 1.5,
             'trailing_stop_callback_rate_pct': 0.5,
-            'atr_multiplier_sl': 1.0,            
-            'min_sl_pct': 0.1                    
+            'atr_multiplier_sl': 1.0,
+            'min_sl_pct': 0.1
         },
         'behavior': { 'use_longs': True, 'use_shorts': True }
     }
@@ -76,11 +83,11 @@ def test_setup():
             time.sleep(3)
             pos_check_after = exchange.fetch_open_positions(symbol)
             if pos_check_after:
-                    pytest.fail(f"Konnte initiale Position für {symbol} nicht schließen.")
+                pytest.fail(f"Konnte initiale Position für {symbol} nicht schließen.")
             else:
-                    print("-> Initiale Position erfolgreich geschlossen.")
-                    housekeeper_routine(exchange, symbol, test_logger)
-                    time.sleep(1)
+                print("-> Initiale Position erfolgreich geschlossen.")
+                housekeeper_routine(exchange, symbol, test_logger)
+                time.sleep(1)
 
         print("-> Ausgangszustand ist sauber.")
     except Exception as e:
@@ -112,14 +119,15 @@ def test_setup():
 
 def test_full_titanbot_workflow_on_bitget(test_setup):
     exchange, params, telegram_config, symbol, logger = test_setup
-    
+
     # NEU: Der Trade-Lock-Check wird für den Test immer auf FALSE gesetzt
-    with patch('titanbot.utils.trade_manager.set_trade_lock'), \
-         patch('titanbot.utils.trade_manager.is_trade_locked', return_value=False), \
-         patch('titanbot.utils.trade_manager.get_titan_signal', return_value=('buy', None)):
-        
+    # *** ÄNDERUNG: titanbot durch stbot ersetzt (an 3 Stellen) ***
+    with patch('stbot.utils.trade_manager.set_trade_lock'), \
+        patch('stbot.utils.trade_manager.is_trade_locked', return_value=False), \
+        patch('stbot.strategy.trade_logic.get_titan_signal', return_value=('buy', None)):
+
         print("\n[Schritt 1/3] Mocke Signal und prüfe Trade-Eröffnung...")
-        
+
         check_and_open_new_position(exchange, None, None, params, telegram_config, logger)
 
     print("-> Warte 5s auf Order-Ausführung...")
@@ -127,7 +135,7 @@ def test_full_titanbot_workflow_on_bitget(test_setup):
 
     print("\n[Schritt 2/3] Überprüfe Position und Orders...")
     position = exchange.fetch_open_positions(symbol)
-    
+
     # Hier muss die Position existieren, da der Lock-Check ignoriert wurde
     assert position, "FEHLER: Position wurde nicht eröffnet! (Trade Lock sollte deaktiviert sein)."
 
