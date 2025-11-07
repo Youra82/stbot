@@ -1,4 +1,5 @@
-# src/titanbot/analysis/portfolio_simulator.py (Version für TitanBot SMC - KORRIGIERT)
+# Pfad: /home/matola/stbot/src/stbot/analysis/portfolio_simulator.py
+# src/stbot/analysis/portfolio_simulator.py (Version für STBot Indikatoren)
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
@@ -10,42 +11,47 @@ import math # Import für math.ceil
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
-from titanbot.strategy.smc_engine import SMCEngine, Bias
-from titanbot.strategy.trade_logic import get_titan_signal # Nutzt die Live-Logik
+# *** ÄNDERUNG: Importpfad von titanbot/smc_engine zu stbot/indicators ***
+from stbot.strategy.indicators import STBotEngine # Nutze die neue Indikator-Engine
+# Importiere den SMC-Engine Code nicht mehr, verwende die Dummy-Engine
+from stbot.strategy.trade_logic import get_titan_signal # Nutzt die Live-Logik
 
 def run_portfolio_simulation(start_capital, strategies_data, start_date, end_date):
     """
-    Führt eine chronologische Portfolio-Simulation mit mehreren SMC-Strategien durch.
+    Führt eine chronologische Portfolio-Simulation mit mehreren Indikator-Strategien durch.
     'strategies_data' erwartet jetzt Keys (z.B. 'BTC_1h') und Dictionaries mit
     'symbol', 'timeframe', 'data', 'smc_params', 'risk_params'.
     """
-    print("\n--- Starte Portfolio-Simulation (SMC)... ---")
+    # *** ÄNDERUNG: Titel angepasst ***
+    print("\n--- Starte Portfolio-Simulation (Indikatoren)... ---")
 
     # --- 1. Kombiniere alle Zeitstempel & berechne Indikatoren ---
     all_timestamps = set()
-    print("1/4: Berechne Indikatoren (ATR/ADX) für alle Strategien...")
+    print("1/4: Berechne Indikatoren (ATR/MACD/RSI) für alle Strategien...")
     data_with_indicators = {} # NEU: Dictionary für Daten mit Indikatoren
-    
+
     for key, strat in strategies_data.items():
         if 'data' in strat and not strat['data'].empty:
-            # --- START NEU: ATR & ADX für jede Strategie berechnen ---
+            # --- START NEU: Indikatoren für jede Strategie berechnen ---
             try:
-                temp_data = strat['data'].copy()
-                smc_params = strat.get('smc_params', {})
-                adx_period = smc_params.get('adx_period', 14) # Hole Periode aus Config
+                temp_data = strat['data'].rename(columns={'close': 'Close', 'volume': 'Volume'}).copy() # Spaltennamen anpassen
+                # NEU: Hole alle Strategie-Einstellungen
+                strategy_params = strat.get('smc_params', {})
                 
-                if len(temp_data) >= 15: # Mindestlänge für ATR(14)
-                    # ATR
-                    atr_indicator = ta.volatility.AverageTrueRange(high=temp_data['high'], low=temp_data['low'], close=temp_data['close'], window=14)
+                # Wir müssen hier die gleichen Indikatoren wie im Backtester berechnen:
+                # 1. Die Indikatoren der Strategie (EMA, MACD, RSI, Volume MA)
+                engine = STBotEngine(settings=strategy_params)
+                temp_data = engine.process_dataframe(temp_data[['open', 'high', 'low', 'Close', 'Volume']].copy())
+
+                # 2. ATR (für die dynamische SL-Berechnung, die in der Simulation beibehalten wurde)
+                if not temp_data.empty and len(temp_data) >= 15:
+                    atr_indicator = ta.volatility.AverageTrueRange(high=temp_data['high'], low=temp_data['low'], close=temp_data['Close'], window=14)
                     temp_data['atr'] = atr_indicator.average_true_range()
                     
-                    # ADX
-                    adx_indicator = ta.trend.ADXIndicator(high=temp_data['high'], low=temp_data['low'], close=temp_data['close'], window=adx_period)
-                    temp_data['adx'] = adx_indicator.adx()
-                    temp_data['adx_pos'] = adx_indicator.adx_pos()
-                    temp_data['adx_neg'] = adx_indicator.adx_neg()
+                    # ADX muss nicht berechnet werden, da es in der neuen Trade-Logik entfernt wurde
+                    # Wir behalten nur ATR für die SL-Berechnung
 
-                    temp_data.dropna(subset=['atr', 'adx'], inplace=True) # Zeilen ohne Indikatoren entfernen
+                    temp_data.dropna(subset=['atr', 'Close'], inplace=True) # Zeilen ohne Indikatoren entfernen
                     
                     if not temp_data.empty:
                         data_with_indicators[key] = temp_data # Nur gültige Daten speichern
@@ -66,7 +72,7 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
         if key in data_with_indicators:
             strategies_data_processed[key] = strat.copy()
             strategies_data_processed[key]['data'] = data_with_indicators[key]
-        
+
     if not all_timestamps or not strategies_data_processed:
         print("Keine gültigen Daten für die Simulation gefunden (oder Indikatoren konnten nicht berechnet werden).")
         return None
@@ -75,22 +81,17 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
     print(f"-> {len(sorted_timestamps)} eindeutige Zeitstempel gefunden.")
 
     # --- 2. SMC-Analyse für jede Strategie ---
-    print("2/4: Führe SMC-Analyse für alle gültigen Strategien durch...")
-    smc_results_by_strategy = {}
-    valid_strategies = {} 
+    # NEU: Der Schritt 2/4 wird im Portfolio Simulator irrelevant, da die neue Engine zustandslos ist. 
+    # Wir überspringen den alten SMC-Engine-Aufruf und initialisieren stattdessen die Engine hier nur 
+    # einmalig pro Strategie-Key, um die Daten zu erzeugen, die dann von trade_logic genutzt werden.
+    # Da die Indikatoren bereits in Schritt 1 berechnet wurden, müssen wir in Schritt 2 nichts mehr tun.
     
-    for key, strat in tqdm(strategies_data_processed.items(), desc="SMC Analyse"):
-        try:
-            engine = SMCEngine(settings=strat.get('smc_params', {}))
-            smc_results_by_strategy[key] = engine.process_dataframe(strat['data'][['open','high','low','close']].copy())
-            valid_strategies[key] = strat 
-        except Exception as e:
-            print(f"FEHLER bei SMC-Analyse für {key}: {e}")
-
-    if not valid_strategies:
-        print("Für keine Strategie konnte die SMC-Analyse erfolgreich durchgeführt werden.")
-        return None
-
+    print("2/4: Vorbereitung der Indikator-Daten abgeschlossen.")
+    
+    # Hier speichern wir einfach die vorbereiteten Daten mit Indikatoren, damit die Keys passen.
+    smc_results_by_strategy = {key: strat['data'] for key, strat in strategies_data_processed.items()}
+    valid_strategies = strategies_data_processed
+    
     # --- 3. Chronologische Simulation ---
     print("3/4: Führe chronologische Backtests durch...")
     equity = start_capital
@@ -100,7 +101,7 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
     min_equity_ever = start_capital
     liquidation_date = None
 
-    open_positions = {} 
+    open_positions = {}
     trade_history = []
     equity_curve = []
 
@@ -113,7 +114,7 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
     for ts in tqdm(sorted_timestamps, desc="Simuliere Portfolio"):
         if liquidation_date: break
 
-        current_total_equity = equity 
+        current_total_equity = equity
         unrealized_pnl = 0
 
         # --- 3a. Offene Positionen managen ---
@@ -121,21 +122,27 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
         for key, pos in open_positions.items():
             strat_data = valid_strategies.get(key)
             if not strat_data or ts not in strat_data['data'].index:
+                # Falls die Kerze für diesen TF an diesem TS fehlt
                 if pos.get('last_known_price'):
                     pnl_mult = 1 if pos['side'] == 'long' else -1
                     unrealized_pnl += pos['notional_value'] * (pos['last_known_price'] / pos['entry_price'] -1) * pnl_mult
                 continue
 
             current_candle = strat_data['data'].loc[ts]
-            pos['last_known_price'] = current_candle['close']
+            # NEU: Verwende 'Close' als letzten bekannten Preis
+            pos['last_known_price'] = current_candle['Close'] 
             exit_price = None
 
+            # ... (Positions-Management Logik bleibt unverändert)
+            rr = pos['risk_reward_ratio']
+            callback_rate = pos['callback_rate']
+            
             if pos['side'] == 'long':
                 if not pos['trailing_active'] and current_candle['high'] >= pos['activation_price']:
                     pos['trailing_active'] = True
                 if pos['trailing_active']:
                     pos['peak_price'] = max(pos['peak_price'], current_candle['high'])
-                    trailing_sl = pos['peak_price'] * (1 - pos['callback_rate'])
+                    trailing_sl = pos['peak_price'] * (1 - callback_rate)
                     pos['stop_loss'] = max(pos['stop_loss'], trailing_sl)
                 if current_candle['low'] <= pos['stop_loss']: exit_price = pos['stop_loss']
                 elif not pos['trailing_active'] and current_candle['high'] >= pos['take_profit']: exit_price = pos['take_profit']
@@ -144,21 +151,25 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
                     pos['trailing_active'] = True
                 if pos['trailing_active']:
                     pos['peak_price'] = min(pos['peak_price'], current_candle['low'])
-                    trailing_sl = pos['peak_price'] * (1 + pos['callback_rate'])
+                    trailing_sl = pos['peak_price'] * (1 + callback_rate)
                     pos['stop_loss'] = min(pos['stop_loss'], trailing_sl)
                 if current_candle['high'] >= pos['stop_loss']: exit_price = pos['stop_loss']
                 elif not pos['trailing_active'] and current_candle['low'] <= pos['take_profit']: exit_price = pos['take_profit']
 
+
             if exit_price:
                 pnl_pct = (exit_price / pos['entry_price'] - 1) if pos['side'] == 'long' else (1 - exit_price / pos['entry_price'])
-                pnl_usd = pos['notional_value'] * pnl_pct
-                total_fees = pos['notional_value'] * fee_pct * 2
+                notional_value = pos['notional_value']
+                pnl_usd = notional_value * pnl_pct
+                total_fees = notional_value * fee_pct * 2
                 equity += (pnl_usd - total_fees)
                 trade_history.append({'strategy_key': key, 'symbol': strat_data['symbol'], 'pnl': (pnl_usd - total_fees)})
                 positions_to_close.append(key)
             else:
                 pnl_mult = 1 if pos['side'] == 'long' else -1
-                unrealized_pnl += pos['notional_value'] * (current_candle['close'] / pos['entry_price'] -1) * pnl_mult
+                # NEU: Verwende 'Close' für die Unrealized PnL Berechnung
+                unrealized_pnl += pos['notional_value'] * (current_candle['Close'] / pos['entry_price'] -1) * pnl_mult
+
 
         for key in positions_to_close:
             del open_positions[key]
@@ -168,41 +179,44 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
             for key, strat in valid_strategies.items():
                 if key not in open_positions and ts in strat['data'].index:
                     current_candle = strat['data'].loc[ts]
-                    smc_results = smc_results_by_strategy.get(key)
+                    # SMC-Results ist hier das Indikator-DataFrame
+                    indicators_data = smc_results_by_strategy.get(key)
                     risk_params = strat.get('risk_params', {})
                     smc_params = strat.get('smc_params', {})
 
-                    if not smc_results: continue
-                    
+                    if indicators_data is None: continue
+
                     # --- NEU: Kombiniere Parameter für die Logik-Funktion ---
                     params_for_logic = {"strategy": smc_params, "risk": risk_params}
-                    side, _ = get_titan_signal(smc_results, current_candle, params=params_for_logic)
+                    # data_with_indicators ist hier das Indikator-DataFrame
+                    side, _ = get_titan_signal(indicators_data, current_candle, params=params_for_logic)
 
                     if side:
-                        entry_price = current_candle['close']
+                        entry_price = current_candle['Close'] # Nutze Close-Preis der Kerze
                         risk_per_trade_pct = risk_params.get('risk_per_trade_pct', 1.0) / 100
                         risk_reward_ratio = risk_params.get('risk_reward_ratio', 2.0)
                         leverage = risk_params.get('leverage', 10)
                         activation_rr = risk_params.get('trailing_stop_activation_rr', 2.0)
                         callback_rate = risk_params.get('trailing_stop_callback_rate_pct', 1.0) / 100
-                        
-                        # --- NEU: Hole optimierte SL-Parameter ---
-                        atr_multiplier_sl = risk_params.get('atr_multiplier_sl', 2.0) 
+
+                        # --- NEU: Hole ATR für dynamische SL-Berechnung ---
+                        atr_multiplier_sl = risk_params.get('atr_multiplier_sl', 2.0)
                         min_sl_pct = risk_params.get('min_sl_pct', 0.5) / 100.0
-                        
+
                         current_atr = current_candle.get('atr')
                         if pd.isna(current_atr) or current_atr <= 0:
-                            continue 
+                            # print("WARNUNG: ATR nicht verfügbar. Überspringe Trade.")
+                            continue
 
                         sl_distance_atr = current_atr * atr_multiplier_sl
                         sl_distance_min = entry_price * min_sl_pct
                         sl_distance = max(sl_distance_atr, sl_distance_min)
                         if sl_distance <= 0:
                             continue
-                        
-                        risk_amount_usd = equity * risk_per_trade_pct 
+
+                        risk_amount_usd = equity * risk_per_trade_pct
                         sl_distance_pct_equivalent = sl_distance / entry_price
-                        if sl_distance_pct_equivalent <= 1e-6: 
+                        if sl_distance_pct_equivalent <= 1e-6:
                             continue
 
                         calculated_notional_value = risk_amount_usd / sl_distance_pct_equivalent
@@ -211,9 +225,9 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
 
                         if final_notional_value < min_notional:
                             continue
-                            
+
                         margin_used = math.ceil((final_notional_value / leverage) * 100) / 100
-                        
+
                         current_total_margin = sum(p['margin_used'] for p in open_positions.values())
                         if current_total_margin + margin_used > equity:
                             continue
@@ -233,11 +247,12 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
                             'activation_price': activation_price,
                             'peak_price': entry_price,
                             'callback_rate': callback_rate,
-                            'last_known_price': entry_price
+                            'last_known_price': entry_price,
+                            'risk_reward_ratio': risk_reward_ratio # Speichere RR zur Vereinfachung
                         }
 
         # --- 3c. Equity Curve und Drawdown aktualisieren ---
-        current_total_equity = equity + unrealized_pnl 
+        current_total_equity = equity + unrealized_pnl
         equity_curve.append({'timestamp': ts, 'equity': current_total_equity})
 
         peak_equity = max(peak_equity, current_total_equity)
@@ -282,12 +297,12 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
         "liquidation_date": liquidation_date,
         "pnl_per_strategy": pnl_per_strategy,
         "trades_per_strategy": trades_per_strategy,
-        "equity_curve": equity_df 
+        "equity_curve": equity_df
     }
 
 # Optional: Ein kleiner Test, wenn die Datei direkt ausgeführt wird
 if __name__ == "__main__":
-    from titanbot.analysis.backtester import load_data # Import hierhin verschoben
+    from stbot.analysis.backtester import load_data # Import hierhin verschoben
     start_cap = 1000
     start_dt = "2024-01-01"
     end_dt = "2024-04-01"
@@ -295,12 +310,14 @@ if __name__ == "__main__":
     test_strategies = {
         "BTC_1h": {
             'symbol': "BTC/USDT:USDT", 'timeframe': "1h",
-            'smc_params': {'swingsLength': 30, 'ob_mitigation': 'High/Low', 'adx_period': 14, 'use_adx_filter': True, 'adx_threshold': 25},
+            # NEU: Neue Strategie-Parameter
+            'smc_params': {'ema_short': 10, 'ema_long': 20, 'rsi_period': 15, 'volume_ma_period': 25}, 
             'risk_params': {'risk_per_trade_pct': 1.0, 'risk_reward_ratio': 2.0, 'leverage': 10, 'atr_multiplier_sl': 2.0, 'min_sl_pct': 0.5}
         },
         "ETH_1h": {
             'symbol': "ETH/USDT:USDT", 'timeframe': "1h",
-            'smc_params': {'swingsLength': 50, 'ob_mitigation': 'Close', 'adx_period': 14, 'use_adx_filter': False},
+            # NEU: Neue Strategie-Parameter
+            'smc_params': {'ema_short': 9, 'ema_long': 21, 'rsi_period': 14, 'volume_ma_period': 20},
             'risk_params': {'risk_per_trade_pct': 1.5, 'risk_reward_ratio': 1.5, 'leverage': 15, 'atr_multiplier_sl': 2.5, 'min_sl_pct': 0.8}
         }
     }
@@ -310,7 +327,7 @@ if __name__ == "__main__":
     for key in test_strategies:
         strat = test_strategies[key]
         test_strategies_raw_data[key] = {
-            **strat, 
+            **strat,
             'data': load_data(strat['symbol'], strat['timeframe'], start_dt, end_dt)
         }
         if not test_strategies_raw_data[key]['data'].empty:
