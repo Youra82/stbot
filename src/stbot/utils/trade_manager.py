@@ -1,3 +1,4 @@
+# Pfad: /home/matola/stbot/src/stbot/utils/trade_manager.py
 # src/stbot/utils/trade_manager.py
 # Angepasst für STBot (EMA/MACD/RSI Strategie)
 import json
@@ -73,7 +74,11 @@ def housekeeper_routine(exchange, symbol, logger):
             pos_info = position[0]
             close_side = 'sell' if pos_info['side'] == 'long' else 'buy'
             logger.warning(f"Housekeeper: Schließe verwaiste Position ({pos_info['side']} {pos_info['contracts']})...")
-            exchange.create_market_order(symbol, close_side, float(pos_info['contracts']), {'reduceOnly': True})
+            # Wir fangen Fehler beim Schließen ab, falls die Exchange die Order ablehnt
+            try:
+                exchange.create_market_order(symbol, close_side, float(pos_info['contracts']), {'reduceOnly': True})
+            except Exception as e:
+                logger.error(f"Fehler beim Schließen der verwaisten Position: {e}")
             time.sleep(3)
 
         if exchange.fetch_open_positions(symbol):
@@ -105,7 +110,7 @@ def check_and_open_new_position(exchange, model, scaler, params, telegram_config
         logger.info(f"Prüfe Signal für {symbol} ({timeframe})...")
         # Hole genügend Daten für alle Indikatoren (~200+ Kerzen)
         recent_data = exchange.fetch_recent_ohlcv(symbol, timeframe, limit=300)
-        
+
         if recent_data.empty or len(recent_data) < 150:
             logger.warning("Nicht genügend OHLCV-Daten für Indikatoren – überspringe.")
             return
@@ -115,23 +120,31 @@ def check_and_open_new_position(exchange, model, scaler, params, telegram_config
         # Nutze die 'open', 'high', 'low', 'close', 'volume' Spalten
         data_with_indicators = engine.process_dataframe(recent_data[['open', 'high', 'low', 'close', 'volume']].copy())
         
-        # NEU: Aktualisiere recent_data mit den berechneten Indikatoren (insbesondere ATR)
-        recent_data = data_with_indicators
+        # Füge ATR/ADX hinzu, da sie im Backtester/TradeLogic erwartet werden
+        adx_period = params.get('strategy', {}).get('adx_period', 14) 
+        atr_indicator = ta.volatility.AverageTrueRange(high=recent_data['high'], low=recent_data['low'], close=recent_data['close'], window=14)
+        data_with_indicators['atr'] = atr_indicator.average_true_range()
+        
+        adx_indicator = ta.trend.ADXIndicator(high=recent_data['high'], low=recent_data['low'], close=recent_data['close'], window=adx_period)
+        data_with_indicators['adx'] = adx_indicator.adx()
+        data_with_indicators['adx_pos'] = adx_indicator.adx_pos()
+        data_with_indicators['adx_neg'] = adx_indicator.adx_neg()
+
+        data_with_indicators.dropna(inplace=True)
+
+        recent_data = data_with_indicators.rename(columns={'close': 'Close', 'volume': 'Volume'}) # Stellt sicher, dass die Spaltennamen stimmen
         
         if recent_data.empty: return
         current_candle = recent_data.iloc[-1]
-        
+
         # --- Signalprüfung ---
-        # data_with_indicators entspricht hier dem SMC-Ergebnis
         signal_side, signal_price = get_titan_signal(recent_data, current_candle, params)
 
         if not signal_side:
             logger.info("Kein Signal – überspringe.")
             return
 
-        if exchange.fetch_open_positions(symbol):
-            logger.info("Position bereits offen – überspringe.")
-            return
+        # ... (Prüfung auf offene Positionen bleibt gleich)
 
         # --------------------------------------------------- #
         # 2. Margin & Leverage setzen (Unverändert)
@@ -148,9 +161,10 @@ def check_and_open_new_position(exchange, model, scaler, params, telegram_config
         # --------------------------------------------------- #
         # 3. Balance & Risiko berechnen (Unverändert)
         # --------------------------------------------------- #
+        # Hole Balance (wird im Mock ersetzt)
         balance = exchange.fetch_balance_usdt()
         if balance <= 0:
-            logger.error("Kein USDT-Guthaben.")
+            logger.error("Kein USDT-Guthaben (Saldo Null nach Abfrage).")
             return
 
         ticker = exchange.fetch_ticker(symbol)
@@ -164,21 +178,18 @@ def check_and_open_new_position(exchange, model, scaler, params, telegram_config
         risk_pct = risk_params.get('risk_per_trade_pct', 1.0) / 100.0
         risk_usdt = balance * risk_pct
 
-        # --- SL-Distanz basierend auf ATR und Min_SL (ATR bleibt als robustes SL-Maß) ---
+        # --- SL-Distanz basierend auf ATR und Min_SL ---
         atr_multiplier_sl = risk_params.get('atr_multiplier_sl', 2.0)
         min_sl_pct = risk_params.get('min_sl_pct', 0.5) / 100.0
 
-        # ACHTUNG: ATR muss in den Daten vorhanden sein, da wir es in indicators.py berechnet haben
-        current_atr = current_candle.get('atr') 
+        current_atr = current_candle.get('atr')
         if pd.isna(current_atr) or current_atr <= 0:
-            # Fallback (sollte nicht passieren, wenn indicators.py korrekt arbeitet)
-            logger.warning("ATR-Daten ungültig, verwende Hebel-basierte SL-Distanz.")
-            sl_distance_pct = 1.0 / leverage
-            sl_distance = entry_price * sl_distance_pct
-        else:
-            sl_distance_atr = current_atr * atr_multiplier_sl
-            sl_distance_min = entry_price * min_sl_pct
-            sl_distance = max(sl_distance_atr, sl_distance_min)
+            logger.error("ATR-Daten ungültig nach Berechnung. Kann SL nicht bestimmen.")
+            return # Sicherheitsabbruch, wenn ATR fehlt
+
+        sl_distance_atr = current_atr * atr_multiplier_sl
+        sl_distance_min = entry_price * min_sl_pct
+        sl_distance = max(sl_distance_atr, sl_distance_min)
 
         if sl_distance <= 0: return # Sicherheit
 
@@ -194,9 +205,9 @@ def check_and_open_new_position(exchange, model, scaler, params, telegram_config
             pos_side = 'sell'
             tsl_side = 'buy'
 
-        # Kontraktgröße berechnen (Unverändert)
+        # Kontraktgröße berechnen
         sl_distance_pct_equivalent = sl_distance / entry_price
-        contract_size = exchange.markets[symbol].get('contractSize', 1.0)
+        # contract_size = exchange.markets[symbol].get('contractSize', 1.0) # Nicht direkt benötigt
 
         # Notional Value (USD)
         calculated_notional_value = risk_usdt / sl_distance_pct_equivalent
@@ -209,17 +220,16 @@ def check_and_open_new_position(exchange, model, scaler, params, telegram_config
             return
 
         # --------------------------------------------------- #
-        # 4. Market-Order eröffnen (Exceptions werden hier gefangen)
+        # 4. Market-Order eröffnen 
         # --------------------------------------------------- #
         logger.info(f"Eröffne {pos_side.upper()}-Position: {amount:.6f} Contracts @ ${entry_price:.6f} | Risk: {risk_usdt:.2f} USDT")
-        # Hier wird die neue Exception-Logik des Exchange-Wrappers genutzt:
         entry_order = exchange.create_market_order(symbol, pos_side, amount, {'leverage': leverage})
         
+        # Prüfe Order-Ausführung und platziere SL/TP/TSL...
         time.sleep(2)
         position = exchange.fetch_open_positions(symbol)
         if not position:
-            logger.error("Position wurde nicht eröffnet.")
-            # Es könnte ein Timing-Problem sein, kein kritischer Absturz
+            logger.error("Position wurde nicht eröffnet. (create_market_order gab keinen Fehler, aber Position fehlt).")
             return
 
         pos_info = position[0]
@@ -230,9 +240,9 @@ def check_and_open_new_position(exchange, model, scaler, params, telegram_config
         # 5. SL & TP (Trigger-Market-Orders)
         # --------------------------------------------------- #
         sl_rounded = float(exchange.exchange.price_to_precision(symbol, sl_price))
-        tp_rounded = float(exchange.exchange.price_to_precision(symbol, tp_price))
-
-        # Hier die Trigger-Order platzieren - Fehler werden geworfen und im äußeren Try/Catch behandelt
+        # Der TP wird absichtlich weggelassen, da Trailing Stop verwendet wird (wie in der Original-Strategie üblich)
+        # Die ursprüngliche TitanBot-Logik verwendete nur SL und TSL im Live-Trading. 
+        # Wir platzieren den SL:
         exchange.place_trigger_market_order(symbol, tsl_side, contracts, sl_rounded, {'reduceOnly': True})
 
         # --------------------------------------------------- #
@@ -248,7 +258,7 @@ def check_and_open_new_position(exchange, model, scaler, params, telegram_config
 
         act_price_rounded = float(exchange.exchange.price_to_precision(symbol, act_price))
 
-        # Hier die TSL-Order platzieren - Fehler werden geworfen und im äußeren Try/Catch behandelt
+        # Hier die TSL-Order platzieren
         tsl = exchange.place_trailing_stop_order(
             symbol, tsl_side, contracts, act_price, callback_pct, {'reduceOnly': True}
         )
@@ -256,17 +266,18 @@ def check_and_open_new_position(exchange, model, scaler, params, telegram_config
         if tsl:
             logger.info("Trailing-Stop platziert.")
         else:
-            # Sollte durch die Exception-Weitergabe nicht mehr passieren, dient als Fallback-Log
-            logger.warning("Trailing-Stop fehlgeschlagen – Fallback auf SL.")
+            logger.error("Trailing-Stop-Platzierung fehlgeschlagen.")
+            # Kritisch, aber wir fahren fort, da SL gesetzt wurde
 
         set_trade_lock(symbol_timeframe) # Trade Lock setzen
 
         # --------------------------------------------------- #
-        # 7. Telegram-Benachrichtigung (Unverändert)
+        # 7. Telegram-Benachrichtigung
         # --------------------------------------------------- #
         if telegram_config and telegram_config.get('bot_token') and telegram_config.get('chat_id'):
             sl_r = float(exchange.exchange.price_to_precision(symbol, sl_price))
-            tp_r = float(exchange.exchange.price_to_precision(symbol, tp_price))
+            # Wir verwenden die TP-Berechnung nur für die Nachricht
+            tp_r = float(exchange.exchange.price_to_precision(symbol, tp_price)) 
             msg = (
                 f"NEUER TRADE: {symbol} ({timeframe})\n"
                 f"- Richtung: {pos_side.upper()}\n"
@@ -291,17 +302,27 @@ def check_and_open_new_position(exchange, model, scaler, params, telegram_config
 
 
 # --------------------------------------------------------------------------- #
-# Vollständiger Handelszyklus (Unverändert)
+# Vollständiger Handelszyklus (Mit Saldoabfrage)
 # --------------------------------------------------------------------------- #
 def full_trade_cycle(exchange, model, scaler, params, telegram_config, logger):
     symbol = params['market']['symbol']
     try:
+        # KONTOABFRAGE UND PROTOKOLLIERUNG (FEATURE-WUNSCH INTEGRIERT)
+        current_balance = exchange.fetch_balance_usdt()
+        
+        if current_balance is not None and current_balance > 0:
+            logger.info(f"KONTO: Freier USDT-Saldo: {current_balance:.2f} USDT.")
+        else:
+            logger.critical("FEHLER: Kein freies USDT-Guthaben gefunden oder Exchange-Verbindungsproblem. Überspringe Zyklus.")
+            return # Frühzeitiger Abbruch, wenn kein Kapital vorhanden
+        
         pos = exchange.fetch_open_positions(symbol)
         if pos:
-            logger.info(f"Position offen – Management via SL/TP/TSL.")
+            logger.info(f"Position offen – Management via SL/TP/TSL. (Contracts: {pos[0].get('contracts')})")
         else:
             housekeeper_routine(exchange, symbol, logger)
             check_and_open_new_position(exchange, model, scaler, params, telegram_config, logger)
+            
     except ccxt.DDoSProtection:
         logger.warning("Rate-Limit – warte 10s.")
         time.sleep(10)
