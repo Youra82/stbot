@@ -1,18 +1,4 @@
-# TitanBot 🤖
 
-Ein selbstoptimierender, **SMC-gesteuerter** (Smart Money Concepts) Trading-Bot für Krypto-Futures auf der Bitget-Börse. Er identifiziert Marktstrukturen wie Order Blocks (OBs) und Fair Value Gaps (FVGs), um Handelsentscheidungen zu treffen.
-
-Dieses System ist für den autonomen Betrieb auf einem Ubuntu-Server konzipiert und umfasst eine Pipeline zur **Optimierung von SMC- und Risiko-Parametern** sowie zum Live-Handel.
-
----
-
-## Features 🧠
-
-* **SMC-basierte Analyse:** Identifiziert automatisch wichtige Marktstrukturen (BOS, CHoCH, Order Blocks, Fair Value Gaps) zur Fundierung von Handelsentscheidungen.
-* **Automatisierte Optimierungs-Pipeline:** Ein einziges Skript (`run_pipeline.sh`) steuert den Prozess der Datenanalyse und der **Optimierung der SMC- und Risikoparameter** mithilfe von `optuna` und Backtesting.
-* **Dynamisches Risikomanagement:** Die Positionsgröße wird vor jedem Trade dynamisch auf Basis des *aktuellen* Kontostandes berechnet, um den Zinseszinseffekt optimal zu nutzen.
-* **Robust & Sicher:** Entwickelt für einen stabilen 24/7-Betrieb mit Sicherheits-Checks, Schutz vor Doppel-Trades pro Kerze und einem "Guardian"-Mechanismus, der kritische Fehler abfängt und meldet.
-* **Anpassbare Handelslogik:** Die konkrete Einstiegslogik (z.B. Entry bei FVG-Touch) ist in einer separaten Datei (`trade_logic.py`) definiert und kann leicht angepasst werden.
 
 ---
 
