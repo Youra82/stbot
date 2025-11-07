@@ -7,7 +7,7 @@ import logging
 import time
 from unittest.mock import patch
 import pandas as pd
-import numpy as np # Neu: Für die Mock-Daten
+import numpy as np 
 import ccxt
 
 # Füge das Projektverzeichnis zum Python-Pfad hinzu
@@ -20,7 +20,7 @@ from stbot.utils.trade_manager import check_and_open_new_position, housekeeper_r
 from stbot.utils.trade_manager import set_trade_lock, is_trade_locked 
 
 # =========================================================================
-# FIXTURE DEFINITION (HIER WAR DER FEHLER: Die Definition fehlte in der Datei)
+# FIXTURE DEFINITION 
 # =========================================================================
 @pytest.fixture(scope="module")
 def test_setup():
@@ -29,7 +29,6 @@ def test_setup():
 
     secret_path = os.path.join(PROJECT_ROOT, 'secret.json')
     if not os.path.exists(secret_path):
-        # Wenn secret.json nicht existiert, überspringen wir den Live-Test
         pytest.skip("secret.json nicht gefunden. Überspringe Live-Workflow-Test.")
 
     with open(secret_path, 'r') as f:
@@ -50,9 +49,9 @@ def test_setup():
 
     # XRP FÜR TEST (ANGEPASSTE PARAMETER FÜR NIEDRIGERES RISIKO UND MARGIN)
     symbol = 'XRP/USDT:USDT'
+    # Dummy-Parameter für die neue EMA/MACD-Strategie
     params = {
         'market': {'symbol': symbol, 'timeframe': '5m'},
-        # Dummy-Parameter für die neue EMA/MACD-Strategie
         'strategy': { 'ema_short': 9, 'ema_long': 21, 'rsi_period': 14, 'volume_ma_period': 20 },
         'risk': {
             'margin_mode': 'isolated',
@@ -74,6 +73,7 @@ def test_setup():
 
     print("-> Führe initiales Aufräumen durch...")
     try:
+        # Lösche vorherige Trigger-Orders und schließe eventuelle Positionen
         housekeeper_routine(exchange, symbol, test_logger)
         time.sleep(2)
         pos_check = exchange.fetch_open_positions(symbol)
@@ -145,9 +145,7 @@ def test_full_stbot_workflow_on_bitget(test_setup):
     with patch('stbot.utils.trade_manager.set_trade_lock'), \
         patch('stbot.utils.trade_manager.is_trade_locked', return_value=False), \
         patch.object(exchange, 'fetch_recent_ohlcv', return_value=mock_df), \
-        # Wir mocken das Ticker-Ergebnis, falls trade_manager es für den entry_price abruft
         patch.object(exchange, 'fetch_ticker', return_value={'last': 0.5, 'symbol': symbol}), \
-        # Wir mocken das Signal, um Entry zu erzwingen
         patch('stbot.strategy.trade_logic.get_titan_signal', return_value=('buy', 0.5)): 
 
         print("\n[Schritt 1/3] Mocke Signal und prüfe Trade-Eröffnung...")
