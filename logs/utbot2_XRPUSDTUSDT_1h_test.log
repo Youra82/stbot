@@ -1,0 +1,467 @@
+2025-11-06 11:00:18 UTC - INFO - --- Starte Zyklus für XRP/USDT:USDT (1h) ---
+2025-11-06 11:00:18 UTC - INFO - Keine offene Position gefunden.
+2025-11-06 11:00:18 UTC - INFO - Starte Housekeeping (storniere alte Orders)...
+2025-11-06 11:00:18 UTC - INFO - Housekeeping abgeschlossen.
+2025-11-06 11:00:18 UTC - INFO - Lade 1440 Kerzen für XRP/USDT:USDT (1h)...
+2025-11-06 11:00:19 UTC - CRITICAL - !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+2025-11-06 11:00:19 UTC - CRITICAL - !!! KRITISCHER SYSTEMFEHLER IM GUARDIAN !!!
+2025-11-06 11:00:19 UTC - CRITICAL - !!! Strategie: XRP/USDT:USDT (1h)
+2025-11-06 11:00:19 UTC - CRITICAL - !!! Fehler: Fehlerdetails: NameError: name 'ccxt' is not defined
+Traceback (most recent call last):
+  File "/root/utbot2/main.py", line 222, in run_strategy_cycle
+    attempt_new_trade(target, strategy_cfg, exchange, gemini_model, telegram_config, total_usdt_balance, logger)
+  File "/root/utbot2/main.py", line 122, in attempt_new_trade
+    historical_data_string = data_to_send[cols_to_send].round(5).to_csv(index=False, line_terminator='\n')
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/pandas/util/_decorators.py", line 333, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+TypeError: NDFrame.to_csv() got an unexpected keyword argument 'line_terminator'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/root/utbot2/utils/guardian.py", line 48, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/main.py", line 223, in run_strategy_cycle
+    except ccxt.RateLimitExceeded as e: logger.warning(f"Exchange Rate Limit: {e}. Pausiere 30s."); time.sleep(30)
+           ^^^^
+NameError: name 'ccxt' is not defined
+
+2025-11-06 11:00:19 UTC - CRITICAL - !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+2025-11-06 11:05:45 UTC - INFO - --- Starte Zyklus für XRP/USDT:USDT (1h) ---
+2025-11-06 11:05:45 UTC - INFO - Keine offene Position gefunden.
+2025-11-06 11:05:45 UTC - INFO - Starte Housekeeping (storniere alte Orders)...
+2025-11-06 11:05:46 UTC - INFO - Housekeeping abgeschlossen.
+2025-11-06 11:05:46 UTC - INFO - Lade 1440 Kerzen für XRP/USDT:USDT (1h)...
+2025-11-06 11:05:46 UTC - CRITICAL - !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+2025-11-06 11:05:46 UTC - CRITICAL - !!! KRITISCHER SYSTEMFEHLER IM GUARDIAN !!!
+2025-11-06 11:05:46 UTC - CRITICAL - !!! Strategie: XRP/USDT:USDT (1h)
+2025-11-06 11:05:46 UTC - CRITICAL - !!! Fehler: Fehlerdetails: NameError: name 'ccxt' is not defined
+Traceback (most recent call last):
+  File "/root/utbot2/main.py", line 222, in run_strategy_cycle
+    attempt_new_trade(target, strategy_cfg, exchange, gemini_model, telegram_config, total_usdt_balance, logger)
+  File "/root/utbot2/main.py", line 122, in attempt_new_trade
+    historical_data_string = data_to_send[cols_to_send].round(5).to_csv(index=False, line_terminator='\n')
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/pandas/util/_decorators.py", line 333, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+TypeError: NDFrame.to_csv() got an unexpected keyword argument 'line_terminator'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/root/utbot2/utils/guardian.py", line 48, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/main.py", line 223, in run_strategy_cycle
+    except ccxt.RateLimitExceeded as e: logger.warning(f"Exchange Rate Limit: {e}. Pausiere 30s."); time.sleep(30)
+           ^^^^
+NameError: name 'ccxt' is not defined
+
+2025-11-06 11:05:46 UTC - CRITICAL - !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+2025-11-06 11:50:00 UTC - INFO - --- Starte Zyklus für XRP/USDT:USDT (1h) ---
+2025-11-06 11:50:00 UTC - INFO - Keine offene Position gefunden.
+2025-11-06 11:50:00 UTC - INFO - Starte Housekeeping (storniere alte Orders)...
+2025-11-06 11:50:01 UTC - INFO - Housekeeping abgeschlossen.
+2025-11-06 11:50:01 UTC - INFO - Lade 1440 Kerzen für XRP/USDT:USDT (1h)...
+2025-11-06 11:50:01 UTC - CRITICAL - !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+2025-11-06 11:50:01 UTC - CRITICAL - !!! KRITISCHER SYSTEMFEHLER IM GUARDIAN !!!
+2025-11-06 11:50:01 UTC - CRITICAL - !!! Strategie: XRP/USDT:USDT (1h)
+2025-11-06 11:50:01 UTC - CRITICAL - !!! Fehler: Fehlerdetails: NameError: name 'ccxt' is not defined
+Traceback (most recent call last):
+  File "/root/utbot2/main.py", line 222, in run_strategy_cycle
+    attempt_new_trade(target, strategy_cfg, exchange, gemini_model, telegram_config, total_usdt_balance, logger)
+  File "/root/utbot2/main.py", line 122, in attempt_new_trade
+    historical_data_string = data_to_send[cols_to_send].round(5).to_csv(index=False, line_terminator='\n')
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/pandas/util/_decorators.py", line 333, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+TypeError: NDFrame.to_csv() got an unexpected keyword argument 'line_terminator'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/root/utbot2/utils/guardian.py", line 48, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/main.py", line 223, in run_strategy_cycle
+    except ccxt.RateLimitExceeded as e: logger.warning(f"Exchange Rate Limit: {e}. Pausiere 30s."); time.sleep(30)
+           ^^^^
+NameError: name 'ccxt' is not defined
+
+2025-11-06 11:50:01 UTC - CRITICAL - !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+2025-11-06 11:51:13 UTC - INFO - --- Starte Zyklus für XRP/USDT:USDT (1h) ---
+2025-11-06 11:51:13 UTC - INFO - Keine offene Position gefunden.
+2025-11-06 11:51:13 UTC - INFO - Starte Housekeeping (storniere alte Orders)...
+2025-11-06 11:51:14 UTC - INFO - Housekeeping abgeschlossen.
+2025-11-06 11:51:14 UTC - INFO - Lade 1440 Kerzen für XRP/USDT:USDT (1h)...
+2025-11-06 11:51:15 UTC - INFO - Aktuelle Indikatoren (letzte Kerze): P=2.2957, StochK=0.2, StochD=1.8, MACD_H=-0.0081, BBP=0.21, OBV=-884397603
+2025-11-06 11:51:15 UTC - INFO - Sende Anfrage an Gemini...
+2025-11-06 11:51:15 UTC - INFO - Antwort von Gemini erhalten.
+2025-11-06 11:51:15 UTC - INFO - KI-Entscheidung: {'aktion': 'KAUFEN', 'stop_loss': 2.249786, 'take_profit': 2.387528}
+2025-11-06 11:51:15 UTC - INFO - Versuche Trade: buy 435.5970 XRP (1000.00 USDT) mit 1x Hebel...
+2025-11-06 11:51:16 UTC - ERROR - ❌ FEHLER BEI TRADE-AUSFÜHRUNG: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762429876139,"data":null}
+Traceback (most recent call last):
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 585, in fetch
+    response.raise_for_status()
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/requests/models.py", line 1026, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.bitget.com/api/v2/mix/order/place-order
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/root/utbot2/main.py", line 190, in attempt_new_trade
+    order_result = exchange.create_market_order_with_sl_tp(symbol, side, amount_in_asset, sl_price, tp_price, margin_mode)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/utils/exchange_handler.py", line 266, in create_market_order_with_sl_tp
+    market_order = self.create_market_order(symbol, side, amount, params={'marginMode': margin_mode.lower()})
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/utils/exchange_handler.py", line 205, in create_market_order
+    order = self.session.create_order(symbol, 'market', side, amount, params=params)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 4924, in create_order
+    response = self.privateMixPostV2MixOrderPlaceOrder(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/types.py", line 35, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4620, in request
+    return self.fetch2(path, api, method, params, headers, body, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4616, in fetch2
+    raise e
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4605, in fetch2
+    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 601, in fetch
+    skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 10410, in handle_errors
+    raise ExchangeError(feedback)  # unknown message
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ccxt.base.errors.ExchangeError: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762429876139,"data":null}
+2025-11-06 11:51:16 UTC - INFO - Versuche Housekeeping...
+2025-11-06 11:51:17 UTC - INFO - --- Zyklus für XRP/USDT:USDT abgeschlossen ---
+2025-11-06 11:54:35 UTC - INFO - --- Starte Zyklus für XRP/USDT:USDT (1h) ---
+2025-11-06 11:54:35 UTC - INFO - Keine offene Position gefunden.
+2025-11-06 11:54:35 UTC - INFO - Starte Housekeeping (storniere alte Orders)...
+2025-11-06 11:54:36 UTC - INFO - Housekeeping abgeschlossen.
+2025-11-06 11:54:36 UTC - INFO - Lade 1440 Kerzen für XRP/USDT:USDT (1h)...
+2025-11-06 11:54:37 UTC - INFO - Aktuelle Indikatoren (letzte Kerze): P=2.2986, StochK=0.2, StochD=1.8, MACD_H=-0.0079, BBP=0.24, OBV=-884524017
+2025-11-06 11:54:37 UTC - INFO - Sende Anfrage an Gemini...
+2025-11-06 11:54:37 UTC - INFO - Antwort von Gemini erhalten.
+2025-11-06 11:54:37 UTC - INFO - KI-Entscheidung: {'aktion': 'KAUFEN', 'stop_loss': 2.2529220000000003, 'take_profit': 2.3908560000000003}
+2025-11-06 11:54:37 UTC - INFO - Versuche Trade: buy 437.8475 XRP (1006.44 USDT) mit 1x Hebel...
+2025-11-06 11:54:38 UTC - ERROR - ❌ FEHLER BEI TRADE-AUSFÜHRUNG: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762430078205,"data":null}
+Traceback (most recent call last):
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 585, in fetch
+    response.raise_for_status()
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/requests/models.py", line 1026, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.bitget.com/api/v2/mix/order/place-order
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/root/utbot2/main.py", line 190, in attempt_new_trade
+    order_result = exchange.create_market_order_with_sl_tp(symbol, side, amount_in_asset, sl_price, tp_price, margin_mode)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/utils/exchange_handler.py", line 269, in create_market_order_with_sl_tp
+    market_order = self.create_market_order(symbol, side, amount, params={'marginMode': margin_mode.lower()})
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/utils/exchange_handler.py", line 206, in create_market_order
+    order = self.session.create_order(symbol, 'market', side, amount, params=order_params)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 4924, in create_order
+    response = self.privateMixPostV2MixOrderPlaceOrder(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/types.py", line 35, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4620, in request
+    return self.fetch2(path, api, method, params, headers, body, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4616, in fetch2
+    raise e
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4605, in fetch2
+    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 601, in fetch
+    skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 10410, in handle_errors
+    raise ExchangeError(feedback)  # unknown message
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ccxt.base.errors.ExchangeError: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762430078205,"data":null}
+2025-11-06 11:54:38 UTC - INFO - Versuche Housekeeping...
+2025-11-06 11:54:38 UTC - INFO - --- Zyklus für XRP/USDT:USDT abgeschlossen ---
+2025-11-06 11:57:49 UTC - INFO - --- Starte Zyklus für XRP/USDT:USDT (1h) ---
+2025-11-06 11:57:49 UTC - INFO - Keine offene Position gefunden.
+2025-11-06 11:57:49 UTC - INFO - Starte Housekeeping (storniere alte Orders)...
+2025-11-06 11:57:49 UTC - INFO - Housekeeping abgeschlossen.
+2025-11-06 11:57:49 UTC - INFO - Lade 1440 Kerzen für XRP/USDT:USDT (1h)...
+2025-11-06 11:57:50 UTC - INFO - Aktuelle Indikatoren (letzte Kerze): P=2.2990, StochK=0.2, StochD=1.8, MACD_H=-0.0079, BBP=0.24, OBV=-884557070
+2025-11-06 11:57:50 UTC - INFO - Sende Anfrage an Gemini...
+2025-11-06 11:57:50 UTC - INFO - Antwort von Gemini erhalten.
+2025-11-06 11:57:50 UTC - INFO - KI-Entscheidung: {'aktion': 'KAUFEN', 'stop_loss': 2.25302, 'take_profit': 2.39096}
+2025-11-06 11:57:50 UTC - INFO - Versuche Trade: buy 434.9717 XRP (1000.00 USDT) mit 1x Hebel...
+2025-11-06 11:57:51 UTC - ERROR - ❌ FEHLER BEI TRADE-AUSFÜHRUNG: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762430271764,"data":null}
+Traceback (most recent call last):
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 585, in fetch
+    response.raise_for_status()
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/requests/models.py", line 1026, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.bitget.com/api/v2/mix/order/place-order
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/root/utbot2/main.py", line 190, in attempt_new_trade
+    order_result = exchange.create_market_order_with_sl_tp(symbol, side, amount_in_asset, sl_price, tp_price, margin_mode)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/utils/exchange_handler.py", line 269, in create_market_order_with_sl_tp
+    market_order = self.create_market_order(symbol, side, amount, params={'marginMode': margin_mode.lower()})
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/utils/exchange_handler.py", line 207, in create_market_order
+    order = self.session.create_order(symbol, 'market', side, amount, params=order_params)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 4924, in create_order
+    response = self.privateMixPostV2MixOrderPlaceOrder(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/types.py", line 35, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4620, in request
+    return self.fetch2(path, api, method, params, headers, body, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4616, in fetch2
+    raise e
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4605, in fetch2
+    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 601, in fetch
+    skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 10410, in handle_errors
+    raise ExchangeError(feedback)  # unknown message
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ccxt.base.errors.ExchangeError: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762430271764,"data":null}
+2025-11-06 11:57:51 UTC - INFO - Versuche Housekeeping...
+2025-11-06 11:57:52 UTC - INFO - --- Zyklus für XRP/USDT:USDT abgeschlossen ---
+2025-11-06 12:03:09 UTC - INFO - --- Starte Zyklus für XRP/USDT:USDT (1h) ---
+2025-11-06 12:03:09 UTC - INFO - Keine offene Position gefunden.
+2025-11-06 12:03:09 UTC - INFO - Starte Housekeeping (storniere alte Orders)...
+2025-11-06 12:03:10 UTC - INFO - Housekeeping abgeschlossen.
+2025-11-06 12:03:10 UTC - INFO - Lade 1440 Kerzen für XRP/USDT:USDT (1h)...
+2025-11-06 12:03:11 UTC - INFO - Aktuelle Indikatoren (letzte Kerze): P=2.2986, StochK=0.2, StochD=0.6, MACD_H=-0.0082, BBP=0.31, OBV=-897803162
+2025-11-06 12:03:11 UTC - INFO - Sende Anfrage an Gemini...
+2025-11-06 12:03:11 UTC - INFO - Antwort von Gemini erhalten.
+2025-11-06 12:03:11 UTC - INFO - KI-Entscheidung: {'aktion': 'KAUFEN', 'stop_loss': 2.252628, 'take_profit': 2.3905440000000002}
+2025-11-06 12:03:11 UTC - INFO - Versuche Trade: buy 435.0474 XRP (1000.00 USDT) mit 1x Hebel...
+2025-11-06 12:03:12 UTC - ERROR - ❌ FEHLER BEI TRADE-AUSFÜHRUNG: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762430592174,"data":null}
+Traceback (most recent call last):
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 585, in fetch
+    response.raise_for_status()
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/requests/models.py", line 1026, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.bitget.com/api/v2/mix/order/place-order
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/root/utbot2/main.py", line 190, in attempt_new_trade
+    order_result = exchange.create_market_order_with_sl_tp(symbol, side, amount_in_asset, sl_price, tp_price, margin_mode)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/utils/exchange_handler.py", line 182, in create_market_order_with_sl_tp
+    market_order = self.create_market_order(symbol, side, amount, params={'marginMode': margin_mode.lower()})
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/utils/exchange_handler.py", line 146, in create_market_order
+    order = self.session.create_order(symbol, 'market', side, amount, params=order_params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 4924, in create_order
+    response = self.privateMixPostV2MixOrderPlaceOrder(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/types.py", line 35, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4620, in request
+    return self.fetch2(path, api, method, params, headers, body, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4616, in fetch2
+    raise e
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4605, in fetch2
+    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 601, in fetch
+    skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 10410, in handle_errors
+    raise ExchangeError(feedback)  # unknown message
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ccxt.base.errors.ExchangeError: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762430592174,"data":null}
+2025-11-06 12:03:12 UTC - INFO - Versuche Housekeeping...
+2025-11-06 12:03:12 UTC - INFO - --- Zyklus für XRP/USDT:USDT abgeschlossen ---
+2025-11-06 12:04:44 UTC - INFO - --- Starte Zyklus für XRP/USDT:USDT (1h) ---
+2025-11-06 12:04:44 UTC - INFO - Keine offene Position gefunden.
+2025-11-06 12:04:44 UTC - INFO - Starte Housekeeping (storniere alte Orders)...
+2025-11-06 12:04:45 UTC - INFO - Housekeeping abgeschlossen.
+2025-11-06 12:04:45 UTC - INFO - Lade 1440 Kerzen für XRP/USDT:USDT (1h)...
+2025-11-06 12:04:45 UTC - INFO - Aktuelle Indikatoren (letzte Kerze): P=2.2956, StochK=0.2, StochD=0.6, MACD_H=-0.0084, BBP=0.26, OBV=-897892577
+2025-11-06 12:04:45 UTC - INFO - Sende Anfrage an Gemini...
+2025-11-06 12:04:45 UTC - INFO - Antwort von Gemini erhalten.
+2025-11-06 12:04:45 UTC - INFO - KI-Entscheidung: {'aktion': 'KAUFEN', 'stop_loss': 2.2498839999999998, 'take_profit': 2.387632}
+2025-11-06 12:04:45 UTC - INFO - Versuche Trade: buy 437.4836 XRP (1004.29 USDT) mit 1x Hebel...
+2025-11-06 12:04:47 UTC - ERROR - ❌ FEHLER BEI TRADE-AUSFÜHRUNG: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762430687253,"data":null}
+Traceback (most recent call last):
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 585, in fetch
+    response.raise_for_status()
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/requests/models.py", line 1026, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.bitget.com/api/v2/mix/order/place-order
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/root/utbot2/main.py", line 190, in attempt_new_trade
+    order_result = exchange.create_market_order_with_sl_tp(symbol, side, amount_in_asset, sl_price, tp_price, margin_mode)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/utils/exchange_handler.py", line 193, in create_market_order_with_sl_tp
+    market_order = self.create_market_order(symbol, side, amount, params={'marginMode': margin_mode.lower()})
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/utils/exchange_handler.py", line 155, in create_market_order
+    order = self.session.create_order(symbol, 'market', side, amount, params=order_params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 4924, in create_order
+    response = self.privateMixPostV2MixOrderPlaceOrder(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/types.py", line 35, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4620, in request
+    return self.fetch2(path, api, method, params, headers, body, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4616, in fetch2
+    raise e
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4605, in fetch2
+    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 601, in fetch
+    skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 10410, in handle_errors
+    raise ExchangeError(feedback)  # unknown message
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ccxt.base.errors.ExchangeError: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762430687253,"data":null}
+2025-11-06 12:04:47 UTC - INFO - Versuche Housekeeping...
+2025-11-06 12:04:47 UTC - INFO - --- Zyklus für XRP/USDT:USDT abgeschlossen ---
+2025-11-06 12:09:14 UTC - INFO - --- Starte Zyklus für XRP/USDT:USDT (1h) ---
+2025-11-06 12:09:14 UTC - INFO - Keine offene Position gefunden.
+2025-11-06 12:09:14 UTC - INFO - Starte Housekeeping (storniere alte Orders)...
+2025-11-06 12:09:15 UTC - INFO - Housekeeping abgeschlossen.
+2025-11-06 12:09:15 UTC - INFO - Lade 1440 Kerzen für XRP/USDT:USDT (1h)...
+2025-11-06 12:09:16 UTC - INFO - Aktuelle Indikatoren (letzte Kerze): P=2.3002, StochK=0.5, StochD=0.7, MACD_H=-0.0081, BBP=0.34, OBV=-897167709
+2025-11-06 12:09:16 UTC - INFO - Sende Anfrage an Gemini...
+2025-11-06 12:09:16 UTC - INFO - Antwort von Gemini erhalten.
+2025-11-06 12:09:16 UTC - INFO - KI-Entscheidung: {'aktion': 'KAUFEN', 'stop_loss': 2.254098, 'take_profit': 2.3921040000000002}
+2025-11-06 12:09:16 UTC - INFO - Versuche Trade: buy 433.8207 XRP (997.87 USDT) mit 1x Hebel...
+2025-11-06 12:09:17 UTC - ERROR - ❌ FEHLER BEI TRADE-AUSFÜHRUNG: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762430957113,"data":null}
+Traceback (most recent call last):
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 585, in fetch
+    response.raise_for_status()
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/requests/models.py", line 1026, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.bitget.com/api/v2/mix/order/place-order
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/root/utbot2/main.py", line 190, in attempt_new_trade
+    order_result = exchange.create_market_order_with_sl_tp(symbol, side, amount_in_asset, sl_price, tp_price, margin_mode)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/utils/exchange_handler.py", line 189, in create_market_order_with_sl_tp
+    market_order = self.create_market_order(symbol, side, amount, params={'marginMode': margin_mode.lower()})
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/utils/exchange_handler.py", line 153, in create_market_order
+    order = self.session.create_order(symbol, 'market', side, amount, params=order_params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 4924, in create_order
+    response = self.privateMixPostV2MixOrderPlaceOrder(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/types.py", line 35, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4620, in request
+    return self.fetch2(path, api, method, params, headers, body, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4616, in fetch2
+    raise e
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4605, in fetch2
+    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 601, in fetch
+    skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 10410, in handle_errors
+    raise ExchangeError(feedback)  # unknown message
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ccxt.base.errors.ExchangeError: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762430957113,"data":null}
+2025-11-06 12:09:17 UTC - INFO - Versuche Housekeeping...
+2025-11-06 12:09:17 UTC - INFO - --- Zyklus für XRP/USDT:USDT abgeschlossen ---
+2025-11-06 12:12:31 UTC - INFO - --- Starte Zyklus für XRP/USDT:USDT (1h) ---
+2025-11-06 12:12:31 UTC - INFO - Keine offene Position gefunden.
+2025-11-06 12:12:31 UTC - INFO - Starte Housekeeping (storniere alte Orders)...
+2025-11-06 12:12:31 UTC - INFO - Housekeeping abgeschlossen.
+2025-11-06 12:12:31 UTC - INFO - Lade 1440 Kerzen für XRP/USDT:USDT (1h)...
+2025-11-06 12:12:32 UTC - INFO - Aktuelle Indikatoren (letzte Kerze): P=2.2970, StochK=0.2, StochD=0.6, MACD_H=-0.0083, BBP=0.28, OBV=-898287835
+2025-11-06 12:12:32 UTC - INFO - Sende Anfrage an Gemini...
+2025-11-06 12:12:32 UTC - INFO - Antwort von Gemini erhalten.
+2025-11-06 12:12:32 UTC - INFO - KI-Entscheidung: {'aktion': 'KAUFEN', 'stop_loss': 2.250962, 'take_profit': 2.388776}
+2025-11-06 12:12:32 UTC - INFO - Versuche Trade: buy 434.4237 XRP (997.87 USDT) mit 1x Hebel...
+2025-11-06 12:12:33 UTC - ERROR - ❌ FEHLER BEI TRADE-AUSFÜHRUNG: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762431153385,"data":null}
+Traceback (most recent call last):
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 585, in fetch
+    response.raise_for_status()
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/requests/models.py", line 1026, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.bitget.com/api/v2/mix/order/place-order
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/root/utbot2/main.py", line 190, in attempt_new_trade
+    order_result = exchange.create_market_order_with_sl_tp(symbol, side, amount_in_asset, sl_price, tp_price, margin_mode)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/utils/exchange_handler.py", line 183, in create_market_order_with_sl_tp
+    market_order = self.create_market_order(symbol, side, amount, params={'marginMode': margin_mode.lower()})
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/utils/exchange_handler.py", line 147, in create_market_order
+    order = self.session.create_order(symbol, 'market', side, amount, params=order_params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 4924, in create_order
+    response = self.privateMixPostV2MixOrderPlaceOrder(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/types.py", line 35, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4620, in request
+    return self.fetch2(path, api, method, params, headers, body, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4616, in fetch2
+    raise e
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4605, in fetch2
+    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 601, in fetch
+    skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 10410, in handle_errors
+    raise ExchangeError(feedback)  # unknown message
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ccxt.base.errors.ExchangeError: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762431153385,"data":null}
+2025-11-06 12:12:33 UTC - INFO - Versuche Housekeeping...
+2025-11-06 12:12:34 UTC - INFO - --- Zyklus für XRP/USDT:USDT abgeschlossen ---
