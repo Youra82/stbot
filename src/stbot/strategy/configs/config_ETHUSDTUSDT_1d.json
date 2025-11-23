@@ -1,0 +1,28 @@
+{
+    "market": {
+        "symbol": "ETH/USDT:USDT",
+        "timeframe": "1d",
+        "htf": "1d"
+    },
+    "strategy": {
+        "tenkan_period": 15,
+        "kijun_period": 21,
+        "senkou_span_b_period": 50,
+        "displacement": 26,
+        "use_chikou_filter": false
+    },
+    "risk": {
+        "margin_mode": "isolated",
+        "risk_per_trade_pct": 1.59,
+        "risk_reward_ratio": 1.83,
+        "leverage": 11,
+        "trailing_stop_activation_rr": 2.87,
+        "trailing_stop_callback_rate_pct": 0.33,
+        "atr_multiplier_sl": 1.59,
+        "min_sl_pct": 0.5
+    },
+    "behavior": {
+        "use_longs": true,
+        "use_shorts": true
+    }
+}

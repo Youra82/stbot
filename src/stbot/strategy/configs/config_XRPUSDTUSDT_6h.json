@@ -1,0 +1,28 @@
+{
+    "market": {
+        "symbol": "XRP/USDT:USDT",
+        "timeframe": "6h",
+        "htf": "1d"
+    },
+    "strategy": {
+        "tenkan_period": 15,
+        "kijun_period": 27,
+        "senkou_span_b_period": 51,
+        "displacement": 26,
+        "use_chikou_filter": false
+    },
+    "risk": {
+        "margin_mode": "isolated",
+        "risk_per_trade_pct": 1.97,
+        "risk_reward_ratio": 2.59,
+        "leverage": 14,
+        "trailing_stop_activation_rr": 1.6,
+        "trailing_stop_callback_rate_pct": 1.21,
+        "atr_multiplier_sl": 1.62,
+        "min_sl_pct": 0.5
+    },
+    "behavior": {
+        "use_longs": true,
+        "use_shorts": true
+    }
+}
