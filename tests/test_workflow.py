@@ -1,4 +1,4 @@
-# /root/utbot2/tests/test_workflow.py
+# /root/stbot/tests/test_workflow.py
 import pytest
 import os
 import sys
@@ -12,16 +12,14 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
 # Korrekter Import der tatsächlich existierenden Funktionen
-from utbot2.utils.exchange import Exchange
-from utbot2.utils.trade_manager import check_and_open_new_position, housekeeper_routine
-from utbot2.utils.trade_manager import set_trade_lock, is_trade_locked
-# NEU: Importiere die Hilfsfunktion für den Test
-from utbot2.utils.timeframe_utils import determine_htf
-# NEU: Keine SMCEngine mehr nötig hier
+from stbot.utils.exchange import Exchange
+from stbot.utils.trade_manager import check_and_open_new_position, housekeeper_routine
+from stbot.utils.trade_manager import set_trade_lock, is_trade_locked
+from stbot.utils.timeframe_utils import determine_htf
 
 @pytest.fixture(scope="module")
 def test_setup():
-    print("\n--- Starte umfassenden LIVE UtBot2-Workflow-Test ---")
+    print("\n--- Starte umfassenden LIVE StBot-Workflow-Test ---")
     print("\n[Setup] Bereite Testumgebung vor...")
 
     secret_path = os.path.join(PROJECT_ROOT, 'secret.json')
@@ -31,34 +29,44 @@ def test_setup():
     with open(secret_path, 'r') as f:
         secrets = json.load(f)
 
-    # Key check auf utbot2
-    if not secrets.get('utbot2') or not secrets['utbot2']:
-        pytest.skip("Es wird mindestens ein Account unter 'utbot2' in secret.json für den Workflow-Test benötigt.")
+    # Key check auf stbot (nach Umbenennung)
+    # Wir prüfen sowohl auf 'stbot' als auch auf 'utbot2' als Fallback
+    account_key = 'stbot'
+    if 'stbot' not in secrets:
+        if 'utbot2' in secrets:
+            account_key = 'utbot2'
+        else:
+            pytest.skip("Es wird ein Account unter 'stbot' (oder 'utbot2') in secret.json benötigt.")
 
-    test_account = secrets['utbot2'][0]
+    if not secrets[account_key]:
+        pytest.skip(f"Liste der Accounts unter '{account_key}' ist leer.")
+
+    test_account = secrets[account_key][0]
     telegram_config = secrets.get('telegram', {})
 
     try:
         exchange = Exchange(test_account)
+        # Einfacher Check, ob API Key validiert wurde (durch Laden der Märkte)
         if not exchange.markets:
-            pytest.fail("Exchange konnte nicht initialisiert werden (Märkte nicht geladen).")
+            pytest.fail("Exchange konnte nicht initialisiert werden (Märkte nicht geladen). Prüfe API-Keys in secret.json!")
     except Exception as e:
-        pytest.fail(f"Exchange konnte nicht initialisiert werden: {e}")
+        pytest.fail(f"Exchange Initialisierungsfehler: {e}")
 
-    # XRP FÜR TEST (ANGEPASSTE PARAMETER FÜR NIEDRIGERES RISIKO UND MARGIN)
+    # XRP FÜR TEST (ANGEPASSTE PARAMETER FÜR SRv2)
     symbol = 'XRP/USDT:USDT'
     timeframe = '5m'
-
-    # NEU: Bestimme HTF für den Test-Case
     htf = determine_htf(timeframe)
 
+    # SRv2 Parameter für den Test
     params = {
-        'market': {'symbol': symbol, 'timeframe': timeframe, 'htf': htf}, 
-        'strategy': { 
-            'tenkan_period': 9, 
-            'kijun_period': 26, 
-            'senkou_span_b_period': 52,
-            'displacement': 26 
+        'market': {'symbol': symbol, 'timeframe': timeframe, 'htf': htf},
+        'strategy': {
+            'pivot_period': 5,
+            'max_pivots': 10,
+            'channel_width_pct': 10,
+            'max_sr_levels': 5,
+            'min_strength': 1,
+            'source': 'High/Low'
         },
         'risk': {
             'margin_mode': 'isolated',
@@ -123,17 +131,19 @@ def test_setup():
     except Exception as e:
         print(f"FEHLER beim Aufräumen nach dem Test: {e}")
 
-def test_full_utbot2_workflow_on_bitget(test_setup):
+def test_full_stbot_workflow_on_bitget(test_setup):
     exchange, params, telegram_config, symbol, logger = test_setup
 
-    # Wir mocken nur die Locks und das Signal, aber nicht die Order-Ausführung
-    # Damit testen wir die Logik in trade_manager und die API von ccxt/exchange.py
-    with patch('utbot2.utils.trade_manager.set_trade_lock'), \
-         patch('utbot2.utils.trade_manager.is_trade_locked', return_value=False), \
-         patch('utbot2.utils.trade_manager.get_titan_signal', return_value=('buy', 2.0)): # Fake buy signal
+    # Wir mocken nur die Locks und das Signal, aber NICHT die Order-Ausführung.
+    # Das testet die echte API-Verbindung.
+    
+    # Wir mocken 'get_titan_signal', damit wir sofort ein Kaufsignal erhalten,
+    # egal was die SR Engine sagt.
+    with patch('stbot.utils.trade_manager.set_trade_lock'), \
+         patch('stbot.utils.trade_manager.is_trade_locked', return_value=False), \
+         patch('stbot.utils.trade_manager.get_titan_signal', return_value=('buy', 0.60)): # Fake buy signal
 
         print("\n[Schritt 1/3] Mocke Signal und prüfe Trade-Eröffnung...")
-
         check_and_open_new_position(exchange, None, None, params, telegram_config, logger)
 
     print("-> Warte 5s auf Order-Ausführung...")
@@ -143,7 +153,7 @@ def test_full_utbot2_workflow_on_bitget(test_setup):
     position = exchange.fetch_open_positions(symbol)
 
     # Hier muss die Position existieren
-    assert position, "FEHLER: Position wurde nicht eröffnet! (Trade Lock sollte deaktiviert sein)."
+    assert position, "FEHLER: Position wurde nicht eröffnet! Prüfe API-Keys und Guthaben."
 
     assert len(position) == 1
     pos_info = position[0]
@@ -153,11 +163,10 @@ def test_full_utbot2_workflow_on_bitget(test_setup):
     # 1. Prüfe auf SL/TP (Trigger-Orders)
     assert len(trigger_orders) >= 1, f"SL fehlt! Gefunden: {len(trigger_orders)}"
 
-    # 2. Prüfe auf TSL (Ignoriere CCXT/Bitget-Inkonsistenzen bei der Rückgabe, aber prüfe ob logik durchlief)
-    # Die echte TSL Prüfung ist schwierig via API Abruf bei manchen Börsen, aber wenn der Code durchlief, ist es gut.
+    # 2. Prüfe auf TSL
     tsl_orders = [o for o in trigger_orders if 'trailingPercent' in o.get('info', {})]
     if len(tsl_orders) == 0:
-        print("-> TSL-Prüfung: WARNUNG: TSL-Order wurde nicht in der Trigger-Liste gefunden (CCXT/Bitget-Problem), aber die Log-Ausgabe war erfolgreich. Gehe fort.")
+        print("-> TSL-Prüfung: WARNUNG: TSL-Order wurde nicht in der Trigger-Liste gefunden (CCXT/Bitget-Problem), aber Log ok.")
     else:
         tsl = tsl_orders[0]
         print(f"-> TSL erfolgreich platziert: {tsl.get('orderId')}")

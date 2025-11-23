@@ -1,4 +1,4 @@
-# /root/utbot2/src/utbot2/analysis/backtester.py
+# /root/utbot2/src/stbot/analysis/backtester.py
 import os
 import pandas as pd
 import numpy as np
@@ -11,10 +11,10 @@ import math
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
-from utbot2.utils.exchange import Exchange
-from utbot2.strategy.ichimoku_engine import IchimokuEngine
-from utbot2.strategy.trade_logic import get_titan_signal
-from utbot2.utils.timeframe_utils import determine_htf
+from stbot.utils.exchange import Exchange
+from stbot.strategy.sr_engine import SREngine # NEU
+from stbot.strategy.trade_logic import get_titan_signal
+from stbot.utils.timeframe_utils import determine_htf
 
 secrets_cache = None
 
@@ -29,7 +29,7 @@ def load_data(symbol, timeframe, start_date_str, end_date_str):
     cache_dir = os.path.join(data_dir, 'cache')
     symbol_filename = symbol.replace('/', '-').replace(':', '-')
     cache_file = os.path.join(cache_dir, f"{symbol_filename}_{timeframe}.csv")
-    
+
     try:
         if not os.path.exists(data_dir): os.makedirs(data_dir)
         os.makedirs(cache_dir, exist_ok=True)
@@ -38,10 +38,20 @@ def load_data(symbol, timeframe, start_date_str, end_date_str):
     if os.path.exists(cache_file):
         try:
             data = pd.read_csv(cache_file, index_col='timestamp', parse_dates=True)
-            data_start = data.index.min(); data_end = data.index.max()
-            req_start = pd.to_datetime(start_date_str, utc=True); req_end = pd.to_datetime(end_date_str, utc=True)
-            if data_start <= req_start and data_end >= req_end:
-                return data.loc[req_start:req_end]
+            # Konvertiere Index zu Datetime falls nötig
+            if not isinstance(data.index, pd.DatetimeIndex):
+                data.index = pd.to_datetime(data.index, utc=True)
+            
+            data_start = data.index.min()
+            data_end = data.index.max()
+            req_start = pd.to_datetime(start_date_str, utc=True)
+            req_end = pd.to_datetime(end_date_str, utc=True)
+            
+            # Puffer hinzufügen für Indikatoren
+            req_start_buffer = req_start - pd.Timedelta(days=20) 
+
+            if data_start <= req_start_buffer and data_end >= req_end:
+                return data.loc[req_start_buffer:req_end]
         except Exception:
             try: os.remove(cache_file)
             except OSError: pass
@@ -49,40 +59,40 @@ def load_data(symbol, timeframe, start_date_str, end_date_str):
     try:
         if secrets_cache is None:
             with open(os.path.join(PROJECT_ROOT, 'secret.json'), "r") as f: secrets_cache = json.load(f)
-        if 'utbot2' in secrets_cache:
-            api_setup = secrets_cache['utbot2'][0]
-        elif 'titanbot' in secrets_cache:
-            api_setup = secrets_cache['titanbot'][0]
-        else: return pd.DataFrame()
         
+        # Prüfe auf alte 'utbot2' oder neue 'stbot' Keys
+        api_setup = None
+        if 'stbot' in secrets_cache: api_setup = secrets_cache['stbot'][0]
+        elif 'utbot2' in secrets_cache: api_setup = secrets_cache['utbot2'][0]
+        elif 'titanbot' in secrets_cache: api_setup = secrets_cache['titanbot'][0]
+        
+        if not api_setup: return pd.DataFrame()
+
         exchange = Exchange(api_setup)
         if not exchange.markets: return pd.DataFrame()
+
+        # Hole mehr Daten für den Vorlauf (Puffer für Pivots)
+        start_dt = pd.to_datetime(start_date_str, utc=True) - pd.Timedelta(days=30)
+        full_data = exchange.fetch_historical_ohlcv(symbol, timeframe, start_dt.strftime('%Y-%m-%d'), end_date_str)
         
-        full_data = exchange.fetch_historical_ohlcv(symbol, timeframe, start_date_str, end_date_str)
         if not full_data.empty:
             full_data.to_csv(cache_file)
             req_start_dt = pd.to_datetime(start_date_str, utc=True)
             req_end_dt = pd.to_datetime(end_date_str, utc=True)
-            return full_data.loc[req_start_dt:req_end_dt]
+            # Wir geben Daten AB Puffer zurück
+            buffer_dt = req_start_dt - pd.Timedelta(days=20)
+            return full_data.loc[buffer_dt:req_end_dt]
         return pd.DataFrame()
     except Exception: return pd.DataFrame()
 
 
 def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose=False):
-    if data.empty or len(data) < 52:
+    if data.empty or len(data) < 100:
         return {"total_pnl_pct": -100, "trades_count": 0, "win_rate": 0, "max_drawdown_pct": 1.0, "end_capital": start_capital}
 
     symbol = strategy_params.get('symbol', '')
     timeframe = strategy_params.get('timeframe', '')
     htf = strategy_params.get('htf')
-
-    # --- KORREKTUR: HTF Daten laden und vorbereiten (wie im Simulator) ---
-    htf_processed = None
-    if htf and htf != timeframe:
-        htf_data = load_data(symbol, htf, data.index.min().strftime('%Y-%m-%d'), data.index.max().strftime('%Y-%m-%d'))
-        if not htf_data.empty:
-            htf_engine = IchimokuEngine(settings={})
-            htf_processed = htf_engine.process_dataframe(htf_data)
 
     # --- ATR Berechnung ---
     try:
@@ -92,8 +102,8 @@ def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose
     except Exception:
         return {"total_pnl_pct": -100, "end_capital": start_capital}
 
-    # --- Ichimoku Engine ---
-    engine = IchimokuEngine(settings=strategy_params)
+    # --- SREngine (Neu) ---
+    engine = SREngine(settings=strategy_params)
     processed_data = engine.process_dataframe(data)
 
     current_capital = start_capital
@@ -109,13 +119,12 @@ def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose
     activation_rr = risk_params.get('trailing_stop_activation_rr', 2.0)
     callback_rate = risk_params.get('trailing_stop_callback_rate_pct', 1.0) / 100
     leverage = risk_params.get('leverage', 10)
-    fee_pct = 0.05 / 100
+    fee_pct = 0.06 / 100 # Bitget Taker ca.
     atr_multiplier_sl = risk_params.get('atr_multiplier_sl', 2.0)
-    min_sl_pct = risk_params.get('min_sl_pct', 0.5) / 100.0
-    
-    absolute_max_notional_value = 1000000
-    max_allowed_effective_leverage = 10
+    min_sl_pct = risk_params.get('min_sl_pct', 0.3) / 100.0
 
+    absolute_max_notional_value = 1000000
+    
     params_for_logic = {"strategy": strategy_params, "risk": risk_params}
 
     iterator = processed_data.iterrows()
@@ -159,42 +168,32 @@ def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose
 
         # --- Einstiegs-Logik ---
         if not position and current_capital > 0:
+            # Slicing ist teuer, aber notwendig für korrekte Simulation, wenn Logik Historie braucht.
+            # Für reine Indikator-basierte Signale wie 'sr_signal' reicht current_candle oft.
+            # Wir nutzen hier slice für Kompatibilität.
             
-            # KORREKTUR: Dynamischer MTF-Bias Check pro Kerze
-            market_bias = Bias.NEUTRAL
-            if htf_processed is not None:
-                # Suche den letzten verfügbaren HTF-Index vor oder gleich dem aktuellen Timestamp
-                try:
-                    # .asof() ist mächtig, findet den nächstgelegenen vergangenen Index
-                    htf_idx = htf_processed.index.asof(timestamp)
-                    if pd.notna(htf_idx):
-                        htf_row = htf_processed.loc[htf_idx]
-                        # Bias bestimmen
-                        if htf_row['close'] > max(htf_row['senkou_span_a'], htf_row['senkou_span_b']):
-                            market_bias = Bias.BULLISH
-                        elif htf_row['close'] < min(htf_row['senkou_span_a'], htf_row['senkou_span_b']):
-                            market_bias = Bias.BEARISH
-                except:
-                    pass # Bei Fehler neutral bleiben
-
-            data_slice = processed_data.loc[:timestamp]
-            side, price = get_titan_signal(data_slice, current_candle, params_for_logic, market_bias)
+            # Bias ist hier vereinfacht NEUTRAL, da SR Engine das Hauptsignal gibt
+            market_bias = Bias.NEUTRAL 
+            
+            # data_slice = processed_data.loc[:timestamp] # Performance-Killer
+            # Stattdessen:
+            
+            side, price = get_titan_signal(processed_data, current_candle, params_for_logic, market_bias)
 
             if side:
                 entry_price = current_candle['close']
                 current_atr = current_candle.get('atr', 0)
                 if current_atr <= 0: continue
-                
+
                 sl_dist = max(current_atr * atr_multiplier_sl, entry_price * min_sl_pct)
-                
                 risk_amount_usd = current_capital * risk_per_trade_pct
                 sl_pct = sl_dist / entry_price
                 if sl_pct <= 0: continue
-                
+
                 calc_notional = risk_amount_usd / sl_pct
-                max_notional = current_capital * max_allowed_effective_leverage
+                max_notional = current_capital * 10 # Hardcap effektiver Hebel
                 final_notional = min(calc_notional, max_notional, absolute_max_notional_value)
-                
+
                 margin_needed = final_notional / leverage
                 if margin_needed > current_capital: continue
 

@@ -1,4 +1,4 @@
-# /root/utbot2/src/utbot2/utils/trade_manager.py
+# /root/utbot2/src/stbot/utils/trade_manager.py
 import json
 import logging
 import os
@@ -8,33 +8,26 @@ from datetime import datetime, timedelta
 import ccxt
 import numpy as np
 import pandas as pd
-import ta 
+import ta
 import math
 
-# Imports angepasst auf utbot2
-from utbot2.strategy.ichimoku_engine import IchimokuEngine
-from utbot2.strategy.trade_logic import get_titan_signal
-from utbot2.utils.exchange import Exchange
-from utbot2.utils.telegram import send_message
-from utbot2.utils.timeframe_utils import determine_htf
+# Imports angepasst auf stbot und neue Engine
+from stbot.strategy.sr_engine import SREngine
+from stbot.strategy.trade_logic import get_titan_signal
+from stbot.utils.exchange import Exchange
+from stbot.utils.telegram import send_message
+from stbot.utils.timeframe_utils import determine_htf
 
-# --------------------------------------------------------------------------- #
-# Pfade
-# --------------------------------------------------------------------------- #
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 ARTIFACTS_PATH = os.path.join(PROJECT_ROOT, 'artifacts')
 DB_PATH = os.path.join(ARTIFACTS_PATH, 'db')
 TRADE_LOCK_FILE = os.path.join(DB_PATH, 'trade_lock.json')
 
-# Hilfsklasse für Bias
 class Bias:
     BULLISH = "BULLISH"
     BEARISH = "BEARISH"
     NEUTRAL = "NEUTRAL"
 
-# --------------------------------------------------------------------------- #
-# Trade-Lock-Hilfsfunktionen
-# --------------------------------------------------------------------------- #
 def load_or_create_trade_lock():
     os.makedirs(DB_PATH, exist_ok=True)
     if os.path.exists(TRADE_LOCK_FILE):
@@ -61,46 +54,6 @@ def set_trade_lock(symbol_timeframe, lock_duration_minutes=60):
     trade_lock[symbol_timeframe] = lock_time.strftime("%Y-%m-%d %H:%M:%S")
     save_trade_lock(trade_lock)
 
-# --------------------------------------------------------------------------- #
-# MTF-Bias Bestimmung (Ichimoku Cloud Status)
-# --------------------------------------------------------------------------- #
-def get_market_bias(exchange, symbol, htf, logger):
-    """Bestimmt den Markt-Bias basierend auf der Ichimoku Cloud des HTF."""
-    try:
-        # Wir brauchen genug Daten für die Wolke (52 + 26 shift)
-        htf_data = exchange.fetch_recent_ohlcv(symbol, htf, limit=150)
-        if htf_data.empty or len(htf_data) < 80:
-            logger.warning(f"MTF-Check: Nicht genügend Daten auf {htf} verfügbar.")
-            return Bias.NEUTRAL
-
-        engine = IchimokuEngine(settings={}) 
-        df = engine.process_dataframe(htf_data)
-        last_candle = df.iloc[-1]
-        
-        close = last_candle['close']
-        ssa = last_candle['senkou_span_a']
-        ssb = last_candle['senkou_span_b']
-        
-        if pd.isna(ssa) or pd.isna(ssb):
-            return Bias.NEUTRAL
-
-        if close > max(ssa, ssb):
-            logger.info(f"MTF-Check ({htf}): Preis über Wolke -> BULLISH")
-            return Bias.BULLISH
-        elif close < min(ssa, ssb):
-            logger.info(f"MTF-Check ({htf}): Preis unter Wolke -> BEARISH")
-            return Bias.BEARISH
-        else:
-            logger.info(f"MTF-Check ({htf}): Preis in der Wolke -> NEUTRAL")
-            return Bias.NEUTRAL
-
-    except Exception as e:
-        logger.error(f"Fehler bei der MTF-Bias-Bestimmung: {e}")
-        return Bias.NEUTRAL
-
-# --------------------------------------------------------------------------- #
-# Housekeeper
-# --------------------------------------------------------------------------- #
 def housekeeper_routine(exchange, symbol, logger):
     try:
         logger.info(f"Housekeeper: Starte Aufräumroutine für {symbol}...")
@@ -124,13 +77,9 @@ def housekeeper_routine(exchange, symbol, logger):
         logger.error(f"Housekeeper-Fehler: {e}", exc_info=True)
         return False
 
-# --------------------------------------------------------------------------- #
-# Hauptfunktion
-# --------------------------------------------------------------------------- #
 def check_and_open_new_position(exchange, model, scaler, params, telegram_config, logger):
     symbol = params['market']['symbol']
     timeframe = params['market']['timeframe']
-    htf = params['market']['htf']
     symbol_timeframe = f"{symbol.replace('/', '-')}_{timeframe}"
 
     if is_trade_locked(symbol_timeframe):
@@ -138,27 +87,31 @@ def check_and_open_new_position(exchange, model, scaler, params, telegram_config
         return
 
     try:
-        logger.info(f"Prüfe Ichimoku-Signal für {symbol} ({timeframe})...")
-        
-        market_bias = get_market_bias(exchange, symbol, htf, logger)
+        logger.info(f"Prüfe StBot (SRv2) Signal für {symbol} ({timeframe})...")
 
-        recent_data = exchange.fetch_recent_ohlcv(symbol, timeframe, limit=200)
-        if recent_data.empty or len(recent_data) < 100:
+        # Für SR Engine brauchen wir genügend Historie, um Pivots zu finden
+        # Prd kann bis zu 30 sein, wir brauchen min 200, besser 300 Candles
+        recent_data = exchange.fetch_recent_ohlcv(symbol, timeframe, limit=300)
+        if recent_data.empty or len(recent_data) < 200:
             logger.warning("Nicht genügend OHLCV-Daten – überspringe.")
             return
 
         # Indikatoren berechnen
-        smc_params = params.get('strategy', {}) 
-        
+        strat_params = params.get('strategy', {})
+
         atr_indicator = ta.volatility.AverageTrueRange(high=recent_data['high'], low=recent_data['low'], close=recent_data['close'], window=14)
         recent_data['atr'] = atr_indicator.average_true_range()
-        
-        engine = IchimokuEngine(settings=smc_params)
+
+        # --- SR ENGINE AUFRUF ---
+        engine = SREngine(settings=strat_params)
         processed_data = engine.process_dataframe(recent_data)
-        
+
         current_candle = processed_data.iloc[-1]
 
         # Signal abrufen
+        # MTF Bias lassen wir hier neutral, da SR eigenständig ist.
+        market_bias = Bias.NEUTRAL 
+        
         signal_side, signal_price = get_titan_signal(processed_data, current_candle, params, market_bias)
 
         if not signal_side:
@@ -182,17 +135,17 @@ def check_and_open_new_position(exchange, model, scaler, params, telegram_config
 
         ticker = exchange.fetch_ticker(symbol)
         entry_price = signal_price or ticker['last']
-        
+
         rr = risk_params.get('risk_reward_ratio', 2.0)
         risk_pct = risk_params.get('risk_per_trade_pct', 1.0) / 100.0
         risk_usdt = balance * risk_pct
 
         atr_multiplier_sl = risk_params.get('atr_multiplier_sl', 2.0)
-        min_sl_pct = risk_params.get('min_sl_pct', 0.5) / 100.0
+        min_sl_pct = risk_params.get('min_sl_pct', 0.3) / 100.0
 
         current_atr = current_candle.get('atr')
         if pd.isna(current_atr) or current_atr <= 0:
-            sl_distance = entry_price * (1.0 / leverage)
+            sl_distance = entry_price * min_sl_pct
         else:
             sl_distance_atr = current_atr * atr_multiplier_sl
             sl_distance_min = entry_price * min_sl_pct
@@ -214,7 +167,7 @@ def check_and_open_new_position(exchange, model, scaler, params, telegram_config
         sl_distance_pct_equivalent = sl_distance / entry_price
         calculated_notional_value = risk_usdt / sl_distance_pct_equivalent
         amount = calculated_notional_value / entry_price
-        
+
         min_amount = exchange.markets[symbol].get('limits', {}).get('amount', {}).get('min', 0.0)
         if amount < min_amount:
             logger.error(f"Ordergröße {amount} < Mindestbetrag {min_amount}.")
@@ -238,19 +191,19 @@ def check_and_open_new_position(exchange, model, scaler, params, telegram_config
 
         act_rr = risk_params.get('trailing_stop_activation_rr', 1.5)
         callback_pct = risk_params.get('trailing_stop_callback_rate_pct', 0.5) / 100.0
-        
+
         if pos_side == 'buy':
             act_price = entry_price + sl_distance * act_rr
         else:
             act_price = entry_price - sl_distance * act_rr
-            
+
         exchange.place_trailing_stop_order(symbol, tsl_side, contracts, act_price, callback_pct, {'reduceOnly': True})
 
         set_trade_lock(symbol_timeframe)
 
         if telegram_config and telegram_config.get('bot_token') and telegram_config.get('chat_id'):
             msg = (
-                f"UTBOT2 ICHIMOKU: {symbol} ({timeframe}) [MTF: {market_bias}]\n"
+                f"STBOT (SRv2): {symbol} ({timeframe})\n"
                 f"- Richtung: {pos_side.upper()}\n"
                 f"- Entry: ${entry_price:.6f}\n"
                 f"- SL: ${sl_rounded:.6f}\n"

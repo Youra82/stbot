@@ -11,11 +11,11 @@ PROJECT_ROOT = SCRIPT_DIR
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
 # *** Geändert: Importpfad ***
-from utbot2.utils.exchange import Exchange
+from stbot.utils.exchange import Exchange
 
 def main():
     """
-    Der Master Runner für den UtBot2 (Voll-Dynamisches Kapital).
+    Der Master Runner für den StBot (Voll-Dynamisches Kapital).
     - Liest die settings.json, um den Modus (Autopilot/Manuell) zu bestimmen.
     - Startet für jede als "active" markierte Strategie einen separaten run.py Prozess
       innerhalb der korrekten virtuellen Umgebung.
@@ -23,7 +23,7 @@ def main():
     settings_file = os.path.join(SCRIPT_DIR, 'settings.json')
     optimization_results_file = os.path.join(SCRIPT_DIR, 'artifacts', 'results', 'optimization_results.json')
     # *** Geändert: Pfad zum Bot-Runner ***
-    bot_runner_script = os.path.join(SCRIPT_DIR, 'src', 'utbot2', 'strategy', 'run.py')
+    bot_runner_script = os.path.join(SCRIPT_DIR, 'src', 'stbot', 'strategy', 'run.py')
     secret_file = os.path.join(SCRIPT_DIR, 'secret.json')
 
     # Finde den exakten Pfad zum Python-Interpreter in der virtuellen Umgebung
@@ -34,7 +34,7 @@ def main():
 
     print("=======================================================")
     # *** Geändert: Name ***
-    print("UtBot2 Master Runner v1.0")
+    print("StBot Master Runner v1.0")
     print("=======================================================")
 
     try:

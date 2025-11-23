@@ -5,7 +5,7 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 VENV_PATH="$SCRIPT_DIR/.venv/bin/activate"
 SETTINGS_FILE="$SCRIPT_DIR/settings.json"
 # *** Korrigierte Pfade, Trainer entfernt ***
-OPTIMIZER="src/utbot2/analysis/optimizer.py"
+OPTIMIZER="src/stbot/analysis/optimizer.py"
 CACHE_DIR="$SCRIPT_DIR/data/cache"
 TIMESTAMP_FILE="$CACHE_DIR/.last_cleaned"
 
@@ -17,7 +17,7 @@ if [ ! -f "$VENV_PATH" ]; then
 fi
 source "$VENV_PATH"
 
-echo "--- Starte automatischen Pipeline-Lauf (UtBot2 SMC) ---"
+echo "--- Starte automatischen Pipeline-Lauf (StBot SMC) ---"
 
 # --- Prüfen ob settings.json existiert ---
 if [ ! -f "$SETTINGS_FILE" ]; then

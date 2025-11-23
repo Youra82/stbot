@@ -1,10 +1,10 @@
-# utbot2/utils/indicator_handler.py (KORRIGIERT: Mapping der pandas-ta Spaltennamen)
+# stbot/utils/indicator_handler.py (KORRIGIERT: Mapping der pandas-ta Spaltennamen)
 import pandas as pd
 import pandas_ta as ta
 
 def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Berechnet die Indikatoren, die vom utbot2 Hauptskript und der KI-Strategie erwartet werden.
+    Berechnet die Indikatoren, die vom stbot Hauptskript und der KI-Strategie erwartet werden.
     Wir mappen die langen pandas-ta Namen auf die kurzen Namen (z.B. stochk, bbp),
     die das Log-Statement in main.py erwartet.
     """

@@ -1,4 +1,4 @@
-# UtBot2
+# StBot
 
 Ein vollautomatischer Trading-Bot für Krypto-Futures auf der Bitget-Börse, basierend auf der bewährten **Ichimoku Kinko Hyo** Strategie mit Multi-Timeframe-Analyse.
 
@@ -49,13 +49,13 @@ Führe die folgenden Schritte auf einem frischen Ubuntu-Server (oder lokal) aus.
 #### 1\. Projekt klonen
 
 ```bash
-git clone https://github.com/Youra82/utbot2.git
+git clone https://github.com/Youra82/stbot.git
 ```
 
 #### 2\. Installations-Skript ausführen
 
 ```bash
-cd utbot2
+cd stbot
 ```
 
 Installation aktivieren (einmalig):
@@ -79,7 +79,7 @@ cp secret.json.example secret.json
 nano secret.json
 ```
 
-*(Achte darauf, dass der Hauptschlüssel in der JSON-Datei `"utbot2"` heißt).*
+*(Achte darauf, dass der Hauptschlüssel in der JSON-Datei `"stbot"` heißt).*
 
 Speichere mit `Strg + X`, dann `Y`, dann `Enter`.
 
@@ -125,7 +125,7 @@ Ergebnisse an Telegram senden:
 Aufräumen (Alte Configs löschen für Neustart):
 
 ```bash
-rm -f src/utbot2/strategy/configs/config_*.json
+rm -f src/stbot/strategy/configs/config_*.json
 rm artifacts/db/*.db
 ```
 
@@ -159,17 +159,17 @@ Richte den automatischen Prozess für den Live-Handel ein.
 crontab -e
 ```
 
-Füge die folgende Zeile am Ende ein (Pfad anpassen, falls nötig, z.B. `/root/utbot2`):
+Füge die folgende Zeile am Ende ein (Pfad anpassen, falls nötig, z.B. `/root/stbot`):
 
 ```
-# Starte den UtBot2 Master-Runner alle 15 Minuten
-*/15 * * * * /usr/bin/flock -n /root/utbot2/utbot2.lock /bin/sh -c "cd /root/utbot2 && /root/utbot2/.venv/bin/python3 /root/utbot2/master_runner.py >> /root/utbot2/logs/cron.log 2>&1"
+# Starte den StBot Master-Runner alle 15 Minuten
+*/15 * * * * /usr/bin/flock -n /root/stbot/stbot.lock /bin/sh -c "cd /root/stbot && /root/stbot/.venv/bin/python3 /root/stbot/master_runner.py >> /root/stbot/logs/cron.log 2>&1"
 ```
 
 Logverzeichnis anlegen:
 
 ```bash
-mkdir -p /root/utbot2/logs
+mkdir -p /root/stbot/logs
 ```
 
 -----
@@ -190,7 +190,7 @@ Die zentrale `cron.log` enthält alle Aktivitäten.
     ```
   * **Individuelle Strategie-Logs:**
     ```bash
-    tail -n 100 logs/utbot2_BTCUSDTUSDT_4h.log
+    tail -n 100 logs/stbot_BTCUSDTUSDT_4h.log
     ```
 
 #### Manueller Start (Test)
@@ -230,7 +230,7 @@ Projekt hochladen (Backup):
 
 ```bash
 git add .
-git commit -m "Update UtBot2 Konfiguration"
+git commit -m "Update StBot Konfiguration"
 git push --force origin main
 ```
 

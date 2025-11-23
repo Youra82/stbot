@@ -5,7 +5,7 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 VENV_PATH=".venv/bin/activate"
-RESULTS_SCRIPT="src/utbot2/analysis/show_results.py"
+RESULTS_SCRIPT="src/stbot/analysis/show_results.py"
 
 source "$VENV_PATH"
 

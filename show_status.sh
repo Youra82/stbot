@@ -40,7 +40,7 @@ show_file_content() {
 # --- ANZEIGE ALLER RELEVANTEN CODE-DATEIEN ---
 echo -e "${BLUE}======================================================================${NC}"
 # *** TITEL GEÄNDERT ***
-echo "              Vollständige Code-Dokumentation des UtBot2"
+echo "              Vollständige Code-Dokumentation des StBot"
 echo -e "${BLUE}======================================================================${NC}"
 
 # Finde alle relevanten Dateien, ABER schließe secret.json vorerst aus.

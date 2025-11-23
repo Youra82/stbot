@@ -8,12 +8,12 @@
 2025-11-06 11:00:19 UTC - CRITICAL - !!! Strategie: XRP/USDT:USDT (1h)
 2025-11-06 11:00:19 UTC - CRITICAL - !!! Fehler: Fehlerdetails: NameError: name 'ccxt' is not defined
 Traceback (most recent call last):
-  File "/root/utbot2/main.py", line 222, in run_strategy_cycle
+  File "/root/stbot/main.py", line 222, in run_strategy_cycle
     attempt_new_trade(target, strategy_cfg, exchange, gemini_model, telegram_config, total_usdt_balance, logger)
-  File "/root/utbot2/main.py", line 122, in attempt_new_trade
+  File "/root/stbot/main.py", line 122, in attempt_new_trade
     historical_data_string = data_to_send[cols_to_send].round(5).to_csv(index=False, line_terminator='\n')
                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/pandas/util/_decorators.py", line 333, in wrapper
+  File "/root/stbot/.venv/lib/python3.12/site-packages/pandas/util/_decorators.py", line 333, in wrapper
     return func(*args, **kwargs)
            ^^^^^^^^^^^^^^^^^^^^^
 TypeError: NDFrame.to_csv() got an unexpected keyword argument 'line_terminator'
@@ -21,10 +21,10 @@ TypeError: NDFrame.to_csv() got an unexpected keyword argument 'line_terminator'
 During handling of the above exception, another exception occurred:
 
 Traceback (most recent call last):
-  File "/root/utbot2/utils/guardian.py", line 48, in wrapper
+  File "/root/stbot/utils/guardian.py", line 48, in wrapper
     return func(*args, **kwargs)
            ^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/main.py", line 223, in run_strategy_cycle
+  File "/root/stbot/main.py", line 223, in run_strategy_cycle
     except ccxt.RateLimitExceeded as e: logger.warning(f"Exchange Rate Limit: {e}. Pausiere 30s."); time.sleep(30)
            ^^^^
 NameError: name 'ccxt' is not defined
@@ -40,12 +40,12 @@ NameError: name 'ccxt' is not defined
 2025-11-06 11:05:46 UTC - CRITICAL - !!! Strategie: XRP/USDT:USDT (1h)
 2025-11-06 11:05:46 UTC - CRITICAL - !!! Fehler: Fehlerdetails: NameError: name 'ccxt' is not defined
 Traceback (most recent call last):
-  File "/root/utbot2/main.py", line 222, in run_strategy_cycle
+  File "/root/stbot/main.py", line 222, in run_strategy_cycle
     attempt_new_trade(target, strategy_cfg, exchange, gemini_model, telegram_config, total_usdt_balance, logger)
-  File "/root/utbot2/main.py", line 122, in attempt_new_trade
+  File "/root/stbot/main.py", line 122, in attempt_new_trade
     historical_data_string = data_to_send[cols_to_send].round(5).to_csv(index=False, line_terminator='\n')
                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/pandas/util/_decorators.py", line 333, in wrapper
+  File "/root/stbot/.venv/lib/python3.12/site-packages/pandas/util/_decorators.py", line 333, in wrapper
     return func(*args, **kwargs)
            ^^^^^^^^^^^^^^^^^^^^^
 TypeError: NDFrame.to_csv() got an unexpected keyword argument 'line_terminator'
@@ -53,10 +53,10 @@ TypeError: NDFrame.to_csv() got an unexpected keyword argument 'line_terminator'
 During handling of the above exception, another exception occurred:
 
 Traceback (most recent call last):
-  File "/root/utbot2/utils/guardian.py", line 48, in wrapper
+  File "/root/stbot/utils/guardian.py", line 48, in wrapper
     return func(*args, **kwargs)
            ^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/main.py", line 223, in run_strategy_cycle
+  File "/root/stbot/main.py", line 223, in run_strategy_cycle
     except ccxt.RateLimitExceeded as e: logger.warning(f"Exchange Rate Limit: {e}. Pausiere 30s."); time.sleep(30)
            ^^^^
 NameError: name 'ccxt' is not defined
@@ -72,12 +72,12 @@ NameError: name 'ccxt' is not defined
 2025-11-06 11:50:01 UTC - CRITICAL - !!! Strategie: XRP/USDT:USDT (1h)
 2025-11-06 11:50:01 UTC - CRITICAL - !!! Fehler: Fehlerdetails: NameError: name 'ccxt' is not defined
 Traceback (most recent call last):
-  File "/root/utbot2/main.py", line 222, in run_strategy_cycle
+  File "/root/stbot/main.py", line 222, in run_strategy_cycle
     attempt_new_trade(target, strategy_cfg, exchange, gemini_model, telegram_config, total_usdt_balance, logger)
-  File "/root/utbot2/main.py", line 122, in attempt_new_trade
+  File "/root/stbot/main.py", line 122, in attempt_new_trade
     historical_data_string = data_to_send[cols_to_send].round(5).to_csv(index=False, line_terminator='\n')
                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/pandas/util/_decorators.py", line 333, in wrapper
+  File "/root/stbot/.venv/lib/python3.12/site-packages/pandas/util/_decorators.py", line 333, in wrapper
     return func(*args, **kwargs)
            ^^^^^^^^^^^^^^^^^^^^^
 TypeError: NDFrame.to_csv() got an unexpected keyword argument 'line_terminator'
@@ -85,10 +85,10 @@ TypeError: NDFrame.to_csv() got an unexpected keyword argument 'line_terminator'
 During handling of the above exception, another exception occurred:
 
 Traceback (most recent call last):
-  File "/root/utbot2/utils/guardian.py", line 48, in wrapper
+  File "/root/stbot/utils/guardian.py", line 48, in wrapper
     return func(*args, **kwargs)
            ^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/main.py", line 223, in run_strategy_cycle
+  File "/root/stbot/main.py", line 223, in run_strategy_cycle
     except ccxt.RateLimitExceeded as e: logger.warning(f"Exchange Rate Limit: {e}. Pausiere 30s."); time.sleep(30)
            ^^^^
 NameError: name 'ccxt' is not defined
@@ -106,42 +106,42 @@ NameError: name 'ccxt' is not defined
 2025-11-06 11:51:15 UTC - INFO - Versuche Trade: buy 435.5970 XRP (1000.00 USDT) mit 1x Hebel...
 2025-11-06 11:51:16 UTC - ERROR - ❌ FEHLER BEI TRADE-AUSFÜHRUNG: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762429876139,"data":null}
 Traceback (most recent call last):
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 585, in fetch
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 585, in fetch
     response.raise_for_status()
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/requests/models.py", line 1026, in raise_for_status
+  File "/root/stbot/.venv/lib/python3.12/site-packages/requests/models.py", line 1026, in raise_for_status
     raise HTTPError(http_error_msg, response=self)
 requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.bitget.com/api/v2/mix/order/place-order
 
 During handling of the above exception, another exception occurred:
 
 Traceback (most recent call last):
-  File "/root/utbot2/main.py", line 190, in attempt_new_trade
+  File "/root/stbot/main.py", line 190, in attempt_new_trade
     order_result = exchange.create_market_order_with_sl_tp(symbol, side, amount_in_asset, sl_price, tp_price, margin_mode)
                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/utils/exchange_handler.py", line 266, in create_market_order_with_sl_tp
+  File "/root/stbot/utils/exchange_handler.py", line 266, in create_market_order_with_sl_tp
     market_order = self.create_market_order(symbol, side, amount, params={'marginMode': margin_mode.lower()})
                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/utils/exchange_handler.py", line 205, in create_market_order
+  File "/root/stbot/utils/exchange_handler.py", line 205, in create_market_order
     order = self.session.create_order(symbol, 'market', side, amount, params=params)
             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 4924, in create_order
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 4924, in create_order
     response = self.privateMixPostV2MixOrderPlaceOrder(request)
                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/types.py", line 35, in unbound_method
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/types.py", line 35, in unbound_method
     return _self.request(self.path, self.api, self.method, params, config=self.config)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4620, in request
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4620, in request
     return self.fetch2(path, api, method, params, headers, body, config)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4616, in fetch2
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4616, in fetch2
     raise e
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4605, in fetch2
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4605, in fetch2
     return self.fetch(request['url'], request['method'], request['headers'], request['body'])
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 601, in fetch
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 601, in fetch
     skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 10410, in handle_errors
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 10410, in handle_errors
     raise ExchangeError(feedback)  # unknown message
     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ccxt.base.errors.ExchangeError: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762429876139,"data":null}
@@ -159,42 +159,42 @@ ccxt.base.errors.ExchangeError: bitget {"code":"40774","msg":"The order type for
 2025-11-06 11:54:37 UTC - INFO - Versuche Trade: buy 437.8475 XRP (1006.44 USDT) mit 1x Hebel...
 2025-11-06 11:54:38 UTC - ERROR - ❌ FEHLER BEI TRADE-AUSFÜHRUNG: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762430078205,"data":null}
 Traceback (most recent call last):
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 585, in fetch
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 585, in fetch
     response.raise_for_status()
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/requests/models.py", line 1026, in raise_for_status
+  File "/root/stbot/.venv/lib/python3.12/site-packages/requests/models.py", line 1026, in raise_for_status
     raise HTTPError(http_error_msg, response=self)
 requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.bitget.com/api/v2/mix/order/place-order
 
 During handling of the above exception, another exception occurred:
 
 Traceback (most recent call last):
-  File "/root/utbot2/main.py", line 190, in attempt_new_trade
+  File "/root/stbot/main.py", line 190, in attempt_new_trade
     order_result = exchange.create_market_order_with_sl_tp(symbol, side, amount_in_asset, sl_price, tp_price, margin_mode)
                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/utils/exchange_handler.py", line 269, in create_market_order_with_sl_tp
+  File "/root/stbot/utils/exchange_handler.py", line 269, in create_market_order_with_sl_tp
     market_order = self.create_market_order(symbol, side, amount, params={'marginMode': margin_mode.lower()})
                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/utils/exchange_handler.py", line 206, in create_market_order
+  File "/root/stbot/utils/exchange_handler.py", line 206, in create_market_order
     order = self.session.create_order(symbol, 'market', side, amount, params=order_params)
             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 4924, in create_order
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 4924, in create_order
     response = self.privateMixPostV2MixOrderPlaceOrder(request)
                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/types.py", line 35, in unbound_method
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/types.py", line 35, in unbound_method
     return _self.request(self.path, self.api, self.method, params, config=self.config)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4620, in request
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4620, in request
     return self.fetch2(path, api, method, params, headers, body, config)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4616, in fetch2
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4616, in fetch2
     raise e
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4605, in fetch2
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4605, in fetch2
     return self.fetch(request['url'], request['method'], request['headers'], request['body'])
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 601, in fetch
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 601, in fetch
     skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 10410, in handle_errors
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 10410, in handle_errors
     raise ExchangeError(feedback)  # unknown message
     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ccxt.base.errors.ExchangeError: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762430078205,"data":null}
@@ -212,42 +212,42 @@ ccxt.base.errors.ExchangeError: bitget {"code":"40774","msg":"The order type for
 2025-11-06 11:57:50 UTC - INFO - Versuche Trade: buy 434.9717 XRP (1000.00 USDT) mit 1x Hebel...
 2025-11-06 11:57:51 UTC - ERROR - ❌ FEHLER BEI TRADE-AUSFÜHRUNG: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762430271764,"data":null}
 Traceback (most recent call last):
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 585, in fetch
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 585, in fetch
     response.raise_for_status()
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/requests/models.py", line 1026, in raise_for_status
+  File "/root/stbot/.venv/lib/python3.12/site-packages/requests/models.py", line 1026, in raise_for_status
     raise HTTPError(http_error_msg, response=self)
 requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.bitget.com/api/v2/mix/order/place-order
 
 During handling of the above exception, another exception occurred:
 
 Traceback (most recent call last):
-  File "/root/utbot2/main.py", line 190, in attempt_new_trade
+  File "/root/stbot/main.py", line 190, in attempt_new_trade
     order_result = exchange.create_market_order_with_sl_tp(symbol, side, amount_in_asset, sl_price, tp_price, margin_mode)
                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/utils/exchange_handler.py", line 269, in create_market_order_with_sl_tp
+  File "/root/stbot/utils/exchange_handler.py", line 269, in create_market_order_with_sl_tp
     market_order = self.create_market_order(symbol, side, amount, params={'marginMode': margin_mode.lower()})
                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/utils/exchange_handler.py", line 207, in create_market_order
+  File "/root/stbot/utils/exchange_handler.py", line 207, in create_market_order
     order = self.session.create_order(symbol, 'market', side, amount, params=order_params)
             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 4924, in create_order
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 4924, in create_order
     response = self.privateMixPostV2MixOrderPlaceOrder(request)
                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/types.py", line 35, in unbound_method
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/types.py", line 35, in unbound_method
     return _self.request(self.path, self.api, self.method, params, config=self.config)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4620, in request
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4620, in request
     return self.fetch2(path, api, method, params, headers, body, config)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4616, in fetch2
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4616, in fetch2
     raise e
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4605, in fetch2
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4605, in fetch2
     return self.fetch(request['url'], request['method'], request['headers'], request['body'])
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 601, in fetch
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 601, in fetch
     skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 10410, in handle_errors
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 10410, in handle_errors
     raise ExchangeError(feedback)  # unknown message
     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ccxt.base.errors.ExchangeError: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762430271764,"data":null}
@@ -265,42 +265,42 @@ ccxt.base.errors.ExchangeError: bitget {"code":"40774","msg":"The order type for
 2025-11-06 12:03:11 UTC - INFO - Versuche Trade: buy 435.0474 XRP (1000.00 USDT) mit 1x Hebel...
 2025-11-06 12:03:12 UTC - ERROR - ❌ FEHLER BEI TRADE-AUSFÜHRUNG: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762430592174,"data":null}
 Traceback (most recent call last):
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 585, in fetch
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 585, in fetch
     response.raise_for_status()
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/requests/models.py", line 1026, in raise_for_status
+  File "/root/stbot/.venv/lib/python3.12/site-packages/requests/models.py", line 1026, in raise_for_status
     raise HTTPError(http_error_msg, response=self)
 requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.bitget.com/api/v2/mix/order/place-order
 
 During handling of the above exception, another exception occurred:
 
 Traceback (most recent call last):
-  File "/root/utbot2/main.py", line 190, in attempt_new_trade
+  File "/root/stbot/main.py", line 190, in attempt_new_trade
     order_result = exchange.create_market_order_with_sl_tp(symbol, side, amount_in_asset, sl_price, tp_price, margin_mode)
                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/utils/exchange_handler.py", line 182, in create_market_order_with_sl_tp
+  File "/root/stbot/utils/exchange_handler.py", line 182, in create_market_order_with_sl_tp
     market_order = self.create_market_order(symbol, side, amount, params={'marginMode': margin_mode.lower()})
                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/utils/exchange_handler.py", line 146, in create_market_order
+  File "/root/stbot/utils/exchange_handler.py", line 146, in create_market_order
     order = self.session.create_order(symbol, 'market', side, amount, params=order_params)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 4924, in create_order
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 4924, in create_order
     response = self.privateMixPostV2MixOrderPlaceOrder(request)
                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/types.py", line 35, in unbound_method
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/types.py", line 35, in unbound_method
     return _self.request(self.path, self.api, self.method, params, config=self.config)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4620, in request
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4620, in request
     return self.fetch2(path, api, method, params, headers, body, config)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4616, in fetch2
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4616, in fetch2
     raise e
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4605, in fetch2
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4605, in fetch2
     return self.fetch(request['url'], request['method'], request['headers'], request['body'])
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 601, in fetch
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 601, in fetch
     skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 10410, in handle_errors
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 10410, in handle_errors
     raise ExchangeError(feedback)  # unknown message
     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ccxt.base.errors.ExchangeError: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762430592174,"data":null}
@@ -318,42 +318,42 @@ ccxt.base.errors.ExchangeError: bitget {"code":"40774","msg":"The order type for
 2025-11-06 12:04:45 UTC - INFO - Versuche Trade: buy 437.4836 XRP (1004.29 USDT) mit 1x Hebel...
 2025-11-06 12:04:47 UTC - ERROR - ❌ FEHLER BEI TRADE-AUSFÜHRUNG: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762430687253,"data":null}
 Traceback (most recent call last):
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 585, in fetch
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 585, in fetch
     response.raise_for_status()
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/requests/models.py", line 1026, in raise_for_status
+  File "/root/stbot/.venv/lib/python3.12/site-packages/requests/models.py", line 1026, in raise_for_status
     raise HTTPError(http_error_msg, response=self)
 requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.bitget.com/api/v2/mix/order/place-order
 
 During handling of the above exception, another exception occurred:
 
 Traceback (most recent call last):
-  File "/root/utbot2/main.py", line 190, in attempt_new_trade
+  File "/root/stbot/main.py", line 190, in attempt_new_trade
     order_result = exchange.create_market_order_with_sl_tp(symbol, side, amount_in_asset, sl_price, tp_price, margin_mode)
                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/utils/exchange_handler.py", line 193, in create_market_order_with_sl_tp
+  File "/root/stbot/utils/exchange_handler.py", line 193, in create_market_order_with_sl_tp
     market_order = self.create_market_order(symbol, side, amount, params={'marginMode': margin_mode.lower()})
                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/utils/exchange_handler.py", line 155, in create_market_order
+  File "/root/stbot/utils/exchange_handler.py", line 155, in create_market_order
     order = self.session.create_order(symbol, 'market', side, amount, params=order_params)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 4924, in create_order
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 4924, in create_order
     response = self.privateMixPostV2MixOrderPlaceOrder(request)
                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/types.py", line 35, in unbound_method
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/types.py", line 35, in unbound_method
     return _self.request(self.path, self.api, self.method, params, config=self.config)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4620, in request
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4620, in request
     return self.fetch2(path, api, method, params, headers, body, config)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4616, in fetch2
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4616, in fetch2
     raise e
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4605, in fetch2
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4605, in fetch2
     return self.fetch(request['url'], request['method'], request['headers'], request['body'])
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 601, in fetch
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 601, in fetch
     skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 10410, in handle_errors
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 10410, in handle_errors
     raise ExchangeError(feedback)  # unknown message
     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ccxt.base.errors.ExchangeError: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762430687253,"data":null}
@@ -371,42 +371,42 @@ ccxt.base.errors.ExchangeError: bitget {"code":"40774","msg":"The order type for
 2025-11-06 12:09:16 UTC - INFO - Versuche Trade: buy 433.8207 XRP (997.87 USDT) mit 1x Hebel...
 2025-11-06 12:09:17 UTC - ERROR - ❌ FEHLER BEI TRADE-AUSFÜHRUNG: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762430957113,"data":null}
 Traceback (most recent call last):
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 585, in fetch
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 585, in fetch
     response.raise_for_status()
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/requests/models.py", line 1026, in raise_for_status
+  File "/root/stbot/.venv/lib/python3.12/site-packages/requests/models.py", line 1026, in raise_for_status
     raise HTTPError(http_error_msg, response=self)
 requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.bitget.com/api/v2/mix/order/place-order
 
 During handling of the above exception, another exception occurred:
 
 Traceback (most recent call last):
-  File "/root/utbot2/main.py", line 190, in attempt_new_trade
+  File "/root/stbot/main.py", line 190, in attempt_new_trade
     order_result = exchange.create_market_order_with_sl_tp(symbol, side, amount_in_asset, sl_price, tp_price, margin_mode)
                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/utils/exchange_handler.py", line 189, in create_market_order_with_sl_tp
+  File "/root/stbot/utils/exchange_handler.py", line 189, in create_market_order_with_sl_tp
     market_order = self.create_market_order(symbol, side, amount, params={'marginMode': margin_mode.lower()})
                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/utils/exchange_handler.py", line 153, in create_market_order
+  File "/root/stbot/utils/exchange_handler.py", line 153, in create_market_order
     order = self.session.create_order(symbol, 'market', side, amount, params=order_params)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 4924, in create_order
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 4924, in create_order
     response = self.privateMixPostV2MixOrderPlaceOrder(request)
                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/types.py", line 35, in unbound_method
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/types.py", line 35, in unbound_method
     return _self.request(self.path, self.api, self.method, params, config=self.config)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4620, in request
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4620, in request
     return self.fetch2(path, api, method, params, headers, body, config)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4616, in fetch2
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4616, in fetch2
     raise e
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4605, in fetch2
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4605, in fetch2
     return self.fetch(request['url'], request['method'], request['headers'], request['body'])
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 601, in fetch
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 601, in fetch
     skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 10410, in handle_errors
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 10410, in handle_errors
     raise ExchangeError(feedback)  # unknown message
     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ccxt.base.errors.ExchangeError: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762430957113,"data":null}
@@ -424,42 +424,42 @@ ccxt.base.errors.ExchangeError: bitget {"code":"40774","msg":"The order type for
 2025-11-06 12:12:32 UTC - INFO - Versuche Trade: buy 434.4237 XRP (997.87 USDT) mit 1x Hebel...
 2025-11-06 12:12:33 UTC - ERROR - ❌ FEHLER BEI TRADE-AUSFÜHRUNG: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762431153385,"data":null}
 Traceback (most recent call last):
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 585, in fetch
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 585, in fetch
     response.raise_for_status()
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/requests/models.py", line 1026, in raise_for_status
+  File "/root/stbot/.venv/lib/python3.12/site-packages/requests/models.py", line 1026, in raise_for_status
     raise HTTPError(http_error_msg, response=self)
 requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.bitget.com/api/v2/mix/order/place-order
 
 During handling of the above exception, another exception occurred:
 
 Traceback (most recent call last):
-  File "/root/utbot2/main.py", line 190, in attempt_new_trade
+  File "/root/stbot/main.py", line 190, in attempt_new_trade
     order_result = exchange.create_market_order_with_sl_tp(symbol, side, amount_in_asset, sl_price, tp_price, margin_mode)
                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/utils/exchange_handler.py", line 183, in create_market_order_with_sl_tp
+  File "/root/stbot/utils/exchange_handler.py", line 183, in create_market_order_with_sl_tp
     market_order = self.create_market_order(symbol, side, amount, params={'marginMode': margin_mode.lower()})
                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/utils/exchange_handler.py", line 147, in create_market_order
+  File "/root/stbot/utils/exchange_handler.py", line 147, in create_market_order
     order = self.session.create_order(symbol, 'market', side, amount, params=order_params)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 4924, in create_order
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 4924, in create_order
     response = self.privateMixPostV2MixOrderPlaceOrder(request)
                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/types.py", line 35, in unbound_method
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/types.py", line 35, in unbound_method
     return _self.request(self.path, self.api, self.method, params, config=self.config)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4620, in request
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4620, in request
     return self.fetch2(path, api, method, params, headers, body, config)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4616, in fetch2
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4616, in fetch2
     raise e
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4605, in fetch2
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4605, in fetch2
     return self.fetch(request['url'], request['method'], request['headers'], request['body'])
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 601, in fetch
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 601, in fetch
     skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/utbot2/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 10410, in handle_errors
+  File "/root/stbot/.venv/lib/python3.12/site-packages/ccxt/bitget.py", line 10410, in handle_errors
     raise ExchangeError(feedback)  # unknown message
     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ccxt.base.errors.ExchangeError: bitget {"code":"40774","msg":"The order type for unilateral position must also be the unilateral position type.","requestTime":1762431153385,"data":null}
