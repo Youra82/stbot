@@ -51,66 +51,6 @@ Führe die folgenden Schritte auf einem frischen Ubuntu-Server (oder lokal) aus.
 
 ```bash
 git clone [https://github.com/Youra82/stbot.git](https://github.com/Youra82/stbot.git)
-Du hast recht\! Die alte README enthielt noch zu viele Referenzen auf Ichimoku. Da wir jetzt auf **SRv2** umgestellt haben, muss die Dokumentation das widerspiegeln.
-
-Hier ist die **aktualisierte README.md**, die perfekt zu deinem neuen StBot passt.
-
-### Datei: `README.md`
-
-````markdown
-# StBot
-
-Ein vollautomatischer Trading-Bot für Krypto-Futures auf der Bitget-Börse, basierend auf der **Support & Resistance Dynamic v2 (SRv2)** Strategie.
-
-Dieses System wurde für den Betrieb auf einem Ubuntu-Server entwickelt und umfasst neben dem Live-Trading-Modul eine hochentwickelte, automatisierte Pipeline zur Parameter-Optimierung (Optuna) und Portfolio-Zusammenstellung.
-
-## Kernstrategie 🧱
-
-Der Bot implementiert eine Breakout-Strategie, die dynamische Unterstützungs- und Widerstandszonen identifiziert und handelt, wenn der Preis diese durchbricht.
-
-* **Dynamische Pivot-Punkte:** Der Algorithmus scannt kontinuierlich nach lokalen Hochs und Tiefs über einen definierten Zeitraum (`pivot_period`).
-* **S/R-Cluster Bildung:**
-    * Die gefundenen Pivot-Punkte werden gruppiert. Wenn mehrere Pivots in einem engen Preisbereich (`channel_width`) liegen, bildet sich eine Zone.
-    * **Stärke-Filter:** Nur Zonen, die eine Mindestanzahl an Berührungen (`min_strength`) aufweisen, werden als valide angesehen.
-* **Breakout-Signale:**
-    * **Long (Buy):** Ein Trade wird eröffnet, wenn eine **Widerstandszone (Resistance)** nach oben durchbrochen wird.
-    * **Short (Sell):** Ein Trade wird eröffnet, wenn eine **Unterstützungszone (Support)** nach unten durchbrochen wird.
-* **Ausstieg & Risikomanagement:**
-    * **Positionsgröße:** Dynamisch berechnet basierend auf einem festen Prozentsatz (`risk_per_trade_pct`) des aktuellen Kontostandes.
-    * **Dynamischer Stop Loss:** Der Stop Loss basiert auf der Volatilität (**ATR**) oder einem prozentualen Mindestabstand zum Entry.
-    * **Trailing Stop:** Sobald der Trade in den Gewinn läuft, wird ein Trailing-Stop aktiviert, um Gewinne bei Trendumkehr zu sichern.
-
-## Architektur & Arbeitsablauf
-
-Der Bot arbeitet mit einem präzisen, automatisierten und ressourcenschonenden System.
-
-1.  **Der Cronjob (Der Wecker):** Ein einziger, simpler Cronjob läuft in einem kurzen Intervall (z.B. alle 15 Minuten). Er hat nur eine Aufgabe: den intelligenten Master-Runner zu starten.
-
-2.  **Der Master-Runner (Der Dirigent):** Das `master_runner.py`-Skript ist das Herz der Automatisierung. Bei jedem Aufruf:
-    * Liest es alle aktiven Strategien aus der `settings.json` (oder dem optimierten Portfolio).
-    * Prüft es für jede Strategie, ob ein **neuer, exakter Zeit-Block** begonnen hat.
-    * Nur wenn eine Strategie an der Reihe ist, startet es den eigentlichen Handelsprozess für diese eine Strategie.
-    * Es **sammelt die komplette Log-Ausgabe** und schreibt sie in die zentrale `cron.log`.
-
-3.  **Der Handelsprozess (Der Agent):**
-    * Die `run.py` wird für eine spezifische Strategie gestartet.
-    * Der **Guardian-Decorator** führt zuerst Sicherheits-Checks durch.
-    * Die Kernlogik in `trade_manager.py` wird ausgeführt:
-        1.  Abruf historischer Daten.
-        2.  Berechnung der Pivots und S/R-Zonen (**SREngine**).
-        3.  Prüfung auf Breakout-Signale (Durchbruch durch valide Zone).
-        4.  Ausführung der Order bei Bitget inkl. SL/TP.
-
----
-
-## Installation 🚀
-
-Führe die folgenden Schritte auf einem frischen Ubuntu-Server (oder lokal) aus.
-
-#### 1. Projekt klonen
-
-```bash
-git clone [https://github.com/Youra82/stbot.git](https://github.com/Youra82/stbot.git)
 ````
 
 *(Hinweis: Passe die URL an, falls das Repo noch anders heißt)*
