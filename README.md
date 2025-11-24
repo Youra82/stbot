@@ -50,7 +50,7 @@ Führe die folgenden Schritte auf einem frischen Ubuntu-Server (oder lokal) aus.
 #### 1. Projekt klonen
 
 ```bash
-git clone [https://github.com/Youra82/stbot.git](https://github.com/Youra82/stbot.git)
+git clone https://github.com/Youra82/stbot.git
 ````
 
 *(Hinweis: Passe die URL an, falls das Repo noch anders heißt)*
