@@ -1,21 +1,24 @@
 # StBot
 
-Ein vollautomatischer Trading-Bot für Krypto-Futures auf der Bitget-Börse, basierend auf der bewährten **Ichimoku Kinko Hyo** Strategie mit Multi-Timeframe-Analyse.
+Ein vollautomatischer Trading-Bot für Krypto-Futures auf der Bitget-Börse, basierend auf der **Support & Resistance Dynamic v2 (SRv2)** Strategie.
 
 Dieses System wurde für den Betrieb auf einem Ubuntu-Server entwickelt und umfasst neben dem Live-Trading-Modul eine hochentwickelte, automatisierte Pipeline zur Parameter-Optimierung (Optuna) und Portfolio-Zusammenstellung.
 
-## Kernstrategie ☁️
+## Kernstrategie 🧱
 
-Der Bot implementiert eine klassische Trendfolge-Strategie, die darauf abzielt, große Marktbewegungen ("Trends") zu erfassen und Seitwärtsphasen zu filtern.
+Der Bot implementiert eine Breakout-Strategie, die dynamische Unterstützungs- und Widerstandszonen identifiziert und handelt, wenn der Preis diese durchbricht.
 
-  * **Ichimoku Cloud (Kumo):** Das Herzstück der Strategie.
-      * **Trend-Filter:** Der Bot handelt nur Long, wenn der Preis *über* der Wolke ist, und Short, wenn er *darunter* ist.
-      * **Einstiegssignal (TK Cross):** Ein Trade wird eröffnet, wenn die schnelle Linie (Tenkan-sen) die langsame Linie (Kijun-sen) in Trendrichtung kreuzt.
-  * **Multi-Timeframe (MTF) Bias:** Vor jedem Trade auf dem kleinen Zeitrahmen (z.B. 15m) prüft der Bot den Trend auf einem höheren Zeitrahmen (z.B. 1h oder 4h). Ein Trade wird nur ausgeführt, wenn der **große Trend** (HTF Cloud) die Richtung bestätigt.
-  * **Ausstieg & Risikomanagement:**
-      * **Positionsgröße:** Dynamisch berechnet basierend auf einem festen Prozentsatz (`risk_per_trade_pct`) des aktuellen Kontostandes.
-      * **Dynamischer Stop Loss:** Der Stop Loss wird nicht statisch gesetzt, sondern basiert auf der aktuellen Marktvolatilität (**ATR**).
-      * **Trailing Stop:** Sobald der Trade in den Gewinn läuft, wird ein Trailing-Stop aktiviert, um Gewinne zu sichern, wenn der Trend bricht.
+* **Dynamische Pivot-Punkte:** Der Algorithmus scannt kontinuierlich nach lokalen Hochs und Tiefs über einen definierten Zeitraum (`pivot_period`).
+* **S/R-Cluster Bildung:**
+    * Die gefundenen Pivot-Punkte werden gruppiert. Wenn mehrere Pivots in einem engen Preisbereich (`channel_width`) liegen, bildet sich eine Zone.
+    * **Stärke-Filter:** Nur Zonen, die eine Mindestanzahl an Berührungen (`min_strength`) aufweisen, werden als valide angesehen.
+* **Breakout-Signale:**
+    * **Long (Buy):** Ein Trade wird eröffnet, wenn eine **Widerstandszone (Resistance)** nach oben durchbrochen wird.
+    * **Short (Sell):** Ein Trade wird eröffnet, wenn eine **Unterstützungszone (Support)** nach unten durchbrochen wird.
+* **Ausstieg & Risikomanagement:**
+    * **Positionsgröße:** Dynamisch berechnet basierend auf einem festen Prozentsatz (`risk_per_trade_pct`) des aktuellen Kontostandes.
+    * **Dynamischer Stop Loss:** Der Stop Loss basiert auf der Volatilität (**ATR**) oder einem prozentualen Mindestabstand zum Entry.
+    * **Trailing Stop:** Sobald der Trade in den Gewinn läuft, wird ein Trailing-Stop aktiviert, um Gewinne bei Trendumkehr zu sichern.
 
 ## Architektur & Arbeitsablauf
 
@@ -24,33 +27,93 @@ Der Bot arbeitet mit einem präzisen, automatisierten und ressourcenschonenden S
 1.  **Der Cronjob (Der Wecker):** Ein einziger, simpler Cronjob läuft in einem kurzen Intervall (z.B. alle 15 Minuten). Er hat nur eine Aufgabe: den intelligenten Master-Runner zu starten.
 
 2.  **Der Master-Runner (Der Dirigent):** Das `master_runner.py`-Skript ist das Herz der Automatisierung. Bei jedem Aufruf:
-
-      * Liest es alle aktiven Strategien aus der `settings.json` (oder dem optimierten Portfolio).
-      * Prüft es für jede Strategie, ob ein **neuer, exakter Zeit-Block** begonnen hat (z.B. eine neue 4-Stunden-Kerze).
-      * Nur wenn eine Strategie an der Reihe ist, startet es den eigentlichen Handelsprozess für diese eine Strategie.
-      * Es **sammelt die komplette Log-Ausgabe** und schreibt sie in die zentrale `cron.log`.
+    * Liest es alle aktiven Strategien aus der `settings.json` (oder dem optimierten Portfolio).
+    * Prüft es für jede Strategie, ob ein **neuer, exakter Zeit-Block** begonnen hat.
+    * Nur wenn eine Strategie an der Reihe ist, startet es den eigentlichen Handelsprozess für diese eine Strategie.
+    * Es **sammelt die komplette Log-Ausgabe** und schreibt sie in die zentrale `cron.log`.
 
 3.  **Der Handelsprozess (Der Agent):**
-
-      * Die `run.py` wird für eine spezifische Strategie gestartet.
-      * Der **Guardian-Decorator** führt zuerst Sicherheits-Checks durch.
-      * Die Kernlogik in `trade_manager.py` wird ausgeführt:
-        1.  Abruf historischer Daten & HTF-Daten.
-        2.  Berechnung der Ichimoku-Komponenten & ATR.
-        3.  Prüfung auf Signale (TK Cross + Cloud Breakout).
+    * Die `run.py` wird für eine spezifische Strategie gestartet.
+    * Der **Guardian-Decorator** führt zuerst Sicherheits-Checks durch.
+    * Die Kernlogik in `trade_manager.py` wird ausgeführt:
+        1.  Abruf historischer Daten.
+        2.  Berechnung der Pivots und S/R-Zonen (**SREngine**).
+        3.  Prüfung auf Breakout-Signale (Durchbruch durch valide Zone).
         4.  Ausführung der Order bei Bitget inkl. SL/TP.
 
------
+---
 
 ## Installation 🚀
 
 Führe die folgenden Schritte auf einem frischen Ubuntu-Server (oder lokal) aus.
 
-#### 1\. Projekt klonen
+#### 1. Projekt klonen
 
 ```bash
-git clone https://github.com/Youra82/stbot.git
-```
+git clone [https://github.com/Youra82/stbot.git](https://github.com/Youra82/stbot.git)
+Du hast recht\! Die alte README enthielt noch zu viele Referenzen auf Ichimoku. Da wir jetzt auf **SRv2** umgestellt haben, muss die Dokumentation das widerspiegeln.
+
+Hier ist die **aktualisierte README.md**, die perfekt zu deinem neuen StBot passt.
+
+### Datei: `README.md`
+
+````markdown
+# StBot
+
+Ein vollautomatischer Trading-Bot für Krypto-Futures auf der Bitget-Börse, basierend auf der **Support & Resistance Dynamic v2 (SRv2)** Strategie.
+
+Dieses System wurde für den Betrieb auf einem Ubuntu-Server entwickelt und umfasst neben dem Live-Trading-Modul eine hochentwickelte, automatisierte Pipeline zur Parameter-Optimierung (Optuna) und Portfolio-Zusammenstellung.
+
+## Kernstrategie 🧱
+
+Der Bot implementiert eine Breakout-Strategie, die dynamische Unterstützungs- und Widerstandszonen identifiziert und handelt, wenn der Preis diese durchbricht.
+
+* **Dynamische Pivot-Punkte:** Der Algorithmus scannt kontinuierlich nach lokalen Hochs und Tiefs über einen definierten Zeitraum (`pivot_period`).
+* **S/R-Cluster Bildung:**
+    * Die gefundenen Pivot-Punkte werden gruppiert. Wenn mehrere Pivots in einem engen Preisbereich (`channel_width`) liegen, bildet sich eine Zone.
+    * **Stärke-Filter:** Nur Zonen, die eine Mindestanzahl an Berührungen (`min_strength`) aufweisen, werden als valide angesehen.
+* **Breakout-Signale:**
+    * **Long (Buy):** Ein Trade wird eröffnet, wenn eine **Widerstandszone (Resistance)** nach oben durchbrochen wird.
+    * **Short (Sell):** Ein Trade wird eröffnet, wenn eine **Unterstützungszone (Support)** nach unten durchbrochen wird.
+* **Ausstieg & Risikomanagement:**
+    * **Positionsgröße:** Dynamisch berechnet basierend auf einem festen Prozentsatz (`risk_per_trade_pct`) des aktuellen Kontostandes.
+    * **Dynamischer Stop Loss:** Der Stop Loss basiert auf der Volatilität (**ATR**) oder einem prozentualen Mindestabstand zum Entry.
+    * **Trailing Stop:** Sobald der Trade in den Gewinn läuft, wird ein Trailing-Stop aktiviert, um Gewinne bei Trendumkehr zu sichern.
+
+## Architektur & Arbeitsablauf
+
+Der Bot arbeitet mit einem präzisen, automatisierten und ressourcenschonenden System.
+
+1.  **Der Cronjob (Der Wecker):** Ein einziger, simpler Cronjob läuft in einem kurzen Intervall (z.B. alle 15 Minuten). Er hat nur eine Aufgabe: den intelligenten Master-Runner zu starten.
+
+2.  **Der Master-Runner (Der Dirigent):** Das `master_runner.py`-Skript ist das Herz der Automatisierung. Bei jedem Aufruf:
+    * Liest es alle aktiven Strategien aus der `settings.json` (oder dem optimierten Portfolio).
+    * Prüft es für jede Strategie, ob ein **neuer, exakter Zeit-Block** begonnen hat.
+    * Nur wenn eine Strategie an der Reihe ist, startet es den eigentlichen Handelsprozess für diese eine Strategie.
+    * Es **sammelt die komplette Log-Ausgabe** und schreibt sie in die zentrale `cron.log`.
+
+3.  **Der Handelsprozess (Der Agent):**
+    * Die `run.py` wird für eine spezifische Strategie gestartet.
+    * Der **Guardian-Decorator** führt zuerst Sicherheits-Checks durch.
+    * Die Kernlogik in `trade_manager.py` wird ausgeführt:
+        1.  Abruf historischer Daten.
+        2.  Berechnung der Pivots und S/R-Zonen (**SREngine**).
+        3.  Prüfung auf Breakout-Signale (Durchbruch durch valide Zone).
+        4.  Ausführung der Order bei Bitget inkl. SL/TP.
+
+---
+
+## Installation 🚀
+
+Führe die folgenden Schritte auf einem frischen Ubuntu-Server (oder lokal) aus.
+
+#### 1. Projekt klonen
+
+```bash
+git clone [https://github.com/Youra82/stbot.git](https://github.com/Youra82/stbot.git)
+````
+
+*(Hinweis: Passe die URL an, falls das Repo noch anders heißt)*
 
 #### 2\. Installations-Skript ausführen
 
@@ -89,7 +152,7 @@ Speichere mit `Strg + X`, dann `Y`, dann `Enter`.
 
 #### 1\. Strategien finden (Pipeline)
 
-Führe die interaktive Pipeline aus, um die besten Ichimoku-Parameter (Tenkan/Kijun Perioden) für bestimmte Coins zu finden.
+Führe die interaktive Pipeline aus, um die besten SRv2-Parameter (Pivot-Perioden, Cluster-Breite) für bestimmte Coins zu finden.
 
 Skripte aktivieren (einmalig):
 
@@ -159,9 +222,9 @@ Richte den automatischen Prozess für den Live-Handel ein.
 crontab -e
 ```
 
-Füge die folgende Zeile am Ende ein (Pfad anpassen, falls nötig, z.B. `/root/stbot`):
+Füge die folgende Zeile am Ende ein (Pfad anpassen, z.B. `/root/stbot`):
 
-```
+```bash
 # Starte den StBot Master-Runner alle 15 Minuten
 */15 * * * * /usr/bin/flock -n /root/stbot/stbot.lock /bin/sh -c "cd /root/stbot && /root/stbot/.venv/bin/python3 /root/stbot/master_runner.py >> /root/stbot/logs/cron.log 2>&1"
 ```
@@ -211,7 +274,7 @@ Um den neuesten Code von GitHub zu laden und die Umgebung sauber zu halten:
 
 ## Qualitätssicherung & Tests 🛡️
 
-Um sicherzustellen, dass die Ichimoku-Logik und die API-Verbindung korrekt funktionieren, nutze das Test-System.
+Um sicherzustellen, dass die SR-Logik und die API-Verbindung korrekt funktionieren, nutze das Test-System.
 
 **Wann ausführen?** Nach jedem Update oder Code-Änderungen.
 
@@ -245,3 +308,6 @@ Projektstatus prüfen:
 ### ⚠️ Disclaimer
 
 Dieses Material dient ausschließlich zu Bildungs- und Unterhaltungszwecken. Es handelt sich nicht um eine Finanzberatung. Der Nutzer trägt die alleinige Verantwortung für alle Handlungen. Der Autor haftet nicht für etwaige Verluste. Trading mit Krypto-Futures beinhaltet ein hohes Risiko.
+
+```
+```
