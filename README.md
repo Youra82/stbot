@@ -41,6 +41,52 @@ Der Bot arbeitet mit einem präzisen, automatisierten und ressourcenschonenden S
         3.  Prüfung auf Breakout-Signale (Durchbruch durch valide Zone).
         4.  Ausführung der Order bei Bitget inkl. SL/TP.
 
+PREIS
+  ^
+  |                                      [GEWINN]
+  |                                         /
+  |                                        /   <-- Trailing Stop zieht nach
+  |                                      _|_
+  |                                     |   |  <-- Preis steigt weiter
+  |                                     |___|
+  |                                       |
+  |              (4) BREAKOUT!            |
+  |           Der Preis schließt          |
+  |           ÜBER der Zone      ======> _|_  <-- ENTRY (Kauf)
+  |                                     |   |
+  |   (2) S/R CLUSTER (Zone)            |___|
+  |   -------------------------           |
+  |   Bereich: 100$ - 102$                |
+  |   (channel_width)                     |
+  |   -------------------------           |
+  |      ^          ^          ^          |
+  |     _|_        _|_        _|_         |
+  |    |   |      |   |      |   |        |    (5) STOP LOSS (Initial)
+  |    |___|      |___|      |___|        |    Unterhalb der Zone oder per ATR
+  |      |          |          |          |    -----------------------------
+  |     (1)        (1)        (1)
+  |   Pivot H    Pivot H    Pivot H
+  |
+  |   (3) STÄRKE-FILTER: 3 Berührungen
+  |       (min_strength erfüllt)
+  |
+  +----------------------------------------------------> ZEIT
+Erklärung der Grafik:
+
+1.Dynamische Pivot-Punkte (pivot_period): Der Bot erkennt lokale Hochpunkte (mit (1) markiert). Er schaut z.B. 10 Kerzen zurück und vor, um diese Spitzen zu finden.
+
+2.S/R-Cluster Bildung (channel_width): Da die Hochs selten exakt auf den Cent gleich sind (z.B. 100.50$, 100.20$, 100.80$), fasst der Bot sie zu einer Zone zusammen (der gestrichelte Bereich).
+
+3.Stärke-Filter (min_strength): Der Bot zählt: "Ich habe hier 3 Pivots in dieser Zone". Wenn dein Limit 2 ist, gilt die Zone als gültiger Widerstand.
+
+4.Breakout (Long): Eine Kerze schließt deutlich oberhalb dieser roten Zone. Das ist der Auslöser! Der Bot kauft.
+
+5.Risikomanagement:
+
+Der Stop Loss wird zur Sicherheit unten gesetzt.
+
+Steigt der Preis (siehe oben), zieht der Trailing Stop automatisch hinterher, um Gewinne abzusichern.
+
 ---
 
 ## Installation 🚀
