@@ -89,7 +89,7 @@ Der Stop Loss wird zur Sicherheit unten gesetzt.
 
 Steigt der Preis (siehe oben), zieht der Trailing Stop automatisch hinterher, um Gewinne abzusichern.
 
-
+```mermaid
 graph TD
     A[🕒 Cronjob] -->|Alle 15 min| B(Master Runner)
     B --> C{Strategie aktiv?}
