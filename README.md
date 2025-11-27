@@ -112,7 +112,7 @@ graph TD
     L -->|Trade + SL/TP| H
     L -->|Info| N[📱 Telegram]
     end
-    
+````    
 ---
 
 ## Installation 🚀
