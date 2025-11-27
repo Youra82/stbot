@@ -40,7 +40,6 @@ Der Bot arbeitet mit einem präzisen, automatisierten und ressourcenschonenden S
         2.  Berechnung der Pivots und S/R-Zonen (**SREngine**).
         3.  Prüfung auf Breakout-Signale (Durchbruch durch valide Zone).
         4.  Ausführung der Order bei Bitget inkl. SL/TP.
-
 Wie die Skripte im Hintergrund zusammenspielen:
 ```text
 PREIS
