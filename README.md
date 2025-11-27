@@ -89,6 +89,30 @@ Der Stop Loss wird zur Sicherheit unten gesetzt.
 
 Steigt der Preis (siehe oben), zieht der Trailing Stop automatisch hinterher, um Gewinne abzusichern.
 
+
+graph TD
+    A[🕒 Cronjob] -->|Alle 15 min| B(Master Runner)
+    B --> C{Strategie aktiv?}
+    C -- Nein --> D[Ignorieren]
+    C -- Ja --> E[Run.py Prozess starten]
+    
+    subgraph "Der Agent"
+    E --> F[Guardian Decorator]
+    F --> G[Trade Manager]
+    
+    G -->|1. Daten holen| H[(Bitget API)]
+    G -->|2. Berechnen| I[SREngine]
+    
+    I -->|Analysiert| J[Pivots & Zonen]
+    J -->|Prüft| K{Breakout Signal?}
+    
+    K -- Ja: BUY/SELL --> L[Order Manager]
+    K -- Nein --> M[Ende]
+    
+    L -->|Trade + SL/TP| H
+    L -->|Info| N[📱 Telegram]
+    end
+    
 ---
 
 ## Installation 🚀
