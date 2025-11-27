@@ -40,8 +40,8 @@ Der Bot arbeitet mit einem präzisen, automatisierten und ressourcenschonenden S
         2.  Berechnung der Pivots und S/R-Zonen (**SREngine**).
         3.  Prüfung auf Breakout-Signale (Durchbruch durch valide Zone).
         4.  Ausführung der Order bei Bitget inkl. SL/TP.
-<img width="1292" height="1051" alt="image" src="https://github.com/user-attachments/assets/eb7afa44-b56c-400d-80a1-f9d0a92d3fc3" />
 
+```text
 PREIS
   ^
   |                                      [GEWINN]
@@ -72,6 +72,7 @@ PREIS
   |       (min_strength erfüllt)
   |
   +----------------------------------------------------> ZEIT
+````
 Erklärung der Grafik:
 
 1.Dynamische Pivot-Punkte (pivot_period): Der Bot erkennt lokale Hochpunkte (mit (1) markiert). Er schaut z.B. 10 Kerzen zurück und vor, um diese Spitzen zu finden.
