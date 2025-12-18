@@ -1,0 +1,28 @@
+﻿# Sensible Daten
+secret.json
+*.lock
+
+# Logs
+logs/
+*.log
+
+# Datenbanken
+artifacts/db/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Cache
+data/cache/
+
+# Temporäre Dateien
+*.csv
+open_trades.json
+
+# OS
+.DS_Store
+Thumbs.db
