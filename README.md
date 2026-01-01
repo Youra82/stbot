@@ -26,6 +26,28 @@ STBot ist ein vielseitiger Trading-Bot, der mehrere Handelspaare gleichzeitig ve
 - **Risk Layer**: Fixer SL/TP plus optionales Trailing; Positionsgröße über pro-Trade-Risiko gesteuert.
 - **Portfolio-Sicht**: Mehrere Strategien laufen parallel; Kapitaleinsatz wird pro aktiver Strategie begrenzt.
 
+### 🔍 Strategie-Visualisierung
+```mermaid
+flowchart LR
+  A[OHLCV] --> B[Indikator-Stack
+  RSI | MACD | ATR | Bollinger]
+  B --> C[Breakout-Check
+  Range-High / BB Upper]
+  C --> D[Volume-Filter
+  vermeidet Fakeouts]
+  D --> E[Signal Long/Flat]
+  E --> F[Risk Engine
+  SL/TP + Trail]
+  F --> G[Order Router (CCXT)]
+```
+
+### 📈 Trade-Beispiel (TP/SL/Trailing)
+- Setup: Preis konsolidiert unter Range-High / BB-Upper; Volumen baut sich auf.
+- Entry: Long auf Breakout-Close über Range-High.
+- Initial SL: Unter Range-Mitte oder letztes Higher Low; ATR-basiert.
+- TP: 2–3×SL-Distanz oder gemessenes Move-Target (Range-Höhe projiziert).
+- Trailing: Nach +1×SL Distanz Trail unter das letzte Higher Low legen, um Trend-Fortsetzung mitzunehmen.
+
 Architektur-Skizze:
 ```
 OHLCV → Indikator-Stack → Signal (Long/Flat) → Risk Engine → Order Router (CCXT)
