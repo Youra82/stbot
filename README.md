@@ -1,253 +1,340 @@
-# StBot
+# 🌟 STBot - Strategic Trading Bot
 
-Ein vollautomatischer Trading-Bot für Krypto-Futures auf der Bitget-Börse, basierend auf der **Support & Resistance Dynamic v2 (SRv2)** Strategie.
+<div align="center">
 
-Dieses System wurde für den Betrieb auf einem Ubuntu-Server entwickelt und umfasst neben dem Live-Trading-Modul eine hochentwickelte, automatisierte Pipeline zur Parameter-Optimierung (Optuna) und Portfolio-Zusammenstellung.
+![STBot Logo](https://img.shields.io/badge/STBot-v1.0-blue?style=for-the-badge)
+[![Python](https://img.shields.io/badge/Python-3.8+-green?style=for-the-badge&logo=python)](https://www.python.org/)
+[![CCXT](https://img.shields.io/badge/CCXT-Latest-red?style=for-the-badge)](https://github.com/ccxt/ccxt)
+[![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
 
-## Kernstrategie 🧱
+**Ein flexibler Multi-Asset Trading-Bot mit fortgeschrittener technischer Analyse und Risikomanagement**
 
-Der Bot implementiert eine Breakout-Strategie, die dynamische Unterstützungs- und Widerstandszonen identifiziert und handelt, wenn der Preis diese durchbricht.
+[Features](#-features) • [Installation](#-installation) • [Optimierung](#-optimierung) • [Live-Trading](#-live-trading) • [Monitoring](#-monitoring) • [Wartung](#-wartung)
 
-* **Dynamische Pivot-Punkte:** Der Algorithmus scannt kontinuierlich nach lokalen Hochs und Tiefs über einen definierten Zeitraum (`pivot_period`).
-* **S/R-Cluster Bildung:**
-    * Die gefundenen Pivot-Punkte werden gruppiert. Wenn mehrere Pivots in einem engen Preisbereich (`channel_width`) liegen, bildet sich eine Zone.
-    * **Stärke-Filter:** Nur Zonen, die eine Mindestanzahl an Berührungen (`min_strength`) aufweisen, werden als valide angesehen.
-* **Breakout-Signale:**
-    * **Long (Buy):** Ein Trade wird eröffnet, wenn eine **Widerstandszone (Resistance)** nach oben durchbrochen wird.
-    * **Short (Sell):** Ein Trade wird eröffnet, wenn eine **Unterstützungszone (Support)** nach unten durchbrochen wird.
-* **Ausstieg & Risikomanagement:**
-    * **Positionsgröße:** Dynamisch berechnet basierend auf einem festen Prozentsatz (`risk_per_trade_pct`) des aktuellen Kontostandes.
-    * **Dynamischer Stop Loss:** Der Stop Loss basiert auf der Volatilität (**ATR**) oder einem prozentualen Mindestabstand zum Entry.
-    * **Trailing Stop:** Sobald der Trade in den Gewinn läuft, wird ein Trailing-Stop aktiviert, um Gewinne bei Trendumkehr zu sichern.
-
-## Architektur & Arbeitsablauf
-
-Der Bot arbeitet mit einem präzisen, automatisierten und ressourcenschonenden System.
-
-1.  **Der Cronjob (Der Wecker):** Ein einziger, simpler Cronjob läuft in einem kurzen Intervall (z.B. alle 15 Minuten). Er hat nur eine Aufgabe: den intelligenten Master-Runner zu starten.
-
-2.  **Der Master-Runner (Der Dirigent):** Das `master_runner.py`-Skript ist das Herz der Automatisierung. Bei jedem Aufruf:
-    * Liest es alle aktiven Strategien aus der `settings.json` (oder dem optimierten Portfolio).
-    * Prüft es für jede Strategie, ob ein **neuer, exakter Zeit-Block** begonnen hat.
-    * Nur wenn eine Strategie an der Reihe ist, startet es den eigentlichen Handelsprozess für diese eine Strategie.
-    * Es **sammelt die komplette Log-Ausgabe** und schreibt sie in die zentrale `cron.log`.
-
-3.  **Der Handelsprozess (Der Agent):**
-    * Die `run.py` wird für eine spezifische Strategie gestartet.
-    * Der **Guardian-Decorator** führt zuerst Sicherheits-Checks durch.
-    * Die Kernlogik in `trade_manager.py` wird ausgeführt:
-        1.  Abruf historischer Daten.
-        2.  Berechnung der Pivots und S/R-Zonen (**SREngine**).
-        3.  Prüfung auf Breakout-Signale (Durchbruch durch valide Zone).
-        4.  Ausführung der Order bei Bitget inkl. SL/TP.
+</div>
 
 ---
 
-## Installation 🚀
+## 📊 Übersicht
 
-Führe die folgenden Schritte auf einem frischen Ubuntu-Server (oder lokal) aus.
+STBot ist ein vielseitiger Trading-Bot, der mehrere Handelspaare gleichzeitig verwalten und verschiedene Timeframes optimal nutzen kann. Das System kombiniert technische Indikatoren mit intelligentem Risikomanagement für konsistente Performance.
 
-#### 1. Projekt klonen
+### 🎯 Hauptmerkmale
+
+- **📈 Multi-Strategy**: Handel mehrerer Assets mit individualisierten Strategien
+- **🔧 Flexible Configuration**: Einfache Anpassung für verschiedene Marktbedingungen
+- **💰 Smart Capital Management**: Intelligente Kapitalverteilung
+- **⚡ Fast Execution**: Optimiert für schnelle Order-Ausführung
+- **📊 Comprehensive Analytics**: Detaillierte Performance-Analysen
+- **🛡️ Risk Management**: Fortgeschrittenes Risikomanagement
+- **🔔 Real-time Monitoring**: Live-Status und Benachrichtigungen
+
+---
+
+## 🚀 Features
+
+### Trading Features
+- ✅ Multi-Asset Trading (BTC, ETH, SOL, DOGE, XRP, ADA, AAVE)
+- ✅ Multiple Timeframes (15m, 30m, 1h, 2h, 4h, 6h, 1d)
+- ✅ Optionaler MACD-Filter für Signalvalidierung
+- ✅ Dynamisches Position Sizing
+- ✅ Stop-Loss/Take-Profit Management
+- ✅ Trailing Stop-Loss
+- ✅ Automatische Trade-Verwaltung
+
+### Technical Features
+- ✅ Technische Indikatoren (RSI, MACD, ATR, Bollinger Bands)
+- ✅ Hyperparameter-Optimierung
+- ✅ Backtesting mit realistischer Simulation
+- ✅ Performance-Tracking
+- ✅ Ausführliche Logging-Funktionen
+
+---
+
+## 📋 Systemanforderungen
+
+### Hardware
+- **CPU**: Dual-Core Prozessor oder besser
+- **RAM**: Minimum 2GB, empfohlen 4GB+
+- **Speicher**: 1GB freier Speicherplatz
+
+### Software
+- **OS**: Linux (Ubuntu 20.04+), macOS, Windows 10/11
+- **Python**: Version 3.8 oder höher
+- **Git**: Für Repository-Verwaltung
+
+---
+
+## 💻 Installation
+
+### 1. Repository klonen
 
 ```bash
-git clone https://github.com/Youra82/stbot.git
-````
-
-*(Hinweis: Passe die URL an, falls das Repo noch anders heißt)*
-
-#### 2\. Installations-Skript ausführen
-
-```bash
+git clone <repository-url>
 cd stbot
 ```
 
-Installation aktivieren (einmalig):
+### 2. Automatische Installation
 
 ```bash
+# Linux/macOS
 chmod +x install.sh
+./install.sh
+
+# Windows (PowerShell)
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
-Installation ausführen:
+### 3. API-Credentials konfigurieren
 
-```bash
-bash ./install.sh
+Erstelle `secret.json`:
+
+```json
+{
+  "stbot": [
+    {
+      "name": "Binance Account",
+      "exchange": "binance",
+      "apiKey": "DEIN_API_KEY",
+      "secret": "DEIN_SECRET_KEY",
+      "options": {
+        "defaultType": "future"
+      }
+    }
+  ]
+}
 ```
 
-#### 3\. API-Schlüssel eintragen
+### 4. Trading-Strategien konfigurieren
 
-Erstelle eine Kopie der Vorlage und trage deine Schlüssel ein.
+Bearbeite `settings.json`:
 
-```bash
-cp secret.json.example secret.json
-nano secret.json
+```json
+{
+  "live_trading_settings": {
+    "use_auto_optimizer_results": false,
+    "active_strategies": [
+      {
+        "symbol": "BTC/USDT:USDT",
+        "timeframe": "6h",
+        "use_macd_filter": false,
+        "active": true
+      },
+      {
+        "symbol": "ETH/USDT:USDT",
+        "timeframe": "2h",
+        "use_macd_filter": false,
+        "active": true
+      }
+    ]
+  }
+}
 ```
 
-*(Achte darauf, dass der Hauptschlüssel in der JSON-Datei `"stbot"` heißt).*
+---
 
-Speichere mit `Strg + X`, dann `Y`, dann `Enter`.
+## 🎯 Optimierung & Training
 
------
-
-## Konfiguration & Automatisierung
-
-#### 1\. Strategien finden (Pipeline)
-
-Führe die interaktive Pipeline aus, um die besten SRv2-Parameter (Pivot-Perioden, Cluster-Breite) für bestimmte Coins zu finden.
-
-Skripte aktivieren (einmalig):
-
-```bash
-chmod +x *.sh
-```
-
-Pipeline starten:
+### Vollständige Pipeline
 
 ```bash
 ./run_pipeline.sh
 ```
 
-#### 2\. Ergebnisse analysieren
+Pipeline-Ablauf:
+1. Alte Configs löschen (optional)
+2. Symbole und Timeframes eingeben
+3. Marktdaten herunterladen
+4. Parameter optimieren
+5. Backtest durchführen
+6. Configs für Live-Trading generieren
 
-Nach der Optimierung kannst du die Ergebnisse auswerten und Portfolios simulieren.
-
-```bash
-./show_results.sh
-```
-
-  * **Modus 1:** Einzelstrategien prüfen.
-  * **Modus 2:** Manuelles Portfolio zusammenstellen.
-  * **Modus 3:** Automatische Portfolio-Optimierung (findet die beste Kombi für z.B. max. 30% Drawdown).
-
-Ergebnisse an Telegram senden:
+### Manuelle Optimierung
 
 ```bash
-./send_report.sh optimal_portfolio_equity.csv
-./show_chart.sh optimal_portfolio_equity.csv
+source .venv/bin/activate
+python src/stbot/analysis/optimizer.py
 ```
 
-Aufräumen (Alte Configs löschen für Neustart):
+---
+
+## 🔴 Live Trading
+
+### Start
 
 ```bash
-rm -f src/stbot/strategy/configs/config_*.json
-rm artifacts/db/*.db
+# Alle aktiven Strategien starten
+python master_runner.py
 ```
 
-#### 3\. Strategien für den Handel aktivieren
-
-Bearbeite die `settings.json`. Du kannst entweder Strategien manuell eintragen oder den Bot anweisen, automatisch das optimierte Portfolio zu nutzen.
+### Automatisiert
 
 ```bash
-nano settings.json
+./run_pipeline_automated.sh
 ```
 
-**Empfohlene Einstellung (Autopilot):**
-
-```json
-{
-    "live_trading_settings": {
-        "use_auto_optimizer_results": true,
-        "active_strategies": []
-    },
-    "optimization_settings": {
-        "enabled": false
-    }
-}
-```
-
-#### 4\. Automatisierung per Cronjob einrichten
-
-Richte den automatischen Prozess für den Live-Handel ein.
+### Als Service (Linux)
 
 ```bash
-crontab -e
+sudo nano /etc/systemd/system/stbot.service
 ```
 
-Füge die folgende Zeile am Ende ein (Pfad anpassen, z.B. `/root/stbot`):
+```ini
+[Unit]
+Description=STBot Trading System
+After=network.target
+
+[Service]
+Type=simple
+User=your-user
+WorkingDirectory=/path/to/stbot
+ExecStart=/path/to/stbot/.venv/bin/python master_runner.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
 
 ```bash
-# Starte den StBot Master-Runner alle 15 Minuten
-*/15 * * * * /usr/bin/flock -n /root/stbot/stbot.lock /bin/sh -c "cd /root/stbot && /root/stbot/.venv/bin/python3 /root/stbot/master_runner.py >> /root/stbot/logs/cron.log 2>&1"
+sudo systemctl enable stbot
+sudo systemctl start stbot
 ```
 
-Logverzeichnis anlegen:
+---
+
+## 📊 Monitoring
+
+### Status anzeigen
 
 ```bash
-mkdir -p /root/stbot/logs
+./show_status.sh      # Vollständiger Status
+./show_results.sh     # Ergebnisse
+./show_chart.sh       # Charts generieren
+python show_leverage.py  # Hebel-Status
 ```
 
------
-
-## Tägliche Verwaltung & Wichtige Befehle ⚙️
-
-#### Logs ansehen
-
-Die zentrale `cron.log` enthält alle Aktivitäten.
-
-  * **Logs live mitverfolgen:**
-    ```bash
-    tail -f logs/cron.log
-    ```
-  * **Nach Fehlern suchen:**
-    ```bash
-    grep -i "ERROR" logs/cron.log
-    ```
-  * **Individuelle Strategie-Logs:**
-    ```bash
-    tail -n 100 logs/stbot_BTCUSDTUSDT_4h.log
-    ```
-
-#### Manueller Start (Test)
-
-Um den `master_runner` sofort auszuführen, ohne auf den Cronjob zu warten:
+### Logs überwachen
 
 ```bash
-python3 master_runner.py
+tail -f logs/live_trading_*.log
+tail -f logs/error_*.log
+grep "BTC/USDT" logs/*.log
 ```
 
-#### Bot aktualisieren
+---
 
-Um den neuesten Code von GitHub zu laden und die Umgebung sauber zu halten:
+## 🛠️ Wartung
+
+### Updates
 
 ```bash
 ./update.sh
 ```
 
-## Qualitätssicherung & Tests 🛡️
+### Aufräumen
 
-Um sicherzustellen, dass die SR-Logik und die API-Verbindung korrekt funktionieren, nutze das Test-System.
+```bash
+# Configs löschen
+rm -f src/stbot/strategy/configs/config_*.json
+ls -la src/stbot/strategy/configs/
 
-**Wann ausführen?** Nach jedem Update oder Code-Änderungen.
+# Daten löschen
+rm -rf data/raw/* data/processed/*
+du -sh data/*
+
+# Kompletter Reset
+rm -rf artifacts/* data/* logs/*
+./install.sh
+```
+
+### Tests
 
 ```bash
 ./run_tests.sh
+pytest tests/ -v
 ```
 
-  * **Erfolgreich:** Alle Tests `PASSED` (Grün).
-  * **Fehler:** Tests `FAILED` (Rot). Der Bot sollte nicht live gehen.
+---
 
------
+## 🔧 Nützliche Befehle
 
-## Git Management
-
-Projekt hochladen (Backup):
+### Konfiguration
 
 ```bash
-git add .
-git commit -m "Update StBot Konfiguration"
-git push --force origin main
+# Validieren
+python -c "import json; print(json.load(open('settings.json')))"
+
+# Backup
+cp settings.json settings.json.backup.$(date +%Y%m%d)
 ```
 
-Projektstatus prüfen:
+### Prozess-Management
 
 ```bash
-./show_status.sh
+# Prozesse anzeigen
+ps aux | grep python | grep stbot
+
+# PID finden
+pgrep -f master_runner.py
+
+# Beenden
+pkill -f master_runner.py
 ```
 
------
+### Exchange
 
-### ⚠️ Disclaimer
+```bash
+# Verbindung testen
+python -c "from src.stbot.utils.exchange import Exchange; \
+    e = Exchange('binance'); print(e.fetch_balance())"
 
-Dieses Material dient ausschließlich zu Bildungs- und Unterhaltungszwecken. Es handelt sich nicht um eine Finanzberatung. Der Nutzer trägt die alleinige Verantwortung für alle Handlungen. Der Autor haftet nicht für etwaige Verluste. Trading mit Krypto-Futures beinhaltet ein hohes Risiko.
+# Positionen
+python -c "from src.stbot.utils.exchange import Exchange; \
+    e = Exchange('binance'); print(e.fetch_positions())"
+```
+
+---
+
+## 📂 Projekt-Struktur
 
 ```
+stbot/
+├── src/stbot/
+│   ├── analysis/          # Optimierung
+│   ├── strategy/          # Trading-Logik
+│   ├── backtest/          # Backtesting
+│   └── utils/             # Utilities
+├── tests/                 # Tests
+├── data/                  # Marktdaten
+├── logs/                  # Logs
+├── artifacts/             # Ergebnisse
+├── master_runner.py       # Main Script
+├── settings.json          # Konfiguration
+└── secret.json            # API-Keys
 ```
+
+---
+
+## ⚠️ Disclaimer
+
+**Trading ist riskant! Nur Geld investieren, dessen Verlust Sie verkraften können.**
+
+---
+
+## 📜 Lizenz
+
+MIT License - siehe [LICENSE](LICENSE)
+
+---
+
+<div align="center">
+
+**Made with ❤️ for Algorithmic Trading**
+
+⭐ Star this repo!
+
+[🔝 Nach oben](#-stbot---strategic-trading-bot)
+
+</div>
