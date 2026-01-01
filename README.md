@@ -19,6 +19,17 @@
 
 STBot ist ein vielseitiger Trading-Bot, der mehrere Handelspaare gleichzeitig verwalten und verschiedene Timeframes optimal nutzen kann. Das System kombiniert technische Indikatoren mit intelligentem Risikomanagement für konsistente Performance.
 
+### 🧭 Trading-Logik (Kurzfassung)
+- **Signal-Engine**: RSI/MACD/ATR/Bollinger liefern Long/Flat-Signale pro Symbol/Timeframe.
+- **Trend-Filter**: Optionaler MACD verhindert Trades gegen den dominanten Trend.
+- **Risk Layer**: Fixer SL/TP plus optionales Trailing; Positionsgröße über pro-Trade-Risiko gesteuert.
+- **Portfolio-Sicht**: Mehrere Strategien laufen parallel; Kapitaleinsatz wird pro aktiver Strategie begrenzt.
+
+Architektur-Skizze:
+```
+OHLCV → Indikator-Stack → Signal (Long/Flat) → Risk Engine → Order Router (CCXT)
+```
+
 ### 🎯 Hauptmerkmale
 
 - **📈 Multi-Strategy**: Handel mehrerer Assets mit individualisierten Strategien
@@ -167,6 +178,13 @@ python src/stbot/analysis/optimizer.py
 ```bash
 # Alle aktiven Strategien starten
 python master_runner.py
+```
+
+### Manuell starten / Cronjob testen
+Sofortige Ausführung auslösen (ohne 15-Minuten-Cron zu warten):
+
+```bash
+cd /home/ubuntu/stbot && /home/ubuntu/stbot/.venv/bin/python3 /home/ubuntu/stbot/master_runner.py
 ```
 
 ### Automatisiert
