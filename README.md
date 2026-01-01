@@ -20,6 +20,7 @@
 STBot ist ein vielseitiger Trading-Bot, der mehrere Handelspaare gleichzeitig verwalten und verschiedene Timeframes optimal nutzen kann. Das System kombiniert technische Indikatoren mit intelligentem Risikomanagement für konsistente Performance.
 
 ### 🧭 Trading-Logik (Kurzfassung)
+- **Breakout-Fokus**: Sucht Volumen-gestützte Ausbrüche über technische Schwellen (z.B. Bollinger-Band-Upper/Range-High) und meidet Chops.
 - **Signal-Engine**: RSI/MACD/ATR/Bollinger liefern Long/Flat-Signale pro Symbol/Timeframe.
 - **Trend-Filter**: Optionaler MACD verhindert Trades gegen den dominanten Trend.
 - **Risk Layer**: Fixer SL/TP plus optionales Trailing; Positionsgröße über pro-Trade-Risiko gesteuert.
