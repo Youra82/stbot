@@ -357,6 +357,25 @@ stbot/
 
 ---
 
+### Optimierte Konfigurationen auf Repo hochladen
+
+Nach erfolgreicher Parameter-Optimierung können die Konfigurationsdateien auf das Repository hochgeladen werden:
+
+```bash
+# Konfigurationsdateien auf Repository hochladen
+git add src/stbot/strategy/configs/*.json
+git commit -m "Update: Optimierte Strategie-Konfigurationen"
+git push origin main
+```
+
+Dies sichert:
+- ✅ **Backup** der optimierten Parameter
+- ✅ **Versionierung** aller Konfigurationsänderungen
+- ✅ **Deployment** auf mehrere Server mit konsistenten Einstellungen
+- ✅ **Nachvollziehbarkeit** welche Parameter zu welchem Zeitpunkt verwendet wurden
+
+---
+
 ## ⚠️ Disclaimer
 
 **Trading ist riskant! Nur Geld investieren, dessen Verlust Sie verkraften können.**
