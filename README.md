@@ -103,7 +103,7 @@ OHLCV → Indikator-Stack → Signal (Long/Flat) → Risk Engine → Order Route
 ### 1. Repository klonen
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Youra82/stbot.git
 cd stbot
 ```
 
