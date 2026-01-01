@@ -29,16 +29,15 @@ STBot ist ein vielseitiger Trading-Bot, der mehrere Handelspaare gleichzeitig ve
 ### 🔍 Strategie-Visualisierung
 ```mermaid
 flowchart LR
-  A[OHLCV] --> B[Indikator-Stack
-  RSI | MACD | ATR | Bollinger]
-  B --> C[Breakout-Check
-  Range-High / BB Upper]
-  C --> D[Volume-Filter
-  vermeidet Fakeouts]
-  D --> E[Signal Long/Flat]
-  E --> F[Risk Engine
-  SL/TP + Trail]
-  F --> G[Order Router (CCXT)]
+    A["OHLCV"]
+    B["Indikator-Stack<br/>RSI | MACD | ATR | Bollinger"]
+    C["Breakout-Check<br/>Range-High / BB Upper"]
+    D["Volume-Filter<br/>vermeidet Fakeouts"]
+    E["Signal Long/Flat"]
+    F["Risk Engine<br/>SL/TP + Trail"]
+    G["Order Router (CCXT)"]
+
+    A --> B --> C --> D --> E --> F --> G
 ```
 
 ### 📈 Trade-Beispiel (TP/SL/Trailing)
