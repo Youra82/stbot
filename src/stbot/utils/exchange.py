@@ -77,27 +77,73 @@ class Exchange:
 
         return pd.DataFrame()
 
-    def fetch_historical_ohlcv(self, symbol, timeframe, start_date_str, end_date_str):
-        if not self.markets: return pd.DataFrame()
+    def fetch_historical_ohlcv(self, symbol, timeframe, start_date_str, end_date_str, max_retries=3):
+        if not self.markets: 
+            return pd.DataFrame()
+            
         try:
-            start_ts = int(self.exchange.parse8601(start_date_str + 'T00:00:00Z'))
-            end_ts = int(self.exchange.parse8601(end_date_str + 'T00:00:00Z'))
-            all_ohlcv = []
+            start_dt = pd.to_datetime(start_date_str + 'T00:00:00Z', utc=True)
+            end_dt = pd.to_datetime(end_date_str + 'T23:59:59Z', utc=True)
+            start_ts = int(start_dt.timestamp() * 1000)
+            end_ts = int(end_dt.timestamp() * 1000)
+        except ValueError as e:
+            logger.error(f"FEHLER: Ungültiges Datumsformat: {e}")
+            return pd.DataFrame()
 
-            while start_ts < end_ts:
-                ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe, since=start_ts, limit=1000)
-                if not ohlcv: break
+        all_ohlcv = []
+        current_ts = start_ts
+        retries = 0
+        limit = 1000
+        
+        # Nutze ccxt's parse_timeframe für korrekte Timeframe-Duration
+        timeframe_duration_ms = self.exchange.parse_timeframe(timeframe) * 1000 if self.exchange.parse_timeframe(timeframe) else 60000
+
+        while current_ts < end_ts and retries < max_retries:
+            try:
+                ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe, since=current_ts, limit=limit)
+                if not ohlcv:
+                    logger.warning(f"Keine OHLCV-Daten für {symbol} {timeframe} ab {pd.to_datetime(current_ts, unit='ms', utc=True)} erhalten.")
+                    current_ts += limit * timeframe_duration_ms
+                    continue
+
+                # Filtere Kerzen die nach end_ts liegen
+                ohlcv = [candle for candle in ohlcv if candle[0] <= end_ts]
+                if not ohlcv: 
+                    break
+
                 all_ohlcv.extend(ohlcv)
-                start_ts = ohlcv[-1][0] + 1
+                last_ts = ohlcv[-1][0]
 
-            if not all_ohlcv: return pd.DataFrame()
+                # Springe zur nächsten Kerze
+                if last_ts >= current_ts:
+                    current_ts = last_ts + timeframe_duration_ms
+                else:
+                    logger.warning("WARNUNG: Kein Zeitfortschritt beim Datenabruf, breche ab.")
+                    break
+                    
+                retries = 0
+                
+            except (ccxt.RateLimitExceeded, ccxt.NetworkError) as e:
+                logger.warning(f"Netzwerk/Ratelimit-Fehler: {e}. Versuch {retries+1}/{max_retries}. Warte...")
+                time.sleep(5 * (retries + 1))
+                retries += 1
+            except ccxt.BadSymbol as e:
+                logger.error(f"FEHLER: Ungültiges Symbol: {symbol}. {e}")
+                return pd.DataFrame()
+            except Exception as e:
+                logger.error(f"Unerwarteter Fehler: {e}. Versuch {retries+1}/{max_retries}.")
+                time.sleep(5)
+                retries += 1
 
-            df = pd.DataFrame(all_ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
-            df.set_index('timestamp', inplace=True)
-            return df[~df.index.duplicated(keep='first')].sort_index()
-        except Exception as e:
-            logger.error(f"Fehler beim Laden historischer Daten: {e}")
+        if not all_ohlcv:
+            logger.warning(f"Keine historischen Daten für {symbol} ({timeframe}) im Zeitraum {start_date_str} - {end_date_str} gefunden.")
+            return pd.DataFrame()
+
+        df = pd.DataFrame(all_ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
+        df.set_index('timestamp', inplace=True)
+        df = df[~df.index.duplicated(keep='first')].sort_index()
+        return df.loc[start_dt:end_dt]
             return pd.DataFrame()
 
     def fetch_ticker(self, symbol):
