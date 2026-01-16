@@ -4,12 +4,12 @@
 
 ![STBot Logo](https://img.shields.io/badge/STBot-v1.0-blue?style=for-the-badge)
 [![Python](https://img.shields.io/badge/Python-3.8+-green?style=for-the-badge&logo=python)](https://www.python.org/)
-[![CCXT](https://img.shields.io/badge/CCXT-Latest-red?style=for-the-badge)](https://github.com/ccxt/ccxt)
+[![CCXT](https://img.shields.io/badge/CCXT-4.3.5-red?style=for-the-badge)](https://github.com/ccxt/ccxt)
 [![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
 
-**Ein flexibler Multi-Asset Trading-Bot mit fortgeschrittener technischer Analyse und Risikomanagement**
+**Ein flexibler Multi-Asset Trading-Bot mit fortgeschrittener technischer Analyse, Breakout-Fokus und intelligentem Risikomanagement**
 
-[Features](#-features) • [Installation](#-installation) • [Optimierung](#-optimierung) • [Live-Trading](#-live-trading) • [Monitoring](#-monitoring) • [Wartung](#-wartung)
+[Features](#-features) • [Installation](#-installation) • [Konfiguration](#-konfiguration) • [Live-Trading](#-live-trading) • [Pipeline](#-interaktives-pipeline-script) • [Monitoring](#-monitoring--status) • [Wartung](#-wartung)
 
 </div>
 
@@ -17,19 +17,21 @@
 
 ## 📊 Übersicht
 
-STBot ist ein vielseitiger Trading-Bot, der mehrere Handelspaare gleichzeitig verwalten und verschiedene Timeframes optimal nutzen kann. Das System kombiniert technische Indikatoren mit intelligentem Risikomanagement für konsistente Performance.
+STBot ist ein vielseitiger Trading-Bot, der mehrere Handelspaare und verschiedene Timeframes gleichzeitig verwaltet. Das System kombiniert technische Indikatoren (RSI, MACD, ATR, Bollinger Bands) mit Breakout-Strategie für konsistente Performance.
 
 ### 🧭 Trading-Logik (Kurzfassung)
-- **Breakout-Fokus**: Sucht Volumen-gestützte Ausbrüche über technische Schwellen (z.B. Bollinger-Band-Upper/Range-High) und meidet Chops.
-- **Signal-Engine**: RSI/MACD/ATR/Bollinger liefern Long/Flat-Signale pro Symbol/Timeframe.
-- **Trend-Filter**: Optionaler MACD verhindert Trades gegen den dominanten Trend.
-- **Risk Layer**: Fixer SL/TP plus optionales Trailing; Positionsgröße über pro-Trade-Risiko gesteuert.
-- **Portfolio-Sicht**: Mehrere Strategien laufen parallel; Kapitaleinsatz wird pro aktiver Strategie begrenzt.
+- **Breakout-Fokus**: Sucht Volumen-gestützte Ausbrüche über technische Schwellen (Bollinger-Band-Upper, Range-High)
+- **Signal-Engine**: RSI/MACD/ATR/Bollinger liefern Long/Flat-Signale pro Symbol/Timeframe
+- **Trend-Filter**: Optionaler MACD verhindert Trades gegen den dominanten Trend
+- **Volumen-Check**: Vermeidet Fakeouts bei niedrigem Volumen
+- **Risk Layer**: Fester SL/TP plus optionales Trailing; Positionsgröße über pro-Trade-Risiko gesteuert
+- **Portfolio-Sicht**: Mehrere Strategien laufen parallel; Kapitaleinsatz wird pro aktiver Strategie begrenzt
+- **Execution**: CCXT für Order-Platzierung mit realistischer Slippage-Simulation
 
 ### 🔍 Strategie-Visualisierung
 ```mermaid
 flowchart LR
-    A["OHLCV"]
+    A["OHLCV Marktdaten"]
     B["Indikator-Stack<br/>RSI | MACD | ATR | Bollinger"]
     C["Breakout-Check<br/>Range-High / BB Upper"]
     D["Volume-Filter<br/>vermeidet Fakeouts"]
@@ -40,27 +42,12 @@ flowchart LR
     A --> B --> C --> D --> E --> F --> G
 ```
 
-### 📈 Trade-Beispiel (TP/SL/Trailing)
-- Setup: Preis konsolidiert unter Range-High / BB-Upper; Volumen baut sich auf.
-- Entry: Long auf Breakout-Close über Range-High.
-- Initial SL: Unter Range-Mitte oder letztes Higher Low; ATR-basiert.
-- TP: 2–3×SL-Distanz oder gemessenes Move-Target (Range-Höhe projiziert).
-- Trailing: Nach +1×SL Distanz Trail unter das letzte Higher Low legen, um Trend-Fortsetzung mitzunehmen.
-
-Architektur-Skizze:
-```
-OHLCV → Indikator-Stack → Signal (Long/Flat) → Risk Engine → Order Router (CCXT)
-```
-
-### 🎯 Hauptmerkmale
-
-- **📈 Multi-Strategy**: Handel mehrerer Assets mit individualisierten Strategien
-- **🔧 Flexible Configuration**: Einfache Anpassung für verschiedene Marktbedingungen
-- **💰 Smart Capital Management**: Intelligente Kapitalverteilung
-- **⚡ Fast Execution**: Optimiert für schnelle Order-Ausführung
-- **📊 Comprehensive Analytics**: Detaillierte Performance-Analysen
-- **🛡️ Risk Management**: Fortgeschrittenes Risikomanagement
-- **🔔 Real-time Monitoring**: Live-Status und Benachrichtigungen
+### 📈 Trade-Beispiel (Entry/SL/TP)
+- **Setup**: Preis konsolidiert unter Range-High oder Bollinger-Upper; Volumen baut sich auf
+- **Entry**: Long auf Breakout-Close über Range-High mit Telegram-Alert
+- **Initial SL**: Unter Range-Mitte oder letztes Higher Low; ATR-basiert
+- **TP**: 2–3×SL-Distanz oder gemessenes Move-Target (Range-Höhe projiziert)
+- **Trailing**: Nach +1×SL Distanz Trail unter das letzte Higher Low legen
 
 ---
 
@@ -68,19 +55,21 @@ OHLCV → Indikator-Stack → Signal (Long/Flat) → Risk Engine → Order Route
 
 ### Trading Features
 - ✅ Multi-Asset Trading (BTC, ETH, SOL, DOGE, XRP, ADA, AAVE)
-- ✅ Multiple Timeframes (15m, 30m, 1h, 2h, 4h, 6h, 1d)
+- ✅ Breakout-Strategie mit Volumen-Validierung
+- ✅ Flexible Timeframe-Unterstützung (15m, 30m, 1h, 4h, 1d)
 - ✅ Optionaler MACD-Filter für Signalvalidierung
 - ✅ Dynamisches Position Sizing
-- ✅ Stop-Loss/Take-Profit Management
-- ✅ Trailing Stop-Loss
+- ✅ Stop-Loss/Take-Profit Management mit Trailing
 - ✅ Automatische Trade-Verwaltung
+- ✅ Telegram-Benachrichtigungen
 
 ### Technical Features
+- ✅ CCXT Integration für mehrere Börsen
 - ✅ Technische Indikatoren (RSI, MACD, ATR, Bollinger Bands)
-- ✅ Hyperparameter-Optimierung
-- ✅ Backtesting mit realistischer Simulation
-- ✅ Performance-Tracking
-- ✅ Ausführliche Logging-Funktionen
+- ✅ Hyperparameter-Optimierung mit Optuna
+- ✅ Backtesting mit realistischer Slippage-Simulation
+- ✅ Robust Error-Handling und Logging
+- ✅ Walk-Forward-Analyse
 
 ---
 
@@ -107,7 +96,7 @@ git clone https://github.com/Youra82/stbot.git
 cd stbot
 ```
 
-### 2. Automatische Installation
+### 2. Automatische Installation (empfohlen)
 
 ```bash
 # Linux/macOS
@@ -120,15 +109,21 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+Das Installations-Script führt folgende Schritte aus:
+- ✅ Erstellt eine virtuelle Python-Umgebung (`.venv`)
+- ✅ Installiert alle erforderlichen Abhängigkeiten
+- ✅ Erstellt notwendige Verzeichnisse (`data/`, `logs/`, `artifacts/`)
+- ✅ Initialisiert Konfigurationsdateien
+
 ### 3. API-Credentials konfigurieren
 
-Erstelle `secret.json`:
+Erstelle eine `secret.json` Datei:
 
 ```json
 {
   "stbot": [
     {
-      "name": "Binance Account",
+      "name": "Binance Trading Account",
       "exchange": "binance",
       "apiKey": "DEIN_API_KEY",
       "secret": "DEIN_SECRET_KEY",
@@ -140,6 +135,11 @@ Erstelle `secret.json`:
 }
 ```
 
+⚠️ **Wichtig**: 
+- Niemals `secret.json` committen oder teilen!
+- Verwende nur API-Keys mit eingeschränkten Rechten
+- Aktiviere IP-Whitelist auf der Exchange
+
 ### 4. Trading-Strategien konfigurieren
 
 Bearbeite `settings.json`:
@@ -147,17 +147,16 @@ Bearbeite `settings.json`:
 ```json
 {
   "live_trading_settings": {
-    "use_auto_optimizer_results": false,
     "active_strategies": [
       {
         "symbol": "BTC/USDT:USDT",
-        "timeframe": "6h",
+        "timeframe": "4h",
         "use_macd_filter": false,
         "active": true
       },
       {
         "symbol": "ETH/USDT:USDT",
-        "timeframe": "2h",
+        "timeframe": "1h",
         "use_macd_filter": false,
         "active": true
       }
@@ -166,56 +165,56 @@ Bearbeite `settings.json`:
 }
 ```
 
----
-
-## 🎯 Optimierung & Training
-
-### Vollständige Pipeline
-
-```bash
-./run_pipeline.sh
-```
-
-Pipeline-Ablauf:
-1. Alte Configs löschen (optional)
-2. Symbole und Timeframes eingeben
-3. Marktdaten herunterladen
-4. Parameter optimieren
-5. Backtest durchführen
-6. Configs für Live-Trading generieren
-
-### Manuelle Optimierung
-
-```bash
-source .venv/bin/activate
-python src/stbot/analysis/optimizer.py
-```
+**Parameter-Erklärung**:
+- `symbol`: Handelspaar
+- `timeframe`: Zeitrahmen
+- `use_macd_filter`: MACD-Filter aktivieren
+- `active`: Strategie aktiv
 
 ---
 
 ## 🔴 Live Trading
 
-### Start
+### Start des Live-Trading
 
 ```bash
-# Alle aktiven Strategien starten
+# Master Runner starten
 python master_runner.py
 ```
 
 ### Manuell starten / Cronjob testen
-Sofortige Ausführung auslösen (ohne 15-Minuten-Cron zu warten):
 
 ```bash
 cd /home/ubuntu/stbot && /home/ubuntu/stbot/.venv/bin/python3 /home/ubuntu/stbot/master_runner.py
 ```
 
-### Automatisiert
+Der Master Runner:
+- ✅ Lädt Konfigurationen aus `settings.json`
+- ✅ Startet separate Prozesse für jede aktive Strategie
+- ✅ Generiert Breakout-Signale
+- ✅ Überwacht Kontostand und verfügbares Kapital
+- ✅ Managed Positionen und Risk-Limits
+- ✅ Loggt alle Trading-Aktivitäten
+- ✅ Sendet Telegram-Benachrichtigungen
+
+### Automatischer Start (Produktions-Setup)
 
 ```bash
-./run_pipeline_automated.sh
+crontab -e
 ```
 
-### Als Service (Linux)
+```
+# Starte den STBot Master-Runner alle 15 Minuten
+*/15 * * * * /usr/bin/flock -n /home/ubuntu/stbot/stbot.lock /bin/sh -c "cd /home/ubuntu/stbot && /home/ubuntu/stbot/.venv/bin/python3 /home/ubuntu/stbot/master_runner.py >> /home/ubuntu/stbot/logs/cron.log 2>&1"
+```
+
+Logverzeichnis:
+
+```bash
+mkdir -p /home/ubuntu/stbot/logs
+```
+
+### Als Systemd Service (Linux)
 
 ```bash
 sudo nano /etc/systemd/system/stbot.service
@@ -232,6 +231,7 @@ User=your-user
 WorkingDirectory=/path/to/stbot
 ExecStart=/path/to/stbot/.venv/bin/python master_runner.py
 Restart=always
+RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
@@ -240,60 +240,122 @@ WantedBy=multi-user.target
 ```bash
 sudo systemctl enable stbot
 sudo systemctl start stbot
+sudo systemctl status stbot
 ```
 
 ---
 
-## 📊 Monitoring
+## 📊 Interaktives Pipeline-Script
 
-### Status anzeigen
+Das **`run_pipeline.sh`** Script automatisiert die Parameter-Optimierung. Es führt einen Grid-Search über alle Breakout- und Indikator-Parameter durch.
+
+### Features des Pipeline-Scripts
+
+✅ **Interaktive Eingabe** - Einfache Menü-Navigation  
+✅ **Automatische Datumswahl** - Zeitrahmen-basierte Lookback-Berechnung  
+✅ **Optuna-Optimierung** - Bayessche Hyperparameter-Suche  
+✅ **Batch-Optimierung** - Mehrere Symbol/Timeframe-Kombinationen  
+✅ **Automatisches Speichern** - Optimale Konfigurationen  
+✅ **Integrierte Backtests** - Sofort nach Optimierung testen  
+
+### Verwendung
 
 ```bash
-./show_status.sh      # Vollständiger Status
-./show_results.sh     # Ergebnisse
-./show_chart.sh       # Charts generieren
-python show_leverage.py  # Hebel-Status
+chmod +x run_pipeline.sh
+./run_pipeline.sh
 ```
 
-### Logs überwachen
+### Optimierte Konfigurationen
 
-```bash
-tail -f logs/live_trading_*.log
-tail -f logs/error_*.log
-grep "BTC/USDT" logs/*.log
+```
+artifacts/optimal_configs/
+├── optimal_BTCUSDT_4h.json
+└── ...
+```
+
+**Beispiel-Konfiguration**:
+
+```json
+{
+  "symbol": "BTCUSDT",
+  "timeframe": "4h",
+  "parameters": {
+    "rsi_period": 14,
+    "rsi_threshold": 50,
+    "macd_fast": 12,
+    "macd_slow": 26,
+    "bollinger_period": 20,
+    "bollinger_std": 2.0,
+    "atr_period": 14,
+    "volume_ratio": 1.2
+  },
+  "performance": {
+    "total_return": 6.50,
+    "win_rate": 58.8,
+    "num_trades": 17,
+    "max_drawdown": -5.80,
+    "end_capital": 650.00
+  }
+}
 ```
 
 ---
 
-## 🛠️ Wartung
+## 📊 Monitoring & Status
 
-### Updates
-
-```bash
-./update.sh
-```
-
-### Aufräumen
+### Status-Dashboard
 
 ```bash
-# Configs löschen
-rm -f src/stbot/strategy/configs/config_*.json
-ls -la src/stbot/strategy/configs/
-
-# Daten löschen
-rm -rf data/raw/* data/processed/*
-du -sh data/*
-
-# Kompletter Reset
-rm -rf artifacts/* data/* logs/*
-./install.sh
+./show_status.sh
 ```
 
-### Tests
+### Log-Files
+
+```bash
+tail -f logs/cron.log
+tail -f logs/error.log
+tail -n 100 logs/stbot_BTCUSDTUSDT_4h.log
+```
+
+### Performance-Metriken
+
+```bash
+python analyze_real_trades_detailed.py
+python compare_real_vs_backtest.py
+```
+
+---
+
+## 🛠️ Wartung & Pflege
+
+### Logs ansehen
+
+```bash
+tail -f logs/cron.log
+tail -n 200 logs/cron.log
+grep -i "ERROR" logs/cron.log
+```
+
+### Bot aktualisieren
+
+```bash
+chmod +x update.sh
+bash ./update.sh
+```
+
+### Log-Rotation
+
+```bash
+find logs/ -name "*.log" -type f -mtime +30 -exec gzip {} \;
+find logs/ -name "*.log.gz" -type f -mtime +90 -delete
+```
+
+### Tests ausführen
 
 ```bash
 ./run_tests.sh
-pytest tests/ -v
+pytest tests/test_strategy.py -v
+pytest --cov=src tests/
 ```
 
 ---
@@ -303,36 +365,27 @@ pytest tests/ -v
 ### Konfiguration
 
 ```bash
-# Validieren
 python -c "import json; print(json.load(open('settings.json')))"
-
-# Backup
 cp settings.json settings.json.backup.$(date +%Y%m%d)
+diff settings.json settings.json.backup
 ```
 
 ### Prozess-Management
 
 ```bash
-# Prozesse anzeigen
 ps aux | grep python | grep stbot
-
-# PID finden
 pgrep -f master_runner.py
-
-# Beenden
 pkill -f master_runner.py
+pkill -9 -f master_runner.py
 ```
 
-### Exchange
+### Debugging
 
 ```bash
-# Verbindung testen
-python -c "from src.stbot.utils.exchange import Exchange; \
-    e = Exchange('binance'); print(e.fetch_balance())"
-
-# Positionen
-python -c "from src.stbot.utils.exchange import Exchange; \
-    e = Exchange('binance'); print(e.fetch_positions())"
+export STBOT_DEBUG=1
+python master_runner.py
+tail -f logs/cron.log | grep -i "breakout\|signal\|trade"
+python -m pdb master_runner.py
 ```
 
 ---
@@ -341,58 +394,104 @@ python -c "from src.stbot.utils.exchange import Exchange; \
 
 ```
 stbot/
-├── src/stbot/
-│   ├── analysis/          # Optimierung
-│   ├── strategy/          # Trading-Logik
-│   ├── backtest/          # Backtesting
-│   └── utils/             # Utilities
-├── tests/                 # Tests
-├── data/                  # Marktdaten
-├── logs/                  # Logs
-├── artifacts/             # Ergebnisse
-├── master_runner.py       # Main Script
-├── settings.json          # Konfiguration
-└── secret.json            # API-Keys
+├── src/
+│   └── stbot/
+│       ├── strategy/          # Trading-Logik
+│       │   ├── run.py
+│       │   └── breakout_detector.py
+│       ├── backtest/          # Backtesting
+│       │   └── backtester.py
+│       └── utils/             # Hilfsfunktionen
+│           ├── exchange.py
+│           └── telegram.py
+├── scripts/
+├── tests/
+├── data/
+├── logs/
+├── artifacts/
+├── master_runner.py
+├── settings.json
+├── secret.json
+└── requirements.txt
 ```
 
 ---
 
-### Optimierte Konfigurationen auf Repo hochladen
+## ⚠️ Wichtige Hinweise
 
-Nach erfolgreicher Parameter-Optimierung können die Konfigurationsdateien auf das Repository hochgeladen werden:
+### Risiko-Disclaimer
+
+⚠️ **Trading mit Kryptowährungen birgt erhebliche Risiken!**
+
+- Nur Kapital einsetzen, dessen Verlust Sie verkraften können
+- Keine Garantie für Gewinne
+- Vergangene Performance ist kein Indikator
+- Testen Sie mit Demo-Accounts
+- Starten Sie mit kleinen Beträgen
+
+### Security Best Practices
+
+- 🔐 Keine API-Keys mit Withdrawal-Rechten
+- 🔐 IP-Whitelist aktivieren
+- 🔐 2FA verwenden
+- 🔐 `secret.json` niemals committen
+- 🔐 Regelmäßige Updates
+
+### Performance-Tipps
+
+- 💡 Starten Sie mit 1-2 Strategien
+- 💡 Längere Timeframes für stabilere Signale
+- 💡 Monitoren Sie regelmäßig
+- 💡 Parameter regelmäßig optimieren
+- 💡 Position-Sizing angemessen konfigurieren
+
+---
+
+## 🤝 Support & Community
+
+### Probleme melden
+
+1. Prüfen Sie die Logs
+2. Führen Sie Tests aus
+3. Öffnen Sie ein Issue
+
+### Updates
 
 ```bash
-# Konfigurationsdateien auf Repository hochladen
-git add src/stbot/strategy/configs/*.json
-git commit -m "Update: Optimierte Strategie-Konfigurationen"
-git push origin main --force
+git fetch origin
+./update.sh
 ```
 
-Dies sichert:
-- ✅ **Backup** der optimierten Parameter
-- ✅ **Versionierung** aller Konfigurationsänderungen
-- ✅ **Deployment** auf mehrere Server mit konsistenten Einstellungen
-- ✅ **Nachvollziehbarkeit** welche Parameter zu welchem Zeitpunkt verwendet wurden
+### Hochladen
 
----
-
-## ⚠️ Disclaimer
-
-**Trading ist riskant! Nur Geld investieren, dessen Verlust Sie verkraften können.**
+```bash
+git add artifacts/optimal_configs/*.json
+git commit -m "Update: Optimierte Parameter"
+git push origin main
+```
 
 ---
 
 ## 📜 Lizenz
 
-MIT License - siehe [LICENSE](LICENSE)
+Dieses Projekt ist lizenziert unter der MIT License.
+
+---
+
+## 🙏 Credits
+
+Entwickelt mit:
+- [CCXT](https://github.com/ccxt/ccxt)
+- [Pandas](https://pandas.pydata.org/)
+- [TA-Lib](https://github.com/mrjbq7/ta-lib)
 
 ---
 
 <div align="center">
 
-**Made with ❤️ for Algorithmic Trading**
+**Made with ❤️ by the STBot Team**
 
-⭐ Star this repo!
+⭐ Star uns auf GitHub wenn dir dieses Projekt gefällt!
 
 [🔝 Nach oben](#-stbot---strategic-trading-bot)
 

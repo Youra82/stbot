@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STBot - Strategic Breakout Trading</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 1400px; margin: 0 auto; }
+        .header { text-align: center; color: white; margin-bottom: 30px; }
+        .header h1 { font-size: 2.5em; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .chart-container {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            height: 500px;
+        }
+        .chart-container h2 { margin-bottom: 15px; color: #333; }
+        .chart-container canvas { max-height: 420px; }
+        .diagram-section {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+        .diagram-section h2 { color: #333; margin-bottom: 20px; }
+        footer { text-align: center; color: white; margin-top: 40px; padding: 20px; opacity: 0.8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌟 STBot - Strategic Breakout Trading</h1>
+            <p>Multi-Indikator Breakout mit Bollinger Bands</p>
+        </div>
+
+        <div class="charts-grid">
+            <div class="chart-container">
+                <h2>Breakout Levels & Ranges</h2>
+                <canvas id="breakoutChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h2>Bollinger Bands</h2>
+                <canvas id="bollingerChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h2>RSI + MACD Confluence</h2>
+                <canvas id="indicatorChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h2>ATR Volatility</h2>
+                <canvas id="atrChart"></canvas>
+            </div>
+        </div>
+
+        <div class="diagram-section">
+            <h2>🎯 Breakout-Strategie</h2>
+            <p style="margin: 15px 0;">
+                <strong>Range-High:</strong> Aktuelle Konsolidierungsobergrenze<br>
+                <strong>Breakout:</strong> Close über Range-High = Entry-Signal (nur mit Volumen)<br>
+                <strong>Initial SL:</strong> Unter Range-Mitte oder letztes Higher Low<br>
+                <strong>TP Targets:</strong> 2-3x SL-Distanz oder nächstes markantes High<br>
+                <strong>Trailing:</strong> Nach +1x SL Gewinn Trail unter Higher Low nachziehen<br>
+                <strong>Volume-Filter:</strong> Vol-Ratio > 1.2x zur Fakeout-Vermeidung
+            </p>
+        </div>
+    </div>
+
+    <footer>
+        <p>STBot © 2025 | Multi-Asset Breakout Strategy | Volumen-validiert</p>
+    </footer>
+
+    <script>
+        const breakoutCtx = document.getElementById('breakoutChart').getContext('2d');
+        new Chart(breakoutCtx, {
+            type: 'line',
+            data: {
+                labels: Array.from({length: 50}, (_, i) => i),
+                datasets: [
+                    {
+                        label: 'Range High',
+                        data: Array.from({length: 50}, (_, i) => 46200),
+                        borderColor: '#f44336',
+                        borderWidth: 2.5,
+                        borderDash: [5, 5],
+                        fill: false,
+                        pointRadius: 0
+                    },
+                    {
+                        label: 'Range Low',
+                        data: Array.from({length: 50}, (_, i) => 45800),
+                        borderColor: '#f44336',
+                        borderWidth: 2.5,
+                        borderDash: [5, 5],
+                        fill: false,
+                        pointRadius: 0
+                    },
+                    {
+                        label: 'Price Action',
+                        data: Array.from({length: 50}, (_, i) => i < 30 ? 46000 + Math.random()*100 : 46200 + Math.sin(i/5)*300 + (Math.random()-0.5)*100),
+                        borderColor: '#3f51b5',
+                        borderWidth: 2.5,
+                        fill: false
+                    }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+
+        const bollingerCtx = document.getElementById('bollingerChart').getContext('2d');
+        new Chart(bollingerCtx, {
+            type: 'line',
+            data: {
+                labels: Array.from({length: 50}, (_, i) => i),
+                datasets: [
+                    {
+                        label: 'BB Upper',
+                        data: Array.from({length: 50}, (_, i) => 46500 + Math.sin(i/10)*500 + 300),
+                        borderColor: '#f44336',
+                        borderWidth: 2,
+                        fill: false
+                    },
+                    {
+                        label: 'BB Middle (SMA 20)',
+                        data: Array.from({length: 50}, (_, i) => 46500 + Math.sin(i/10)*500),
+                        borderColor: '#4caf50',
+                        borderWidth: 2.5,
+                        fill: false
+                    },
+                    {
+                        label: 'BB Lower',
+                        data: Array.from({length: 50}, (_, i) => 46500 + Math.sin(i/10)*500 - 300),
+                        borderColor: '#f44336',
+                        borderWidth: 2,
+                        fill: false
+                    },
+                    {
+                        label: 'Close',
+                        data: Array.from({length: 50}, (_, i) => 46500 + Math.sin(i/10)*500 + (Math.random()-0.5)*200),
+                        borderColor: '#3f51b5',
+                        borderWidth: 2.5,
+                        fill: false
+                    }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+
+        const indicatorCtx = document.getElementById('indicatorChart').getContext('2d');
+        new Chart(indicatorCtx, {
+            type: 'line',
+            data: {
+                labels: Array.from({length: 40}, (_, i) => i),
+                datasets: [
+                    {
+                        label: 'RSI (14)',
+                        data: Array.from({length: 40}, (_, i) => 50 + Math.sin(i/8)*25 + (Math.random()-0.5)*5),
+                        borderColor: '#ffc107',
+                        borderWidth: 2,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: 'MACD',
+                        data: Array.from({length: 40}, (_, i) => Math.sin(i/10)*50 + (Math.random()-0.5)*10),
+                        borderColor: '#3f51b5',
+                        borderWidth: 2,
+                        yAxisID: 'y1'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { position: 'left', min: 0, max: 100 },
+                    y1: { position: 'right' }
+                }
+            }
+        });
+
+        const atrCtx = document.getElementById('atrChart').getContext('2d');
+        new Chart(atrCtx, {
+            type: 'bar',
+            data: {
+                labels: Array.from({length: 30}, (_, i) => i),
+                datasets: [{
+                    label: 'ATR (14)',
+                    data: Array.from({length: 30}, (_, i) => 300 + Math.sin(i/5)*100 + Math.random()*50),
+                    backgroundColor: Array.from({length: 30}, (_, i) => i % 2 === 0 ? '#4caf50' : '#f44336'),
+                    borderColor: '#333',
+                    borderWidth: 1
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+        });
+    </script>
+</body>
+</html>
