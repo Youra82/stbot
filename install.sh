@@ -56,6 +56,27 @@ mkdir -p artifacts/optimal_configs
 mkdir -p artifacts/models
 echo -e "${GREEN}✔ Verzeichnisstruktur wurde erstellt.${NC}"
 
+# --- Symlink für /home/ubuntu/stbot erstellen (falls als root installiert) ---
+CURRENT_DIR=$(pwd)
+UBUNTU_HOME="/home/ubuntu"
+BOT_NAME="stbot"
+
+if [ "$(id -u)" -eq 0 ] && [ -d "$UBUNTU_HOME" ]; then
+    # Wir sind root und /home/ubuntu existiert
+    TARGET_LINK="$UBUNTU_HOME/$BOT_NAME"
+    
+    if [ "$CURRENT_DIR" != "$TARGET_LINK" ]; then
+        if [ -L "$TARGET_LINK" ]; then
+            echo -e "${YELLOW}  → Symlink $TARGET_LINK existiert bereits${NC}"
+        elif [ -d "$TARGET_LINK" ]; then
+            echo -e "${YELLOW}  → Verzeichnis $TARGET_LINK existiert - überspringe Symlink${NC}"
+        else
+            ln -s "$CURRENT_DIR" "$TARGET_LINK"
+            echo -e "${GREEN}✔ Symlink erstellt: $TARGET_LINK -> $CURRENT_DIR${NC}"
+        fi
+    fi
+fi
+
 # --- Abschluss ---
 echo -e "\n${YELLOW}5/5: Setze Ausführungsrechte für alle .sh-Skripte...${NC}"
 chmod +x *.sh
