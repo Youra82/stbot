@@ -280,22 +280,13 @@ def run_optimization_python() -> bool:
     log(f"")
     
     try:
-        # Starte Prozess mit Live-Output statt capture_output
+        # Starte Prozess mit direkter Terminal-Ausgabe (für korrekte Progress-Bar)
+        # Kein PIPE - Output geht direkt ans Terminal
         process = subprocess.Popen(
             cmd,
-            cwd=str(SCRIPT_DIR),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1
+            cwd=str(SCRIPT_DIR)
+            # stdout/stderr nicht umleiten = direkter Terminal-Output
         )
-        
-        # Zeige Output in Echtzeit
-        output_lines = []
-        for line in process.stdout:
-            line = line.rstrip()
-            print(line)  # Live-Ausgabe
-            output_lines.append(line)
         
         process.wait()
         returncode = process.returncode
