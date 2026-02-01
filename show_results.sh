@@ -37,14 +37,13 @@ if [ ! -f "$RESULTS_SCRIPT" ]; then
     exit 1
 fi
 
-# --- OPTION 4: INTERAKTIVE CHARTS (Direkt zu interactive_status.py) ---
+# *** Übergebe Mode und Max DD an das Python Skript (inkl. Mode 4) ***
+python3 "$RESULTS_SCRIPT" --mode "$MODE" --target_max_drawdown "$TARGET_MAX_DD"
+
+# --- OPTION 4: INTERAKTIVE CHARTS (Behandelt direkt in show_results.py) ---
 if [ "$MODE" == "4" ]; then
-    echo -e "\n${YELLOW}========== INTERAKTIVE CHARTS ===========${NC}"
-    echo ""
-    python3 src/stbot/analysis/interactive_status.py
-    
     if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✅ Charts wurden generiert!${NC}"
+        echo -e "${GREEN}✅ Interaktive Charts wurden generiert!${NC}"
     else
         echo -e "${RED}❌ Fehler beim Generieren der Charts.${NC}"
     fi
@@ -53,5 +52,4 @@ if [ "$MODE" == "4" ]; then
     exit 0
 fi
 
-# --- OPTION 1-3: ANALYS-MODES (zeige_results.py) ---
-python3 "$RESULTS_SCRIPT" --mode "$MODE" --target_max_drawdown "$TARGET_MAX_DD"
+deactivate
