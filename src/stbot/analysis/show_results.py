@@ -36,9 +36,42 @@ def run_single_analysis(start_date, end_date, start_capital):
     if not config_files:
         print("\nKeine gültigen Konfigurationen zum Analysieren gefunden."); return
     
-    print(f"Zeitraum: {start_date} bis {end_date} | Startkapital: {start_capital} USDT")
+    # --- NEU: Konfigurationsauswahl ---
+    print("\n" + "="*60)
+    print("Verfügbare Konfigurationen:")
+    print("="*60)
+    for i, filename in enumerate(config_files, 1):
+        display_name = filename.replace('config_', '').replace('.json', '')
+        print(f"{i:2}) {display_name}")
+    print("="*60)
     
-    for filename in config_files:
+    print("\nWähle Konfiguration(en) zum Anzeigen:")
+    print("  Einzeln: z.B. '1' oder '5'")
+    print("  Mehrfach: z.B. '1,3,5' oder '1 3 5'")
+    print("  Alle: 'alle'")
+    
+    selection = input("\nAuswahl: ").strip()
+    
+    selected_files = []
+    try:
+        if selection.lower() == 'alle':
+            selected_files = config_files
+        else:
+            # Unterstütze sowohl Komma- als auch Leerzeichen-getrennte Eingaben
+            indices = selection.replace(',', ' ').split()
+            selected_files = [config_files[int(i) - 1] for i in indices]
+    except (ValueError, IndexError):
+        print("Ungültige Auswahl. Breche ab.")
+        return
+    
+    if not selected_files:
+        print("Keine Konfigurationen ausgewählt.")
+        return
+    # --- ENDE NEU ---
+    
+    print(f"\nZeitraum: {start_date} bis {end_date} | Startkapital: {start_capital} USDT")
+    
+    for filename in selected_files:
         config_path = os.path.join(configs_dir, filename)
         if not os.path.exists(config_path): continue
         try:
