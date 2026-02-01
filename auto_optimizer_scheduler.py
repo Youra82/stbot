@@ -69,6 +69,54 @@ def load_secrets() -> dict:
         return json.load(f)
 
 
+def extract_symbols_timeframes(settings: dict, extract_type: str) -> list:
+    """
+    Extrahiert Symbole oder Timeframes aus active_strategies wenn 'auto' gesetzt ist.
+    
+    Args:
+        settings: Die geladenen Settings
+        extract_type: "symbols" oder "timeframes"
+    
+    Returns:
+        Liste der Symbole oder Timeframes
+    """
+    opt_settings = settings.get("optimization_settings", {})
+    live_settings = settings.get("live_trading_settings", {})
+    strategies = live_settings.get("active_strategies", [])
+    
+    if extract_type == "symbols":
+        setting_value = opt_settings.get("symbols_to_optimize", "auto")
+        if setting_value == "auto" or not setting_value:
+            # Extrahiere aus active_strategies
+            symbols = set()
+            for s in strategies:
+                if s.get("active", False):
+                    sym = s.get("symbol", "").split("/")[0]
+                    if sym:
+                        symbols.add(sym)
+            return sorted(symbols) if symbols else ["BTC", "ETH"]
+        return setting_value if isinstance(setting_value, list) else ["BTC", "ETH"]
+    
+    elif extract_type == "timeframes":
+        setting_value = opt_settings.get("timeframes_to_optimize", "auto")
+        if setting_value == "auto" or not setting_value:
+            # Extrahiere aus active_strategies
+            timeframes = set()
+            for s in strategies:
+                if s.get("active", False):
+                    tf = s.get("timeframe", "")
+                    if tf:
+                        timeframes.add(tf)
+            # Sortiere nach Dauer
+            tf_order = {"1m": 1, "5m": 5, "15m": 15, "30m": 30, "1h": 60, 
+                       "2h": 120, "4h": 240, "6h": 360, "12h": 720, "1d": 1440}
+            sorted_tf = sorted(timeframes, key=lambda x: tf_order.get(x, 999))
+            return sorted_tf if sorted_tf else ["1h", "4h"]
+        return setting_value if isinstance(setting_value, list) else ["1h", "4h"]
+    
+    return []
+
+
 def send_telegram(message: str) -> bool:
     """Sendet eine Telegram-Nachricht."""
     try:
@@ -199,8 +247,8 @@ def run_optimization_windows() -> bool:
     settings = load_settings()
     opt_settings = settings.get("optimization_settings", {})
     
-    symbols = opt_settings.get("symbols_to_optimize", ["BTC", "ETH"])
-    timeframes = opt_settings.get("timeframes_to_optimize", ["1h", "4h"])
+    symbols = extract_symbols_timeframes(settings, "symbols")
+    timeframes = extract_symbols_timeframes(settings, "timeframes")
     lookback_days = opt_settings.get("lookback_days", 365)
     start_capital = opt_settings.get("start_capital", 1000)
     n_cores = opt_settings.get("cpu_cores", -1)

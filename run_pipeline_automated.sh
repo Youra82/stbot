@@ -139,15 +139,50 @@ if [ "$1" != "--force" ]; then
     fi
 fi
 
-# Extrahiere Arrays sicher mit jq, falls verfügbar
-if command -v jq &> /dev/null; then
-    SYMBOLS=$(jq -r '.optimization_settings.symbols_to_optimize | join(" ") // ""' "$SETTINGS_FILE")
-    TIMEFRAMES=$(jq -r '.optimization_settings.timeframes_to_optimize | join(" ") // ""' "$SETTINGS_FILE")
-else
-    echo "WARNUNG: jq nicht gefunden. Lese Arrays unsicher aus."
-    SYMBOLS=$(get_setting "['optimization_settings', 'symbols_to_optimize']" | tr -d "[]',\"")
-    TIMEFRAMES=$(get_setting "['optimization_settings', 'timeframes_to_optimize']" | tr -d "[]',\"")
-fi
+# --- Extrahiere Symbole und Timeframes ---
+# Wenn "auto" gesetzt ist, werden sie aus active_strategies extrahiert
+extract_from_active_strategies() {
+    python3 -c "
+import json
+with open('$SETTINGS_FILE') as f:
+    settings = json.load(f)
+opt = settings.get('optimization_settings', {})
+live = settings.get('live_trading_settings', {})
+strategies = live.get('active_strategies', [])
+
+# Symbole
+symbols_setting = opt.get('symbols_to_optimize', 'auto')
+if symbols_setting == 'auto' or not symbols_setting:
+    symbols = set()
+    for s in strategies:
+        if s.get('active', False):
+            sym = s.get('symbol', '').split('/')[0]
+            if sym:
+                symbols.add(sym)
+    print('SYMBOLS=' + ' '.join(sorted(symbols)))
+else:
+    print('SYMBOLS=' + ' '.join(symbols_setting))
+
+# Timeframes
+tf_setting = opt.get('timeframes_to_optimize', 'auto')
+if tf_setting == 'auto' or not tf_setting:
+    timeframes = set()
+    for s in strategies:
+        if s.get('active', False):
+            tf = s.get('timeframe', '')
+            if tf:
+                timeframes.add(tf)
+    # Sortiere Timeframes nach Dauer
+    tf_order = {'1m':1,'5m':5,'15m':15,'30m':30,'1h':60,'2h':120,'4h':240,'6h':360,'12h':720,'1d':1440}
+    sorted_tf = sorted(timeframes, key=lambda x: tf_order.get(x, 999))
+    print('TIMEFRAMES=' + ' '.join(sorted_tf))
+else:
+    print('TIMEFRAMES=' + ' '.join(tf_setting))
+"
+}
+
+# Führe Extraktion aus und setze Variablen
+eval $(extract_from_active_strategies)
 SYMBOLS=${SYMBOLS:-"BTC ETH"}
 TIMEFRAMES=${TIMEFRAMES:-"1h 4h"}
 
