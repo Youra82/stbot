@@ -129,6 +129,48 @@ def extract_symbols_timeframes(settings: dict, extract_type: str) -> list:
     return []
 
 
+def extract_strategy_pairs(settings: dict) -> list[tuple[str, str]]:
+    """
+    Extrahiert die tatsächlichen Symbol/Timeframe-Paare aus active_strategies.
+    
+    Returns:
+        Liste von Tupeln (symbol, timeframe), z.B. [("BTC", "4h"), ("ETH", "1h")]
+    """
+    opt_settings = settings.get("optimization_settings", {})
+    live_settings = settings.get("live_trading_settings", {})
+    strategies = live_settings.get("active_strategies", [])
+    
+    # Prüfe ob manuelle Listen gesetzt sind
+    manual_symbols = opt_settings.get("symbols_to_optimize", "auto")
+    manual_timeframes = opt_settings.get("timeframes_to_optimize", "auto")
+    
+    # Wenn beide manuell gesetzt sind, nutze kartesisches Produkt
+    if manual_symbols != "auto" and manual_timeframes != "auto":
+        symbols = manual_symbols if isinstance(manual_symbols, list) else [manual_symbols]
+        timeframes = manual_timeframes if isinstance(manual_timeframes, list) else [manual_timeframes]
+        return [(s, tf) for s in symbols for tf in timeframes]
+    
+    # Sonst: Extrahiere nur die tatsächlichen aktiven Paare
+    pairs = []
+    for s in strategies:
+        if s.get("active", False):
+            symbol_full = s.get("symbol", "")
+            symbol = symbol_full.split("/")[0] if "/" in symbol_full else symbol_full
+            timeframe = s.get("timeframe", "")
+            if symbol and timeframe:
+                pairs.append((symbol, timeframe))
+    
+    # Entferne Duplikate, behalte Reihenfolge
+    seen = set()
+    unique_pairs = []
+    for pair in pairs:
+        if pair not in seen:
+            seen.add(pair)
+            unique_pairs.append(pair)
+    
+    return unique_pairs if unique_pairs else [("BTC", "4h"), ("ETH", "1h")]
+
+
 def send_telegram(message: str) -> bool:
     """Sendet eine Telegram-Nachricht."""
     try:
@@ -224,12 +266,17 @@ def run_optimization() -> bool:
 
 
 def run_optimization_python() -> bool:
-    """Führt die Optimierung direkt via Python aus (plattformunabhängig)."""
+    """Führt die Optimierung direkt via Python aus (plattformunabhängig).
+    
+    Optimiert nur die tatsächlichen Symbol/Timeframe-Paare aus active_strategies,
+    NICHT das kartesische Produkt aller Symbole × alle Timeframes.
+    """
     settings = load_settings()
     opt_settings = settings.get("optimization_settings", {})
     
-    symbols = extract_symbols_timeframes(settings, "symbols")
-    timeframes = extract_symbols_timeframes(settings, "timeframes")
+    # Extrahiere die tatsächlichen Paare (nicht kartesisches Produkt!)
+    pairs = extract_strategy_pairs(settings)
+    
     lookback_days = opt_settings.get("lookback_days", 365)
     start_capital = opt_settings.get("start_capital", 1000)
     n_cores = opt_settings.get("cpu_cores", -1)
@@ -253,86 +300,102 @@ def run_optimization_python() -> bool:
     python_exe = get_python_executable()
     log(f"Python: {python_exe}")
     
-    cmd = [
-        python_exe, str(optimizer_path),
-        "--symbols", " ".join(symbols),
-        "--timeframes", " ".join(timeframes),
-        "--start_date", start_date,
-        "--end_date", end_date,
-        "--jobs", str(n_cores),
-        "--max_drawdown", str(max_dd),
-        "--start_capital", str(start_capital),
-        "--min_win_rate", str(min_wr),
-        "--trials", str(n_trials),
-        "--min_pnl", str(min_pnl),
-        "--mode", "strict"
-    ]
-    
-    log(f"Führe aus: {' '.join(cmd[:5])}...")
+    # Zeige die zu optimierenden Paare
+    pairs_display = [f"{s}@{tf}" for s, tf in pairs]
     log(f"")
     log(f"╔══════════════════════════════════════════════════════════════╗")
-    log(f"║  AUTO-OPTIMIZER: {len(symbols)} Symbole × {len(timeframes)} Timeframes = {len(symbols) * len(timeframes)} Kombinationen")
-    log(f"║  Symbole: {', '.join(symbols)}")
-    log(f"║  Timeframes: {', '.join(timeframes)}")
-    log(f"║  Trials pro Kombination: {n_trials}")
+    log(f"║  AUTO-OPTIMIZER: {len(pairs)} Strategien aus active_strategies")
+    log(f"║  Paare: {', '.join(pairs_display)}")
+    log(f"║  Trials pro Paar: {n_trials}")
     log(f"║  Lookback: {lookback_days} Tage ({start_date} bis {end_date})")
     log(f"╚══════════════════════════════════════════════════════════════╝")
     log(f"")
     
-    try:
-        # Starte Prozess mit direkter Terminal-Ausgabe (für korrekte Progress-Bar)
-        # Kein PIPE - Output geht direkt ans Terminal
-        process = subprocess.Popen(
-            cmd,
-            cwd=str(SCRIPT_DIR)
-            # stdout/stderr nicht umleiten = direkter Terminal-Output
-        )
+    success_count = 0
+    fail_count = 0
+    
+    # Optimiere jedes Paar einzeln
+    for idx, (symbol, timeframe) in enumerate(pairs, 1):
+        log(f"")
+        log(f"━━━ [{idx}/{len(pairs)}] Optimiere {symbol} @ {timeframe} ━━━")
         
-        process.wait()
-        returncode = process.returncode
+        cmd = [
+            python_exe, str(optimizer_path),
+            "--symbols", symbol,
+            "--timeframes", timeframe,
+            "--start_date", start_date,
+            "--end_date", end_date,
+            "--jobs", str(n_cores),
+            "--max_drawdown", str(max_dd),
+            "--start_capital", str(start_capital),
+            "--min_win_rate", str(min_wr),
+            "--trials", str(n_trials),
+            "--min_pnl", str(min_pnl),
+            "--mode", "strict"
+        ]
         
-        duration = int((time.time() - start_time) / 60)
-        save_last_run_time()
-        
-        if returncode == 0:
-            log(f"")
-            log(f"╔══════════════════════════════════════════════════════════════╗")
-            log(f"║  ✅ OPTIMIERUNG ERFOLGREICH ABGESCHLOSSEN")
-            log(f"║  Dauer: {duration} Minuten")
-            log(f"╚══════════════════════════════════════════════════════════════╝")
+        try:
+            # Starte Prozess mit direkter Terminal-Ausgabe (für korrekte Progress-Bar)
+            process = subprocess.Popen(
+                cmd,
+                cwd=str(SCRIPT_DIR)
+            )
             
-            # Telegram senden
-            if opt_settings.get("send_telegram_on_completion", True):
-                config_dir = SCRIPT_DIR / "src" / "stbot" / "strategy" / "configs"
-                config_count = len(list(config_dir.glob("config_*.json"))) if config_dir.exists() else 0
+            process.wait()
+            
+            if process.returncode == 0:
+                success_count += 1
+            else:
+                fail_count += 1
+                log(f"  ⚠️  Optimierung für {symbol}@{timeframe} fehlgeschlagen (Code: {process.returncode})")
                 
-                send_telegram(f"""✅ StBot Auto-Optimierung ABGESCHLOSSEN
+        except Exception as e:
+            fail_count += 1
+            log(f"  ❌ Fehler bei {symbol}@{timeframe}: {e}")
+    
+    duration = int((time.time() - start_time) / 60)
+    save_last_run_time()
+    
+    if fail_count == 0:
+        log(f"")
+        log(f"╔══════════════════════════════════════════════════════════════╗")
+        log(f"║  ✅ OPTIMIERUNG ERFOLGREICH ABGESCHLOSSEN")
+        log(f"║  Dauer: {duration} Minuten")
+        log(f"║  Erfolgreich: {success_count}/{len(pairs)} Strategien")
+        log(f"╚══════════════════════════════════════════════════════════════╝")
+        
+        # Telegram senden
+        if opt_settings.get("send_telegram_on_completion", True):
+            config_dir = SCRIPT_DIR / "src" / "stbot" / "strategy" / "configs"
+            config_count = len(list(config_dir.glob("config_*.json"))) if config_dir.exists() else 0
+            
+            send_telegram(f"""✅ StBot Auto-Optimierung ABGESCHLOSSEN
 
 Dauer: {duration} Minuten
-Symbole: {', '.join(symbols)}
-Zeitfenster: {', '.join(timeframes)}
+Strategien: {', '.join(pairs_display)}
+Erfolgreich: {success_count}/{len(pairs)}
 Generierte Configs: {config_count}
-Trials pro Kombination: {n_trials}
+Trials pro Paar: {n_trials}
 Lookback: {lookback_days} Tage""")
-            
-            return True
-        else:
-            log(f"")
-            log(f"╔══════════════════════════════════════════════════════════════╗")
-            log(f"║  ❌ OPTIMIERUNG FEHLGESCHLAGEN (Exit-Code: {returncode})")
-            log(f"╚══════════════════════════════════════════════════════════════╝")
-            
-            if opt_settings.get("send_telegram_on_completion", True):
-                send_telegram(f"""❌ StBot Auto-Optimierung FEHLGESCHLAGEN
+        
+        return True
+    else:
+        log(f"")
+        log(f"╔══════════════════════════════════════════════════════════════╗")
+        log(f"║  ⚠️  OPTIMIERUNG MIT FEHLERN ABGESCHLOSSEN")
+        log(f"║  Dauer: {duration} Minuten")
+        log(f"║  Erfolgreich: {success_count}/{len(pairs)}, Fehlgeschlagen: {fail_count}")
+        log(f"╚══════════════════════════════════════════════════════════════╝")
+        
+        if opt_settings.get("send_telegram_on_completion", True):
+            send_telegram(f"""⚠️ StBot Auto-Optimierung MIT FEHLERN
 
 Dauer: {duration} Minuten
-Fehlercode: {returncode}
+Erfolgreich: {success_count}/{len(pairs)}
+Fehlgeschlagen: {fail_count}
 Details in logs/scheduler.log""")
-            
-            return False
-    except Exception as e:
-        log(f"Fehler bei der Ausführung: {e}")
-        return False
+        
+        return fail_count == 0
 
 
 def run_daemon(check_interval: int = 60):
