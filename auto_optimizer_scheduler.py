@@ -80,10 +80,17 @@ def load_settings() -> dict:
 def load_secrets() -> dict:
     """Lädt die secret.json Datei."""
     if not SECRET_FILE.exists():
+        log(f"⚠️ secret.json nicht gefunden: {SECRET_FILE}")
         return {}
     
-    with open(SECRET_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(SECRET_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            log(f"✓ secret.json geladen, Keys: {list(data.keys())}")
+            return data
+    except Exception as e:
+        log(f"Fehler beim Laden von secret.json: {e}")
+        return {}
 
 
 def extract_symbols_timeframes(settings: dict, extract_type: str) -> list:
@@ -186,16 +193,22 @@ def send_telegram(message: str) -> bool:
         bot_token = telegram.get("bot_token")
         chat_id = telegram.get("chat_id")
         
+        log(f"Telegram-Config: bot_token={'✓' if bot_token else '✗'}, chat_id={'✓' if chat_id else '✗'}")
+        
         if bot_token and chat_id:
-            send_message(bot_token, chat_id, message)
-            log(f"✅ Telegram-Nachricht gesendet")
+            result = send_message(bot_token, chat_id, message)
+            log(f"✅ Telegram-Nachricht gesendet (result={result})")
             return True
         else:
-            log(f"⚠️ Telegram nicht konfiguriert (bot_token oder chat_id fehlt)")
+            log(f"⚠️ Telegram nicht konfiguriert (bot_token={bool(bot_token)}, chat_id={bool(chat_id)})")
+            log(f"   SECRET_FILE: {SECRET_FILE}")
+            log(f"   telegram dict: {telegram}")
     except ImportError as e:
         log(f"Telegram Import-Fehler: {e}")
     except Exception as e:
         log(f"Telegram-Fehler: {e}")
+        import traceback
+        log(f"Traceback: {traceback.format_exc()}")
     return False
 
 
