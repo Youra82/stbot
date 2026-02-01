@@ -86,9 +86,12 @@ def load_data(symbol, timeframe, start_date_str, end_date_str):
     except Exception: return pd.DataFrame()
 
 
-def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose=False):
+def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose=False, return_trades=False):
     if data.empty or len(data) < 100:
-        return {"total_pnl_pct": -100, "trades_count": 0, "win_rate": 0, "max_drawdown_pct": 1.0, "end_capital": start_capital}
+        base_result = {"total_pnl_pct": -100, "trades_count": 0, "win_rate": 0, "max_drawdown_pct": 1.0, "end_capital": start_capital}
+        if return_trades:
+            return base_result, [], []
+        return base_result
 
     symbol = strategy_params.get('symbol', '')
     timeframe = strategy_params.get('timeframe', '')
@@ -100,7 +103,10 @@ def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose
         data['atr'] = atr_indicator.average_true_range()
         data.dropna(subset=['atr'], inplace=True)
     except Exception:
-        return {"total_pnl_pct": -100, "end_capital": start_capital}
+        base_result = {"total_pnl_pct": -100, "end_capital": start_capital}
+        if return_trades:
+            return base_result, [], []
+        return base_result
 
     # --- SREngine (Neu) ---
     engine = SREngine(settings=strategy_params)
@@ -112,6 +118,10 @@ def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose
     trades_count = 0
     wins_count = 0
     position = None
+    
+    # Trade-History für Chart-Visualisierung
+    trade_history = []
+    equity_snapshots = []
 
     # Parameter-Extraction
     risk_reward_ratio = risk_params.get('risk_reward_ratio', 2.0)
@@ -160,11 +170,30 @@ def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose
                 current_capital += (pnl_usd - total_fees)
                 if (pnl_usd - total_fees) > 0: wins_count += 1
                 trades_count += 1
+                
+                # Trade für Chart-Visualisierung speichern
+                if return_trades:
+                    trade_record = {
+                        'entry_' + position['side']: {
+                            'time': position['entry_time'].isoformat() if hasattr(position.get('entry_time'), 'isoformat') else str(position.get('entry_time')),
+                            'price': float(position['entry_price'])
+                        },
+                        'exit_' + position['side']: {
+                            'time': timestamp.isoformat() if hasattr(timestamp, 'isoformat') else str(timestamp),
+                            'price': float(exit_price)
+                        }
+                    }
+                    trade_history.append(trade_record)
+                
                 position = None
                 peak_capital = max(peak_capital, current_capital)
                 if peak_capital > 0:
                     drawdown = (peak_capital - current_capital) / peak_capital
                     max_drawdown_pct = max(max_drawdown_pct, drawdown)
+        
+        # Equity-Snapshot für Chart
+        if return_trades:
+            equity_snapshots.append({'timestamp': timestamp, 'equity': current_capital})
 
         # --- Einstiegs-Logik ---
         if not position and current_capital > 0:
@@ -212,15 +241,20 @@ def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose
                     'take_profit': tp, 'margin_used': margin_needed,
                     'notional_value': final_notional,
                     'trailing_active': False, 'activation_price': act,
-                    'peak_price': entry_price
+                    'peak_price': entry_price,
+                    'entry_time': timestamp  # Für Trade-History
                 }
 
     win_rate = (wins_count / trades_count * 100) if trades_count > 0 else 0
     final_pnl_pct = ((current_capital - start_capital) / start_capital) * 100 if start_capital > 0 else 0
     final_capital = max(0, current_capital)
 
-    return {
+    stats = {
         "total_pnl_pct": final_pnl_pct, "trades_count": trades_count,
         "win_rate": win_rate, "max_drawdown_pct": max_drawdown_pct,
         "end_capital": final_capital
     }
+    
+    if return_trades:
+        return stats, trade_history, equity_snapshots
+    return stats

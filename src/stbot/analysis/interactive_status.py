@@ -292,31 +292,37 @@ def extract_trades_from_backtest(df, config, start_capital=1000):
 def run_backtest_for_chart(df, config, start_capital=1000):
     """
     Führt einen Backtest durch und gibt Trades, Equity Curve und Stats zurück
-    Extrahiert Trade-Informationen für die Visualisierung im Chart
+    Nutzt den echten Backtester mit return_trades=True für konsistente Daten
     """
     try:
         strategy_params = config.get('strategy', {})
         risk_params = config.get('risk', {})
         
-        # Backtester ausführen (mit weniger Output)
+        # Backtester ausführen mit return_trades=True für konsistente Trade/Equity Daten
         logger_backtest = logging.getLogger('stbot.analysis.backtester')
         original_level = logger_backtest.level
         logger_backtest.setLevel(logging.ERROR)
         
-        stats = run_backtest(df.copy(), strategy_params, risk_params, start_capital=start_capital, verbose=False)
+        stats, trade_history, equity_snapshots = run_backtest(
+            df.copy(), strategy_params, risk_params, 
+            start_capital=start_capital, verbose=False, return_trades=True
+        )
         
         logger_backtest.setLevel(original_level)
         
-        # Trade-Signale extrahieren
-        trades = extract_trades_from_backtest(df, config, start_capital)
+        # Equity Snapshots in DataFrame umwandeln
+        if equity_snapshots:
+            equity_df = pd.DataFrame(equity_snapshots)
+            equity_df.set_index('timestamp', inplace=True)
+        else:
+            equity_df = pd.DataFrame()
         
-        # Equity Curve simulieren basierend auf Trades
-        equity_df = build_equity_curve(df, trades, start_capital)
-        
-        return trades, equity_df, stats
+        return trade_history, equity_df, stats
     except Exception as e:
         logger.warning(f"Fehler bei Backtest-Simulation: {e}")
-        return [], df[[]].copy(), {}
+        import traceback
+        traceback.print_exc()
+        return [], pd.DataFrame(), {}
 
 def create_interactive_chart(symbol, timeframe, df, trades, equity_df, stats, start_date, end_date, window=None, start_capital=1000):
     """Erstellt interaktiven Chart mit Candlesticks, Trade-Signalen und Equity Curve"""
