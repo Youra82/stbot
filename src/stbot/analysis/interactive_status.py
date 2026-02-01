@@ -34,7 +34,7 @@ logger = setup_logging()
 
 def get_config_files():
     """Sucht alle Konfigurationsdateien auf"""
-    configs_dir = os.path.join(PROJECT_ROOT, 'src', 'jaegerbot', 'strategy', 'configs')
+    configs_dir = os.path.join(PROJECT_ROOT, 'src', 'stbot', 'strategy', 'configs')
     if not os.path.exists(configs_dir):
         return []
     
