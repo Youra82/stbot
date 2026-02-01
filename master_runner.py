@@ -60,7 +60,8 @@ def main():
         print(f"Frage Kontostand für Account '{main_account_config.get('name', 'Standard')}' ab...")
 
         live_settings = settings.get('live_trading_settings', {})
-        use_autopilot = live_settings.get('use_auto_optimizer_results', False)
+        opt_settings = settings.get('optimization_settings', {})
+        use_autopilot = opt_settings.get('enabled', False)
 
         strategy_list = []
         if use_autopilot:

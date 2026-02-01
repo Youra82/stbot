@@ -15,7 +15,8 @@ def main():
             settings = json.load(f)
         
         live_settings = settings.get('live_trading_settings', {})
-        use_auto = live_settings.get('use_auto_optimizer_results', False)
+        opt_settings = settings.get('optimization_settings', {})
+        use_auto = opt_settings.get('enabled', False)
         
         active_files = []
 
