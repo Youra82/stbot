@@ -84,9 +84,20 @@ def load_secrets() -> dict:
         return {}
     
     try:
+        # Debug: Zeige den rohen Dateiinhalt
+        with open(SECRET_FILE, "r", encoding="utf-8") as f:
+            raw_content = f.read()
+            log(f"DEBUG secret.json Pfad: {SECRET_FILE}")
+            log(f"DEBUG secret.json Größe: {len(raw_content)} Bytes")
+        
         with open(SECRET_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
             log(f"✓ secret.json geladen, Keys: {list(data.keys())}")
+            # Debug: Zeige ob telegram-Werte existieren
+            if "telegram" in data:
+                tg = data["telegram"]
+                log(f"DEBUG telegram.bot_token Länge: {len(tg.get('bot_token', ''))}")
+                log(f"DEBUG telegram.chat_id Länge: {len(tg.get('chat_id', ''))}")
             return data
     except Exception as e:
         log(f"Fehler beim Laden von secret.json: {e}")
