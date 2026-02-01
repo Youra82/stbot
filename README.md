@@ -274,6 +274,85 @@ artifacts/optimal_configs/
 
 ---
 
+## 🤖 Auto-Optimizer Scheduler
+
+Automatische Optimierung der Strategie-Konfigurationen nach Zeitplan mit Telegram-Benachrichtigungen.
+
+### Schnellstart-Befehle
+
+```bash
+# Status prüfen (wann ist die nächste Optimierung fällig?)
+python auto_optimizer_scheduler.py --check-only
+
+# Sofort optimieren (ignoriert Zeitplan)
+python auto_optimizer_scheduler.py --force
+
+# Als Daemon laufen (prüft alle 60 Sekunden)
+python auto_optimizer_scheduler.py --daemon
+
+# Daemon mit längerem Intervall (alle 5 Minuten)
+python auto_optimizer_scheduler.py --daemon --interval 300
+```
+
+### Konfiguration (settings.json)
+
+```json
+{
+    "optimization_settings": {
+        "enabled": true,
+        "schedule": {
+            "day_of_week": 0,
+            "hour": 3,
+            "minute": 0,
+            "interval_days": 7
+        },
+        "symbols_to_optimize": "auto",
+        "timeframes_to_optimize": "auto",
+        "lookback_days": 365,
+        "num_trials": 200,
+        "send_telegram_on_completion": true
+    }
+}
+```
+
+| Parameter | Beschreibung |
+|-----------|--------------|
+| `enabled` | Automatische Optimierung aktivieren |
+| `day_of_week` | 0=Montag, 1=Dienstag, ..., 6=Sonntag |
+| `hour` | Stunde (0-23) |
+| `interval_days` | Mindestabstand in Tagen |
+| `symbols_to_optimize` | `"auto"` = aus active_strategies, oder `["BTC", "ETH"]` |
+| `timeframes_to_optimize` | `"auto"` = aus active_strategies, oder `["1h", "4h"]` |
+
+### Auto-Modus
+
+Bei `"auto"` werden Symbole und Timeframes automatisch aus den aktiven Strategien extrahiert:
+
+```json
+"active_strategies": [
+    {"symbol": "BTC/USDT:USDT", "timeframe": "4h", "active": true},
+    {"symbol": "ETH/USDT:USDT", "timeframe": "1h", "active": false}
+]
+```
+→ Optimiert nur: **BTC** mit **4h** (ETH ist nicht aktiv)
+
+### Telegram-Benachrichtigungen
+
+Bei Abschluss der Optimierung wird eine Nachricht gesendet:
+
+```
+✅ StBot Auto-Optimierung ABGESCHLOSSEN
+
+Dauer: 45 Minuten
+Symbole: BTC, ETH, SOL
+Zeitfenster: 30m, 1h, 4h
+Generierte Configs: 9
+```
+
+📖 **Vollständige Dokumentation**: [AUTO_OPTIMIZER.md](AUTO_OPTIMIZER.md)
+
+---
+
 ## 📊 Monitoring & Status
 
 ### Status-Dashboard
