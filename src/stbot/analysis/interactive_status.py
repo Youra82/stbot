@@ -20,6 +20,7 @@ sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
 from stbot.utils.exchange import Exchange
 from stbot.analysis.backtester import run_backtest
+from stbot.strategy.sr_engine import SREngine
 
 def setup_logging():
     logger = logging.getLogger('interactive_status')
@@ -98,8 +99,158 @@ def add_stbot_indicators(df):
     # Die eigentliche SMC-Analyse passiert in der Backtest-Funktion
     return df
 
-def create_interactive_chart(symbol, timeframe, df, trades, stats, start_date, end_date, window=None, start_capital=1000):
-    """Erstellt interaktiven Chart mit Candlesticks und Trade-Signalen (Entry/Exit)"""
+def build_equity_curve(df, trades, start_capital):
+    """
+    Erstellt eine Equity Curve basierend auf den simulierten Trades
+    """
+    equity = start_capital
+    equity_data = []
+    
+    # Sammle alle Trade-Events mit Zeitstempel
+    trade_events = []
+    for trade in trades:
+        if 'exit_long' in trade:
+            entry_price = trade.get('entry_long', {}).get('price', 0)
+            exit_price = trade.get('exit_long', {}).get('price', 0)
+            exit_time = trade.get('exit_long', {}).get('time')
+            if entry_price and exit_price and exit_time:
+                pnl_pct = (exit_price - entry_price) / entry_price
+                trade_events.append({
+                    'time': pd.to_datetime(exit_time),
+                    'pnl_pct': pnl_pct,
+                    'side': 'long'
+                })
+        
+        if 'exit_short' in trade:
+            entry_price = trade.get('entry_short', {}).get('price', 0)
+            exit_price = trade.get('exit_short', {}).get('price', 0)
+            exit_time = trade.get('exit_short', {}).get('time')
+            if entry_price and exit_price and exit_time:
+                pnl_pct = (entry_price - exit_price) / entry_price
+                trade_events.append({
+                    'time': pd.to_datetime(exit_time),
+                    'pnl_pct': pnl_pct,
+                    'side': 'short'
+                })
+    
+    # Sortiere Trade-Events nach Zeit
+    trade_events = sorted(trade_events, key=lambda x: x['time'])
+    
+    # Erstelle Equity Curve für jeden Timestamp im DataFrame
+    trade_idx = 0
+    for timestamp, row in df.iterrows():
+        # Wende alle Trades bis zu diesem Timestamp an
+        while trade_idx < len(trade_events) and trade_events[trade_idx]['time'] <= timestamp:
+            trade = trade_events[trade_idx]
+            equity += equity * trade['pnl_pct']
+            trade_idx += 1
+        
+        equity_data.append({
+            'timestamp': timestamp,
+            'equity': equity
+        })
+    
+    equity_df = pd.DataFrame(equity_data)
+    equity_df.set_index('timestamp', inplace=True)
+    return equity_df
+
+def extract_trades_from_backtest(df, config, start_capital=1000):
+    """
+    Extrahiert Trade-Signale aus der SMC-Strategie für die Visualisierung
+    Liefert Entry/Exit Punkte für Long und Short Positionen
+    """
+    trades = []
+    try:
+        engine = SREngine(config.get('strategy', {}))
+        df = engine.process_dataframe(df.copy())
+        
+        in_position = False
+        position_type = None
+        entry_price = None
+        entry_time = None
+        
+        for i in range(len(df)):
+            row = df.iloc[i]
+            timestamp = row.name
+            close = row['close']
+            
+            # SMC-basierte Signale: Nutze SR Levels
+            has_buy_signal = row.get('has_buy_signal', False) if isinstance(row.get('has_buy_signal'), (bool, int)) else False
+            has_sell_signal = row.get('has_sell_signal', False) if isinstance(row.get('has_sell_signal'), (bool, int)) else False
+            
+            # State machine für Positionen
+            if not in_position:
+                if has_buy_signal:
+                    in_position = True
+                    position_type = 'long'
+                    entry_price = close
+                    entry_time = timestamp
+                elif has_sell_signal:
+                    in_position = True
+                    position_type = 'short'
+                    entry_price = close
+                    entry_time = timestamp
+            else:
+                # Exit-Bedingungen
+                should_exit = False
+                if position_type == 'long' and has_sell_signal:
+                    should_exit = True
+                elif position_type == 'short' and has_buy_signal:
+                    should_exit = True
+                
+                if should_exit:
+                    trade = {
+                        'entry_' + position_type: {
+                            'time': entry_time.isoformat() if pd.notna(entry_time) else None,
+                            'price': float(entry_price)
+                        },
+                        'exit_' + position_type: {
+                            'time': timestamp.isoformat() if pd.notna(timestamp) else None,
+                            'price': float(close)
+                        }
+                    }
+                    trades.append(trade)
+                    in_position = False
+                    position_type = None
+                    entry_price = None
+                    entry_time = None
+        
+        return trades
+    except Exception as e:
+        logger.warning(f"Fehler bei Trade-Extraktion: {e}")
+        return []
+
+def run_backtest_for_chart(df, config, start_capital=1000):
+    """
+    Führt einen Backtest durch und gibt Trades, Equity Curve und Stats zurück
+    Extrahiert Trade-Informationen für die Visualisierung im Chart
+    """
+    try:
+        strategy_params = config.get('strategy', {})
+        risk_params = config.get('risk', {})
+        
+        # Backtester ausführen (mit weniger Output)
+        logger_backtest = logging.getLogger('stbot.analysis.backtester')
+        original_level = logger_backtest.level
+        logger_backtest.setLevel(logging.ERROR)
+        
+        stats = run_backtest(df.copy(), strategy_params, risk_params, start_capital=start_capital, verbose=False)
+        
+        logger_backtest.setLevel(original_level)
+        
+        # Trade-Signale extrahieren
+        trades = extract_trades_from_backtest(df, config, start_capital)
+        
+        # Equity Curve simulieren basierend auf Trades
+        equity_df = build_equity_curve(df, trades, start_capital)
+        
+        return trades, equity_df, stats
+    except Exception as e:
+        logger.warning(f"Fehler bei Backtest-Simulation: {e}")
+        return [], df[[]].copy(), {}
+
+def create_interactive_chart(symbol, timeframe, df, trades, equity_df, stats, start_date, end_date, window=None, start_capital=1000):
+    """Erstellt interaktiven Chart mit Candlesticks, Trade-Signalen und Equity Curve"""
     
     # Filter auf Fenster
     if window:
@@ -112,10 +263,10 @@ def create_interactive_chart(symbol, timeframe, df, trades, stats, start_date, e
     if end_date:
         df = df[df.index <= pd.to_datetime(end_date, utc=True)]
     
-    # Erstelle einfachen Chart mit Candlesticks + Trade-Signalen
-    fig = go.Figure()
+    # Erstelle Chart mit secondary_y für Equity Curve (wie UtBot2)
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
     
-    # === Candlestick Chart ===
+    # === Candlestick Chart (primäre Y-Achse) ===
     fig.add_trace(
         go.Candlestick(
             x=df.index,
@@ -127,11 +278,25 @@ def create_interactive_chart(symbol, timeframe, df, trades, stats, start_date, e
             increasing_line_color="#16a34a",
             decreasing_line_color="#dc2626",
             showlegend=True
-        )
+        ),
+        secondary_y=False
     )
     
+    # === Equity Curve (sekundäre Y-Achse, rechts) ===
+    if not equity_df.empty and 'equity' in equity_df.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=equity_df.index,
+                y=equity_df['equity'],
+                name='Kontostand',
+                line=dict(color='#3b82f6', width=2),
+                hovertemplate='<b>Kontostand</b><br>Zeit: %{x}<br>Equity: $%{y:.2f}<extra></extra>',
+                showlegend=True
+            ),
+            secondary_y=True
+        )
+    
     # === Trade-Signale extrahieren und eintragen ===
-    # Gruppiere Trades: Long (entry_long, exit_long) und Short (entry_short, exit_short)
     entry_long_x, entry_long_y = [], []
     exit_long_x, exit_long_y = [], []
     entry_short_x, entry_short_y = [], []
@@ -177,7 +342,7 @@ def create_interactive_chart(symbol, timeframe, df, trades, stats, start_date, e
             marker=dict(color="#16a34a", symbol="triangle-up", size=14, line=dict(width=1.2, color="#0f5132")),
             name="Entry Long",
             showlegend=True
-        ))
+        ), secondary_y=False)
     
     # Exit Long: Kreis, Cyan (#22d3ee)
     if exit_long_x:
@@ -186,7 +351,7 @@ def create_interactive_chart(symbol, timeframe, df, trades, stats, start_date, e
             marker=dict(color="#22d3ee", symbol="circle", size=12, line=dict(width=1.1, color="#0e7490")),
             name="Exit Long",
             showlegend=True
-        ))
+        ), secondary_y=False)
     
     # Entry Short: Dreieck nach unten, Orange (#f59e0b)
     if entry_short_x:
@@ -195,7 +360,7 @@ def create_interactive_chart(symbol, timeframe, df, trades, stats, start_date, e
             marker=dict(color="#f59e0b", symbol="triangle-down", size=14, line=dict(width=1.2, color="#92400e")),
             name="Entry Short",
             showlegend=True
-        ))
+        ), secondary_y=False)
     
     # Exit Short: Diamant, Rot (#ef4444)
     if exit_short_x:
@@ -204,7 +369,7 @@ def create_interactive_chart(symbol, timeframe, df, trades, stats, start_date, e
             marker=dict(color="#ef4444", symbol="diamond", size=12, line=dict(width=1.1, color="#7f1d1d")),
             name="Exit Short",
             showlegend=True
-        ))
+        ), secondary_y=False)
     
     # Berechne Stats für Titel
     end_capital = stats.get('end_capital', start_capital)
@@ -227,19 +392,15 @@ def create_interactive_chart(symbol, timeframe, df, trades, stats, start_date, e
         height=600,
         hovermode='x unified',
         template='plotly_white',
-        dragmode='zoom',  # Zoom-Mode für Drag-Aktion
+        dragmode='zoom',
         xaxis=dict(rangeslider=dict(visible=True), fixedrange=False),
-        yaxis=dict(fixedrange=False),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        # Zeige Toolbar mit Zoom/Pan/Reset Controls oben rechts (wie TradingView)
         showlegend=True
     )
     
-    fig.update_yaxes(title_text="Preis")
-    
-    # Aktiviere Scroll-Wheel Zoom für beide Achsen
     fig.update_xaxes(fixedrange=False)
-    fig.update_yaxes(fixedrange=False)
+    fig.update_yaxes(title_text="Preis", secondary_y=False)
+    fig.update_yaxes(title_text="Kontostand ($)", secondary_y=True)
     
     return fig
 
@@ -304,34 +465,23 @@ def main():
             
             logger.info("Verarbeite Daten...")
             
-            # Führe Backtest durch, um Trades und Stats zu generieren
+            # Führe Backtest durch, um Trades, Equity Curve und Stats zu generieren
             logger.info("Führe Backtest durch...")
-            strategy_params = config.get('strategy', {})
-            risk_params = config.get('risk', {})
+            trades, equity_df, stats = run_backtest_for_chart(df.copy(), config, start_capital=1000)
             
-            # Stille das Backtest-Logging
-            logger_backtest = logging.getLogger('stbot.analysis.backtester')
-            original_level = logger_backtest.level
-            logger_backtest.setLevel(logging.ERROR)
-            
-            stats = run_backtest(df.copy(), strategy_params, risk_params, start_capital=1000, verbose=False)
-            
-            logger_backtest.setLevel(original_level)
-            
-            # Vereinfachte Trade-Extraktion basierend auf Backtest-Stats
-            trades = []  # Vereinfacht: Trades-List ist leer, aber Stats sind vorhanden
-            
-            # Erstelle Chart mit Trade-Signalen
+            # Erstelle Chart mit Trade-Signalen und Equity Curve
             logger.info("Erstelle Chart...")
             fig = create_interactive_chart(
                 symbol,
                 timeframe,
                 df,
                 trades,
+                equity_df,
                 stats,
                 start_date,
                 end_date,
-                window
+                window,
+                1000
             )
             
             # Speichere HTML
