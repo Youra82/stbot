@@ -6,6 +6,7 @@ set -e
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
+RED='\033[0;31m'
 NC='\033[0m'
 
 echo -e "${BLUE}======================================================="
@@ -14,7 +15,7 @@ echo "         StBot Installations-Skript"
 echo "=======================================================${NC}"
 
 # --- System-Abhängigkeiten installieren ---
-echo -e "\n${YELLOW}1/4: Aktualisiere Paketlisten und installiere System-Abhängigkeiten...${NC}"
+echo -e "\n${YELLOW}1/5: Aktualisiere Paketlisten und installiere System-Abhängigkeiten...${NC}"
 # Prüfe, ob sudo benötigt wird (z.B. nicht in Docker als root)
 if [ "$(id -u)" -ne 0 ]; then SUDO="sudo"; else SUDO=""; fi
 $SUDO apt-get update
@@ -23,12 +24,17 @@ $SUDO apt-get install -y python3.12 python3.12-venv git curl jq
 echo -e "${GREEN}✔ System-Abhängigkeiten installiert.${NC}"
 
 # --- Python Virtuelle Umgebung einrichten ---
-echo -e "\n${YELLOW}2/4: Erstelle eine isolierte Python-Umgebung (.venv)...${NC}"
+echo -e "\n${YELLOW}2/5: Erstelle eine isolierte Python-Umgebung (.venv)...${NC}"
+# Lösche alte venv falls vorhanden, um sauberen Zustand zu garantieren
+if [ -d ".venv" ]; then
+    echo "  → Lösche existierende .venv für Neuinstallation..."
+    rm -rf .venv
+fi
 python3.12 -m venv .venv # Explizit Version nutzen
 echo -e "${GREEN}✔ Virtuelle Umgebung wurde erstellt.${NC}"
 
 # --- Python-Bibliotheken installieren ---
-echo -e "\n${YELLOW}3/4: Aktiviere die virtuelle Umgebung und installiere Python-Bibliotheken...${NC}"
+echo -e "\n${YELLOW}3/5: Aktiviere die virtuelle Umgebung und installiere Python-Bibliotheken...${NC}"
 source .venv/bin/activate
 pip install --upgrade pip
 # Prüfe ob requirements.txt existiert
@@ -41,8 +47,17 @@ pip install -r requirements.txt
 echo -e "${GREEN}✔ Alle Python-Bibliotheken wurden erfolgreich installiert.${NC}"
 deactivate
 
+# --- Verzeichnisse erstellen ---
+echo -e "\n${YELLOW}4/5: Erstelle notwendige Verzeichnisse...${NC}"
+mkdir -p data/cache
+mkdir -p logs
+mkdir -p artifacts/results
+mkdir -p artifacts/optimal_configs
+mkdir -p artifacts/models
+echo -e "${GREEN}✔ Verzeichnisstruktur wurde erstellt.${NC}"
+
 # --- Abschluss ---
-echo -e "\n${YELLOW}4/4: Setze Ausführungsrechte für alle .sh-Skripte...${NC}"
+echo -e "\n${YELLOW}5/5: Setze Ausführungsrechte für alle .sh-Skripte...${NC}"
 chmod +x *.sh
 
 echo -e "\n${GREEN}======================================================="
