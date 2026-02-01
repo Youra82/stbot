@@ -285,20 +285,46 @@ def run_optimization_windows() -> bool:
     ]
     
     log(f"Führe aus: {' '.join(cmd[:5])}...")
+    log(f"")
+    log(f"╔══════════════════════════════════════════════════════════════╗")
+    log(f"║  AUTO-OPTIMIZER: {len(symbols)} Symbole × {len(timeframes)} Timeframes = {len(symbols) * len(timeframes)} Kombinationen")
+    log(f"║  Symbole: {', '.join(symbols)}")
+    log(f"║  Timeframes: {', '.join(timeframes)}")
+    log(f"║  Trials pro Kombination: {n_trials}")
+    log(f"║  Lookback: {lookback_days} Tage ({start_date} bis {end_date})")
+    log(f"╚══════════════════════════════════════════════════════════════╝")
+    log(f"")
     
     try:
-        result = subprocess.run(
+        # Starte Prozess mit Live-Output statt capture_output
+        process = subprocess.Popen(
             cmd,
             cwd=str(SCRIPT_DIR),
-            capture_output=True,
-            text=True
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
         )
+        
+        # Zeige Output in Echtzeit
+        output_lines = []
+        for line in process.stdout:
+            line = line.rstrip()
+            print(line)  # Live-Ausgabe
+            output_lines.append(line)
+        
+        process.wait()
+        returncode = process.returncode
         
         duration = int((time.time() - start_time) / 60)
         save_last_run_time()
         
-        if result.returncode == 0:
-            log(f"Optimierung erfolgreich abgeschlossen ({duration} Minuten)")
+        if returncode == 0:
+            log(f"")
+            log(f"╔══════════════════════════════════════════════════════════════╗")
+            log(f"║  ✅ OPTIMIERUNG ERFOLGREICH ABGESCHLOSSEN")
+            log(f"║  Dauer: {duration} Minuten")
+            log(f"╚══════════════════════════════════════════════════════════════╝")
             
             # Telegram senden
             if opt_settings.get("send_telegram_on_completion", True):
@@ -316,15 +342,16 @@ Lookback: {lookback_days} Tage""")
             
             return True
         else:
-            log(f"Optimierung fehlgeschlagen (Exit-Code: {result.returncode})")
-            if result.stderr:
-                log(f"Stderr: {result.stderr[:1000]}")
+            log(f"")
+            log(f"╔══════════════════════════════════════════════════════════════╗")
+            log(f"║  ❌ OPTIMIERUNG FEHLGESCHLAGEN (Exit-Code: {returncode})")
+            log(f"╚══════════════════════════════════════════════════════════════╝")
             
             if opt_settings.get("send_telegram_on_completion", True):
                 send_telegram(f"""❌ StBot Auto-Optimierung FEHLGESCHLAGEN
 
 Dauer: {duration} Minuten
-Fehlercode: {result.returncode}
+Fehlercode: {returncode}
 Details in logs/scheduler.log""")
             
             return False

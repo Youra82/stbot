@@ -103,33 +103,49 @@ def main():
     symbols, timeframes = args.symbols.split(), args.timeframes.split()
     TASKS = [{'symbol': f"{s}/USDT:USDT", 'timeframe': tf} for s in symbols for tf in timeframes]
 
-    for task in TASKS:
+    for task_idx, task in enumerate(TASKS, 1):
         symbol, timeframe = task['symbol'], task['timeframe']
         CURRENT_SYMBOL = symbol
         CURRENT_TIMEFRAME = timeframe
         CURRENT_HTF = determine_htf(timeframe)
 
-        print(f"\n===== Optimiere: {symbol} ({timeframe}) [SRv2] =====")
+        symbol_short = symbol.split('/')[0]
+        print(f"\n┌─────────────────────────────────────────────────────────────┐")
+        print(f"│  [{task_idx}/{len(TASKS)}] {symbol_short} @ {timeframe}")
+        print(f"│  HTF: {CURRENT_HTF} | Mode: {OPTIM_MODE} | Trials: {N_TRIALS}")
+        print(f"└─────────────────────────────────────────────────────────────┘")
+        
+        print(f"  📊 Lade historische Daten...")
         HISTORICAL_DATA = load_data(symbol, timeframe, args.start_date, args.end_date)
-        if HISTORICAL_DATA.empty: continue
+        if HISTORICAL_DATA.empty: 
+            print(f"  ⚠️  Keine Daten für {symbol} ({timeframe})")
+            continue
+        print(f"  ✓ {len(HISTORICAL_DATA)} Kerzen geladen ({args.start_date} bis {args.end_date})")
 
         DB_FILE = os.path.join(PROJECT_ROOT, 'artifacts', 'db', 'optuna_studies_stbot.db')
         os.makedirs(os.path.dirname(DB_FILE), exist_ok=True)
         STORAGE_URL = f"sqlite:///{DB_FILE}?timeout=60"
         study_name = f"sr_{create_safe_filename(symbol, timeframe)}{CONFIG_SUFFIX}_{OPTIM_MODE}"
 
+        print(f"  🔍 Starte Optuna-Optimierung...")
         study = optuna.create_study(storage=STORAGE_URL, study_name=study_name, direction="maximize", load_if_exists=True)
         try:
             study.optimize(objective, n_trials=N_TRIALS, n_jobs=args.jobs, show_progress_bar=True)
         except Exception as e:
-            print(f"FEHLER: {e}")
+            print(f"  ❌ FEHLER: {e}")
             continue
 
         valid_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
-        if not valid_trials: continue
+        if not valid_trials: 
+            print(f"  ⚠️  Keine gültigen Trials gefunden (alle gepruned)")
+            continue
+        
+        pruned_count = len([t for t in study.trials if t.state == optuna.trial.TrialState.PRUNED])
+        print(f"  ✓ {len(valid_trials)} gültige Trials, {pruned_count} gepruned")
 
         best_trial = max(valid_trials, key=lambda t: t.value)
         best_params = best_trial.params
+        print(f"  🏆 Bester PnL: {best_trial.value:.2f}%")
 
         config_dir = os.path.join(PROJECT_ROOT, 'src', 'stbot', 'strategy', 'configs')
         os.makedirs(config_dir, exist_ok=True)
@@ -162,7 +178,11 @@ def main():
             "risk": risk_config, "behavior": behavior_config
         }
         with open(config_output_path, 'w') as f: json.dump(config_output, f, indent=4)
-        print(f"\n✔ Beste Konfiguration gespeichert.")
+        print(f"  💾 Config gespeichert: config_{create_safe_filename(symbol, timeframe)}{CONFIG_SUFFIX}.json")
+    
+    print(f"\n╔══════════════════════════════════════════════════════════════╗")
+    print(f"║  ✅ ALLE OPTIMIERUNGEN ABGESCHLOSSEN")
+    print(f"╚══════════════════════════════════════════════════════════════╝")
 
 if __name__ == "__main__":
     main()
