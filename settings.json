@@ -60,8 +60,8 @@
             "minute": 0,
             "interval_days": 7
         },
-        "symbols_to_optimize": ["BTC", "ETH", "SOL", "DOGE", "XRP", "ADA", "AAVE"],
-        "timeframes_to_optimize": ["5m", "30m", "2h", "4h", "6h", "1d"],
+        "symbols_to_optimize": "auto",
+        "timeframes_to_optimize": "auto",
         "lookback_days": 365,
         "start_capital": 1000,
         "cpu_cores": -1,
