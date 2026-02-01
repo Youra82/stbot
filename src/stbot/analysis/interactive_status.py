@@ -92,10 +92,10 @@ def load_config(filepath):
     with open(filepath, 'r') as f:
         return json.load(f)
 
-def add_jaegerbot_indicators(df):
+def add_stbot_indicators(df):
     """Fügt Indikatoren für Chart-Anzeige hinzu (vereinfacht)"""
     # Kerzen-Daten sind bereits vorhanden, keine zusätzlichen Indikatoren nötig
-    # Die eigentliche ANN-Analyse passiert in der Backtest-Funktion
+    # Die eigentliche SMC-Analyse passiert in der Backtest-Funktion
     return df
 
 def create_interactive_chart(symbol, timeframe, df, trades, stats, start_date, end_date, window=None, start_capital=1000):
@@ -265,9 +265,9 @@ def main():
         logger.error(f"Fehler beim Laden von secret.json: {e}")
         sys.exit(1)
     
-    account = secrets.get('jaegerbot', [None])[0]
+    account = secrets.get('stbot', [None])[0]
     if not account:
-        logger.error("Keine Jaegerbot-Accountkonfiguration gefunden")
+        logger.error("Keine StBot-Accountkonfiguration gefunden")
         sys.exit(1)
     
     exchange = Exchange(account)
