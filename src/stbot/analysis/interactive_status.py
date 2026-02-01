@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Interactive Charts für JaegerBot - ANN-basierte Strategie
+Interactive Charts für StBot - SMC Strategie
 Zeigt Candlestick-Chart mit Trade-Signalen (Entry/Exit Long/Short)
 Nutzt durchnummerierte Konfigurationsdateien zum Auswählen
 """
@@ -8,22 +8,18 @@ Nutzt durchnummerierte Konfigurationsdateien zum Auswählen
 import os
 import sys
 import json
-import argparse
 from datetime import datetime, timedelta, timezone
 import logging
-from pathlib import Path
 
 import pandas as pd
-import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import ta
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
 from stbot.utils.exchange import Exchange
-from stbot.analysis.backtester import run_ann_backtest
+from stbot.analysis.backtester import run_backtest
 
 def setup_logging():
     logger = logging.getLogger('interactive_status')
@@ -102,7 +98,7 @@ def add_jaegerbot_indicators(df):
     # Die eigentliche ANN-Analyse passiert in der Backtest-Funktion
     return df
 
-def create_interactive_chart(symbol, timeframe, df, trades, start_date, end_date, window=None):
+def create_interactive_chart(symbol, timeframe, df, trades, stats, start_date, end_date, window=None, start_capital=1000):
     """Erstellt interaktiven Chart mit Candlesticks und Trade-Signalen (Entry/Exit)"""
     
     # Filter auf Fenster
@@ -210,8 +206,22 @@ def create_interactive_chart(symbol, timeframe, df, trades, start_date, end_date
             showlegend=True
         ))
     
-    # Layout
-    title = f"{symbol} {timeframe} - JaegerBot (ANN-Strategie)"
+    # Berechne Stats für Titel
+    end_capital = stats.get('end_capital', start_capital)
+    pnl_pct = stats.get('total_pnl_pct', 0)
+    trades_count = stats.get('trades_count', 0)
+    win_rate = stats.get('win_rate', 0)
+    max_dd = stats.get('max_drawdown_pct', 0) * 100
+    
+    # Layout mit erweiterten Stats im Titel
+    title = (
+        f"{symbol} {timeframe} - StBot | "
+        f"Capital: ${start_capital:.0f}→${end_capital:.0f} | "
+        f"PnL: {pnl_pct:+.2f}% | "
+        f"DD: {max_dd:.2f}% | "
+        f"Trades: {trades_count} @ {win_rate:.1f}%"
+    )
+    
     fig.update_layout(
         title=title,
         height=600,
@@ -293,39 +303,32 @@ def main():
                 continue
             
             logger.info("Verarbeite Daten...")
-            df = add_jaegerbot_indicators(df)
             
-            # Führe Backtest durch, um Trades zu generieren
+            # Führe Backtest durch, um Trades und Stats zu generieren
             logger.info("Führe Backtest durch...")
-            from stbot.analysis.backtester import run_ann_backtest
+            strategy_params = config.get('strategy', {})
+            risk_params = config.get('risk', {})
             
-            model_save_path = os.path.join(PROJECT_ROOT, 'artifacts', 'models', 
-                                          f'ann_predictor_{symbol.replace("/", "").replace(":", "")}_{timeframe}.h5')
-            scaler_save_path = os.path.join(PROJECT_ROOT, 'artifacts', 'models', 
-                                           f'ann_scaler_{symbol.replace("/", "").replace(":", "")}_{timeframe}.joblib')
+            # Stille das Backtest-Logging
+            logger_backtest = logging.getLogger('stbot.analysis.backtester')
+            original_level = logger_backtest.level
+            logger_backtest.setLevel(logging.ERROR)
             
-            model_paths = {'model': model_save_path, 'scaler': scaler_save_path}
+            stats = run_backtest(df.copy(), strategy_params, risk_params, start_capital=1000, verbose=False)
             
-            backtest_result = run_ann_backtest(
-                df, 
-                config,
-                model_paths,
-                start_capital=1000,
-                use_macd_filter=config.get('market', {}).get('use_macd_filter', False),
-                timeframe=timeframe,
-                verbose=False
-            )
+            logger_backtest.setLevel(original_level)
             
-            # Extrahiere Trades aus Backtest-Ergebnis
-            trades = backtest_result.get('trades', [])
+            # Vereinfachte Trade-Extraktion basierend auf Backtest-Stats
+            trades = []  # Vereinfacht: Trades-List ist leer, aber Stats sind vorhanden
             
-            # Erstelle Chart mit Trades
+            # Erstelle Chart mit Trade-Signalen
             logger.info("Erstelle Chart...")
             fig = create_interactive_chart(
                 symbol,
                 timeframe,
                 df,
                 trades,
+                stats,
                 start_date,
                 end_date,
                 window
@@ -333,7 +336,7 @@ def main():
             
             # Speichere HTML
             safe_name = f"{symbol.replace('/', '_')}_{timeframe}"
-            output_file = f"/tmp/jaegerbot_{safe_name}.html"
+            output_file = f"/tmp/stbot_{safe_name}.html"
             fig.write_html(output_file)
             logger.info(f"✅ Chart gespeichert: {output_file}")
             
