@@ -51,5 +51,27 @@
                 "active": false
             }
         ]
+    },
+    "optimization_settings": {
+        "enabled": false,
+        "schedule": {
+            "day_of_week": 0,
+            "hour": 3,
+            "minute": 0,
+            "interval_days": 7
+        },
+        "symbols_to_optimize": ["BTC", "ETH", "SOL", "DOGE", "XRP", "ADA", "AAVE"],
+        "timeframes_to_optimize": ["5m", "30m", "2h", "4h", "6h", "1d"],
+        "lookback_days": 365,
+        "start_capital": 1000,
+        "cpu_cores": -1,
+        "num_trials": 200,
+        "constraints": {
+            "max_drawdown_pct": 30,
+            "min_win_rate_pct": 55,
+            "min_pnl_pct": 0
+        },
+        "auto_clear_cache_days": 0,
+        "send_telegram_on_completion": true
     }
 }
