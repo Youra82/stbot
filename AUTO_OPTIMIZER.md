@@ -17,24 +17,24 @@ Der Auto-Optimizer führt die Optuna-basierte Parameteroptimierung automatisch n
 
 ### Status prüfen
 ```bash
-python auto_optimizer_scheduler.py --check-only
+python3 auto_optimizer_scheduler.py --check-only
 ```
 Zeigt an, ob eine Optimierung fällig ist und wann die letzte Ausführung war.
 
 ### Sofort optimieren
 ```bash
-python auto_optimizer_scheduler.py --force
+python3 auto_optimizer_scheduler.py --force
 ```
 Startet die Optimierung sofort, ignoriert den Zeitplan.
 
 ### Als Daemon laufen
 ```bash
-python auto_optimizer_scheduler.py --daemon
+python3 auto_optimizer_scheduler.py --daemon
 ```
 Läuft kontinuierlich und prüft alle 60 Sekunden, ob der geplante Zeitpunkt erreicht ist.
 
 ```bash
-python auto_optimizer_scheduler.py --daemon --interval 300
+python3 auto_optimizer_scheduler.py --daemon --interval 300
 ```
 Prüft alle 5 Minuten (300 Sekunden).
 

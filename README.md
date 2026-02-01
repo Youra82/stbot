@@ -282,16 +282,16 @@ Automatische Optimierung der Strategie-Konfigurationen nach Zeitplan mit Telegra
 
 ```bash
 # Status prüfen (wann ist die nächste Optimierung fällig?)
-python auto_optimizer_scheduler.py --check-only
+python3 auto_optimizer_scheduler.py --check-only
 
 # Sofort optimieren (ignoriert Zeitplan)
-python auto_optimizer_scheduler.py --force
+python3 auto_optimizer_scheduler.py --force
 
 # Als Daemon laufen (prüft alle 60 Sekunden)
-python auto_optimizer_scheduler.py --daemon
+python3 auto_optimizer_scheduler.py --daemon
 
 # Daemon mit längerem Intervall (alle 5 Minuten)
-python auto_optimizer_scheduler.py --daemon --interval 300
+python3 auto_optimizer_scheduler.py --daemon --interval 300
 ```
 
 ### Konfiguration (settings.json)
