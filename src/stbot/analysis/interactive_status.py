@@ -157,67 +157,136 @@ def build_equity_curve(df, trades, start_capital):
 def extract_trades_from_backtest(df, config, start_capital=1000):
     """
     Extrahiert Trade-Signale aus der SMC-Strategie für die Visualisierung
+    Simuliert die gleiche Logik wie der Backtester mit SL/TP
     Liefert Entry/Exit Punkte für Long und Short Positionen
     """
+    import ta
     trades = []
     try:
+        # ATR berechnen für Stop-Loss
+        atr_indicator = ta.volatility.AverageTrueRange(
+            high=df['high'], low=df['low'], close=df['close'], window=14
+        )
+        df['atr'] = atr_indicator.average_true_range()
+        
+        # SREngine für Signale
         engine = SREngine(config.get('strategy', {}))
         df = engine.process_dataframe(df.copy())
         
-        in_position = False
-        position_type = None
-        entry_price = None
-        entry_time = None
+        # Risk params
+        risk_params = config.get('risk', {})
+        risk_reward_ratio = risk_params.get('risk_reward_ratio', 2.0)
+        atr_multiplier_sl = risk_params.get('atr_multiplier_sl', 2.0)
+        min_sl_pct = risk_params.get('min_sl_pct', 0.3) / 100.0
+        activation_rr = risk_params.get('trailing_stop_activation_rr', 2.0)
+        callback_rate = risk_params.get('trailing_stop_callback_rate_pct', 1.0) / 100
+        
+        position = None
         
         for i in range(len(df)):
             row = df.iloc[i]
             timestamp = row.name
             close = row['close']
+            high = row['high']
+            low = row['low']
+            current_atr = row.get('atr', 0)
             
-            # SMC-basierte Signale: Nutze SR Levels
-            has_buy_signal = row.get('has_buy_signal', False) if isinstance(row.get('has_buy_signal'), (bool, int)) else False
-            has_sell_signal = row.get('has_sell_signal', False) if isinstance(row.get('has_sell_signal'), (bool, int)) else False
+            # sr_signal: 1 = Buy (Resistance Break), -1 = Sell (Support Break)
+            sr_signal = row.get('sr_signal', 0)
             
-            # State machine für Positionen
-            if not in_position:
-                if has_buy_signal:
-                    in_position = True
-                    position_type = 'long'
-                    entry_price = close
-                    entry_time = timestamp
-                elif has_sell_signal:
-                    in_position = True
-                    position_type = 'short'
-                    entry_price = close
-                    entry_time = timestamp
-            else:
-                # Exit-Bedingungen
-                should_exit = False
-                if position_type == 'long' and has_sell_signal:
-                    should_exit = True
-                elif position_type == 'short' and has_buy_signal:
-                    should_exit = True
+            # Position Management
+            if position:
+                exit_price = None
+                exit_reason = None
                 
-                if should_exit:
+                if position['side'] == 'long':
+                    # Trailing Stop aktivieren
+                    if not position['trailing_active'] and high >= position['activation_price']:
+                        position['trailing_active'] = True
+                    
+                    if position['trailing_active']:
+                        position['peak_price'] = max(position['peak_price'], high)
+                        trailing_sl = position['peak_price'] * (1 - callback_rate)
+                        position['stop_loss'] = max(position['stop_loss'], trailing_sl)
+                    
+                    # Exit Check
+                    if low <= position['stop_loss']:
+                        exit_price = position['stop_loss']
+                        exit_reason = 'SL'
+                    elif not position['trailing_active'] and high >= position['take_profit']:
+                        exit_price = position['take_profit']
+                        exit_reason = 'TP'
+                        
+                elif position['side'] == 'short':
+                    if not position['trailing_active'] and low <= position['activation_price']:
+                        position['trailing_active'] = True
+                    
+                    if position['trailing_active']:
+                        position['peak_price'] = min(position['peak_price'], low)
+                        trailing_sl = position['peak_price'] * (1 + callback_rate)
+                        position['stop_loss'] = min(position['stop_loss'], trailing_sl)
+                    
+                    if high >= position['stop_loss']:
+                        exit_price = position['stop_loss']
+                        exit_reason = 'SL'
+                    elif not position['trailing_active'] and low <= position['take_profit']:
+                        exit_price = position['take_profit']
+                        exit_reason = 'TP'
+                
+                if exit_price:
                     trade = {
-                        'entry_' + position_type: {
-                            'time': entry_time.isoformat() if pd.notna(entry_time) else None,
-                            'price': float(entry_price)
+                        'entry_' + position['side']: {
+                            'time': position['entry_time'].isoformat() if pd.notna(position['entry_time']) else None,
+                            'price': float(position['entry_price'])
                         },
-                        'exit_' + position_type: {
+                        'exit_' + position['side']: {
                             'time': timestamp.isoformat() if pd.notna(timestamp) else None,
-                            'price': float(close)
+                            'price': float(exit_price)
                         }
                     }
                     trades.append(trade)
-                    in_position = False
-                    position_type = None
-                    entry_price = None
-                    entry_time = None
+                    position = None
+            
+            # Entry Logic (nur wenn keine Position)
+            if not position and sr_signal != 0 and current_atr > 0:
+                entry_price = close
+                sl_dist = max(current_atr * atr_multiplier_sl, entry_price * min_sl_pct)
+                
+                if sr_signal == 1:  # BUY Signal
+                    sl = entry_price - sl_dist
+                    tp = entry_price + sl_dist * risk_reward_ratio
+                    act = entry_price + sl_dist * activation_rr
+                    position = {
+                        'side': 'long',
+                        'entry_price': entry_price,
+                        'entry_time': timestamp,
+                        'stop_loss': sl,
+                        'take_profit': tp,
+                        'activation_price': act,
+                        'trailing_active': False,
+                        'peak_price': entry_price
+                    }
+                elif sr_signal == -1:  # SELL Signal
+                    sl = entry_price + sl_dist
+                    tp = entry_price - sl_dist * risk_reward_ratio
+                    act = entry_price - sl_dist * activation_rr
+                    position = {
+                        'side': 'short',
+                        'entry_price': entry_price,
+                        'entry_time': timestamp,
+                        'stop_loss': sl,
+                        'take_profit': tp,
+                        'activation_price': act,
+                        'trailing_active': False,
+                        'peak_price': entry_price
+                    }
         
         return trades
     except Exception as e:
         logger.warning(f"Fehler bei Trade-Extraktion: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
         return []
 
 def run_backtest_for_chart(df, config, start_capital=1000):
