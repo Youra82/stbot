@@ -361,6 +361,16 @@ Generierte Configs: 9
 ./show_status.sh
 ```
 
+### Trading-Ergebnisse anzeigen
+
+```bash
+# Einmalig ausführbar machen
+chmod +x show_results.sh
+
+# Ergebnisse anzeigen
+./show_results.sh
+```
+
 ### Log-Files
 
 ```bash
