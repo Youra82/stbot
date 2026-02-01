@@ -144,7 +144,6 @@ class Exchange:
         df.set_index('timestamp', inplace=True)
         df = df[~df.index.duplicated(keep='first')].sort_index()
         return df.loc[start_dt:end_dt]
-            return pd.DataFrame()
 
     def fetch_ticker(self, symbol):
         if not self.markets: return None
