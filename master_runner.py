@@ -4,7 +4,7 @@ import subprocess
 import sys
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Pfad anpassen, damit die utils importiert werden können
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -13,21 +13,19 @@ sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
 from stbot.utils.exchange import Exchange
 
-# Auto-Optimizer Integration
-LAST_OPTIMIZER_CHECK = None
-OPTIMIZER_CHECK_INTERVAL = 60  # Sekunden zwischen Checks
-
 
 def check_and_run_optimizer():
-    """Prüft ob die automatische Optimierung fällig ist und führt sie ggf. aus."""
-    global LAST_OPTIMIZER_CHECK
+    """
+    Prüft ob die automatische Optimierung fällig ist und führt sie ggf. aus.
     
-    # Nur alle 60 Sekunden prüfen
+    Wird bei jedem Cron-Job Aufruf einmal geprüft. Die Logik ist tolerant gegenüber
+    Cron-Intervallen: Wenn der geplante Zeitpunkt in der Vergangenheit liegt (aber
+    noch am selben Tag in der geplanten Stunde), wird die Optimierung gestartet.
+    
+    Beispiel: Geplant 16:17, Cron läuft 16:15 → nicht fällig
+              Geplant 16:17, Cron läuft 16:30 → fällig (16:17 ist vorbei)
+    """
     now = datetime.now()
-    if LAST_OPTIMIZER_CHECK and (now - LAST_OPTIMIZER_CHECK).total_seconds() < OPTIMIZER_CHECK_INTERVAL:
-        return
-    
-    LAST_OPTIMIZER_CHECK = now
     
     try:
         settings_file = os.path.join(SCRIPT_DIR, 'settings.json')
@@ -38,7 +36,7 @@ def check_and_run_optimizer():
         
         # Prüfe ob aktiviert
         if not opt_settings.get('enabled', False):
-            return
+            return False
         
         schedule = opt_settings.get('schedule', {})
         day_of_week = schedule.get('day_of_week', 0)
@@ -46,33 +44,60 @@ def check_and_run_optimizer():
         minute = schedule.get('minute', 0)
         interval_days = schedule.get('interval_days', 7)
         
-        # Prüfe Tag und Zeit
+        # Prüfe ob heute der richtige Tag ist
         if now.weekday() != day_of_week:
-            return
-        if now.hour != hour:
-            return
-        if abs(now.minute - minute) > 5:
-            return
+            return False
         
-        # Prüfe ob schon gelaufen
-        cache_file = os.path.join(SCRIPT_DIR, 'data', 'cache', '.last_optimization_run')
+        # Prüfe ob wir in der geplanten Stunde sind (oder danach, aber am gleichen Tag)
+        if now.hour < hour:
+            return False  # Noch nicht so weit
+        
+        # Wenn wir in der richtigen Stunde sind, prüfe ob die Minute erreicht wurde
+        if now.hour == hour and now.minute < minute:
+            return False  # Noch nicht so weit
+        
+        # Ab hier: Wir sind am richtigen Tag und der geplante Zeitpunkt ist erreicht oder überschritten
+        
+        # Prüfe ob heute schon gelaufen (oder innerhalb des Intervalls)
+        cache_dir = os.path.join(SCRIPT_DIR, 'data', 'cache')
+        cache_file = os.path.join(cache_dir, '.last_optimization_run')
+        
         if os.path.exists(cache_file):
             with open(cache_file, 'r') as f:
                 last_run = datetime.fromtimestamp(int(f.read().strip()))
+                
+                # Wenn heute schon gelaufen, nicht nochmal
+                if last_run.date() == now.date():
+                    return False
+                
+                # Wenn innerhalb des Intervalls, nicht nochmal
                 if (now - last_run).days < interval_days:
-                    return
+                    return False
         
         # Zeit für Optimierung!
-        print(f"\n[{now.strftime('%Y-%m-%d %H:%M:%S')}] 🔄 Starte automatische Optimierung...")
+        print(f"\n[{now.strftime('%Y-%m-%d %H:%M:%S')}] 🔄 Auto-Optimizer: Geplanter Zeitpunkt erreicht!")
+        print(f"    Geplant war: {['Mo','Di','Mi','Do','Fr','Sa','So'][day_of_week]} {hour:02d}:{minute:02d}")
+        print(f"    Starte Optimierung...")
         
         python_executable = os.path.join(SCRIPT_DIR, '.venv', 'bin', 'python3')
         optimizer_script = os.path.join(SCRIPT_DIR, 'auto_optimizer_scheduler.py')
         
         if os.path.exists(optimizer_script):
-            subprocess.Popen([python_executable, optimizer_script, '--force'])
+            # Starte im Hintergrund mit nohup-ähnlichem Verhalten
+            subprocess.Popen(
+                [python_executable, optimizer_script, '--force'],
+                stdout=open(os.path.join(SCRIPT_DIR, 'logs', 'optimizer_output.log'), 'a'),
+                stderr=subprocess.STDOUT,
+                start_new_session=True
+            )
+            return True
+        else:
+            print(f"    Fehler: {optimizer_script} nicht gefunden!")
+            return False
         
     except Exception as e:
         print(f"Optimizer-Check Fehler: {e}")
+        return False
 
 def main():
     """
@@ -212,15 +237,9 @@ def main():
             subprocess.Popen(command)
             time.sleep(2) # Kurze Pause, um API-Rate-Limits beim Start zu schonen
 
-        # Nach dem Start aller Bots: Endlosschleife für Optimizer-Checks
         print("\n=======================================================")
-        print("Alle Bots gestartet. Master Runner überwacht nun den Auto-Optimizer...")
-        print("Drücke Ctrl+C zum Beenden.")
+        print("Alle Bots gestartet. Master Runner beendet sich.")
         print("=======================================================\n")
-        
-        while True:
-            check_and_run_optimizer()
-            time.sleep(30)  # Alle 30 Sekunden prüfen
 
     except FileNotFoundError as e:
         print(f"Fehler: Eine wichtige Datei wurde nicht gefunden: {e}")
@@ -230,4 +249,8 @@ def main():
         print(f"Ein unerwarteter Fehler im Master Runner ist aufgetreten: {e}")
 
 if __name__ == "__main__":
+    # EINMALIGER Auto-Optimizer Check beim Start (cron-kompatibel)
+    check_and_run_optimizer()
+    
+    # Dann normale Bot-Starts
     main()
