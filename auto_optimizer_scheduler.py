@@ -30,6 +30,18 @@ CACHE_DIR = SCRIPT_DIR / "data" / "cache"
 LAST_RUN_FILE = CACHE_DIR / ".last_optimization_run"
 LOG_FILE = SCRIPT_DIR / "logs" / "scheduler.log"
 
+# Python-Interpreter aus venv (falls vorhanden)
+if sys.platform == "win32":
+    VENV_PYTHON = SCRIPT_DIR / ".venv" / "Scripts" / "python.exe"
+else:
+    VENV_PYTHON = SCRIPT_DIR / ".venv" / "bin" / "python3"
+
+def get_python_executable() -> str:
+    """Gibt den korrekten Python-Interpreter zurück (venv bevorzugt)."""
+    if VENV_PYTHON.exists():
+        return str(VENV_PYTHON)
+    return sys.executable
+
 # Stellt sicher, dass der src-Ordner im Pfad ist
 sys.path.insert(0, str(SCRIPT_DIR / "src"))
 
@@ -238,8 +250,11 @@ def run_optimization_python() -> bool:
         log(f"Fehler: {optimizer_path} nicht gefunden!")
         return False
     
+    python_exe = get_python_executable()
+    log(f"Python: {python_exe}")
+    
     cmd = [
-        sys.executable, str(optimizer_path),
+        python_exe, str(optimizer_path),
         "--symbols", " ".join(symbols),
         "--timeframes", " ".join(timeframes),
         "--start_date", start_date,
