@@ -6,10 +6,10 @@ Dieses Skript läuft als Hintergrund-Service und startet die Optimierung
 automatisch gemäß dem in settings.json definierten Zeitplan.
 
 Verwendung:
-    python auto_optimizer_scheduler.py                # Normal starten
-    python auto_optimizer_scheduler.py --daemon       # Als Daemon im Hintergrund
-    python auto_optimizer_scheduler.py --check-only   # Nur prüfen ob Optimierung fällig ist
-    python auto_optimizer_scheduler.py --force        # Sofort optimieren (ignoriert Zeitplan)
+    python3 auto_optimizer_scheduler.py                # Startet als Daemon (prüft kontinuierlich)
+    python3 auto_optimizer_scheduler.py --force        # Sofort optimieren (ignoriert Zeitplan)
+    python3 auto_optimizer_scheduler.py --check-only   # Nur prüfen ob Optimierung fällig ist
+    python3 auto_optimizer_scheduler.py --once         # Einmalig prüfen und beenden
 """
 
 import os
@@ -431,14 +431,14 @@ def run_daemon(check_interval: int = 60):
 
 def main():
     parser = argparse.ArgumentParser(description="StBot Auto-Optimizer Scheduler")
-    parser.add_argument("--daemon", action="store_true", 
-                       help="Als Hintergrund-Service laufen")
+    parser.add_argument("--once", action="store_true", 
+                       help="Einmalig prüfen und ggf. ausführen (nicht als Daemon)")
     parser.add_argument("--check-only", action="store_true",
                        help="Nur prüfen ob Optimierung fällig ist")
     parser.add_argument("--force", action="store_true",
                        help="Optimierung sofort starten (ignoriert Zeitplan)")
     parser.add_argument("--interval", type=int, default=60,
-                       help="Prüf-Intervall in Sekunden (nur für --daemon)")
+                       help="Prüf-Intervall in Sekunden (Standard: 60)")
     
     args = parser.parse_args()
     
@@ -462,9 +462,7 @@ def main():
         success = run_optimization()
         sys.exit(0 if success else 1)
     
-    if args.daemon:
-        run_daemon(args.interval)
-    else:
+    if args.once:
         # Einmaliger Check und ggf. Ausführung
         should_run, reason = should_run_now(settings)
         log(f"Status: {reason}")
@@ -472,8 +470,10 @@ def main():
         if should_run:
             run_optimization()
         else:
-            log("Optimierung nicht fällig. Nutze --force für sofortige Ausführung "
-                "oder --daemon für kontinuierlichen Betrieb.")
+            log("Optimierung nicht fällig. Nutze --force für sofortige Ausführung.")
+    else:
+        # Standard: Daemon-Modus (läuft kontinuierlich)
+        run_daemon(args.interval)
 
 
 if __name__ == "__main__":
