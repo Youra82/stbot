@@ -271,11 +271,24 @@ def run_shared_mode(is_auto: bool, start_date, end_date, start_capital, target_m
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', default='1', type=str, help="Analyse-Modus (1=Einzel, 2=Manuell, 3=Auto)")
+    parser = argparse.ArgumentParser(description="StBot Backtest Ergebnis-Analyse")
+    parser.add_argument('--mode', default='1', type=str, choices=['1', '2', '3', '4'],
+                        help="Analysemodus: 1=Einzel, 2=Manuell Portfolio, 3=Auto Portfolio, 4=Interaktive Charts")
     parser.add_argument('--target_max_drawdown', default=30.0, type=float, help="Ziel Max Drawdown % (nur für Modus 3)")
     args = parser.parse_args()
 
+    # Mode 4 (Interaktive Charts) hat eigenes Input-System
+    if args.mode == '4':
+        try:
+            from stbot.analysis.interactive_status import main as interactive_main
+            interactive_main()
+        except Exception as e:
+            print(f"Fehler beim Ausführen der interaktiven Charts: {e}")
+            import traceback
+            traceback.print_exc()
+        sys.exit(0)  # Beende sauber nach Mode 4
+
+    # Für Modi 1, 2, 3: Frage Backtest-Konfiguration ab
     print("\n--- Bitte Konfiguration für den Backtest festlegen ---")
     start_date = input(f"Startdatum (JJJJ-MM-TT) [Standard: 2023-01-01]: ") or "2023-01-01"
     end_date = input(f"Enddatum (JJJJ-MM-TT) [Standard: Heute]: ") or date.today().strftime("%Y-%m-%d")
