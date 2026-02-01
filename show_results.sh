@@ -37,10 +37,7 @@ if [ ! -f "$RESULTS_SCRIPT" ]; then
     exit 1
 fi
 
-# *** NEU: Übergebe Max DD an das Python Skript ***
-python3 "$RESULTS_SCRIPT" --mode "$MODE" --target_max_drawdown "$TARGET_MAX_DD"
-
-# --- OPTION 4: INTERAKTIVE CHARTS ---
+# --- OPTION 4: INTERAKTIVE CHARTS (Direkt zu interactive_status.py) ---
 if [ "$MODE" == "4" ]; then
     echo -e "\n${YELLOW}========== INTERAKTIVE CHARTS ===========${NC}"
     echo ""
@@ -55,3 +52,6 @@ if [ "$MODE" == "4" ]; then
     deactivate
     exit 0
 fi
+
+# --- OPTION 1-3: ANALYS-MODES (zeige_results.py) ---
+python3 "$RESULTS_SCRIPT" --mode "$MODE" --target_max_drawdown "$TARGET_MAX_DD"
