@@ -54,6 +54,7 @@
     "optimization_settings": {
         "enabled": false,
         "schedule": {
+            "_info": "day_of_week: 0=Montag, 6=Sonntag | hour: 0-23 (24h Format, z.B. 3=03:00 nachts, 15=15:00 nachmittags)",
             "day_of_week": 0,
             "hour": 3,
             "minute": 0,
