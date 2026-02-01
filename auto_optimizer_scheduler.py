@@ -207,43 +207,12 @@ def run_optimization() -> bool:
     """Führt die Optimierung aus."""
     log("Starte Optimierung...")
     
-    # Unter Windows nutzen wir Python direkt statt Bash
-    if sys.platform == "win32":
-        return run_optimization_windows()
-    else:
-        return run_optimization_unix()
+    # Nutze immer Python direkt für konsistenten Live-Output
+    return run_optimization_python()
 
 
-def run_optimization_unix() -> bool:
-    """Führt die Optimierung unter Unix aus."""
-    script_path = SCRIPT_DIR / "run_pipeline_automated.sh"
-    
-    if not script_path.exists():
-        log(f"Fehler: {script_path} nicht gefunden!")
-        return False
-    
-    try:
-        result = subprocess.run(
-            ["bash", str(script_path), "--force"],
-            cwd=str(SCRIPT_DIR),
-            capture_output=True,
-            text=True
-        )
-        
-        if result.returncode == 0:
-            log("Optimierung erfolgreich abgeschlossen")
-            return True
-        else:
-            log(f"Optimierung fehlgeschlagen (Exit-Code: {result.returncode})")
-            log(f"Stderr: {result.stderr[:500] if result.stderr else 'N/A'}")
-            return False
-    except Exception as e:
-        log(f"Fehler bei der Ausführung: {e}")
-        return False
-
-
-def run_optimization_windows() -> bool:
-    """Führt die Optimierung unter Windows aus (direkt Python)."""
+def run_optimization_python() -> bool:
+    """Führt die Optimierung direkt via Python aus (plattformunabhängig)."""
     settings = load_settings()
     opt_settings = settings.get("optimization_settings", {})
     
