@@ -1,5 +1,5 @@
 #!/bin/bash
-# run_pipeline.sh - Angepasst für StBot (SRv2)
+# run_pipeline.sh - Angepasst für KBot (StochRSI)
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
@@ -92,7 +92,7 @@ for symbol in $SYMBOLS; do
         echo -e "${BLUE}  Datenzeitraum: $FINAL_START_DATE bis $END_DATE${NC}";
         echo -e "${BLUE}=======================================================${NC}"
 
-        echo -e "\n${GREEN}>>> Starte SRv2-Optimierung für $symbol ($timeframe)...${NC}"
+        echo -e "\n${GREEN}>>> Starte StochRSI-Optimierung für $symbol ($timeframe)...${NC}"
         python3 "$OPTIMIZER" --symbols "$symbol" --timeframes "$timeframe" \
              --start_date "$FINAL_START_DATE" --end_date "$END_DATE" \
              --jobs "$N_CORES" --max_drawdown "$MAX_DD" \

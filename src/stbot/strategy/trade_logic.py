@@ -3,7 +3,7 @@ import pandas as pd
 
 def get_titan_signal(processed_data: pd.DataFrame, current_candle: pd.Series, params: dict, market_bias=None):
     """
-    Handelslogik für StBot (SRv2 Strategie).
+    Handelslogik für StBot (StochRSI Strategie).
     Reagiert auf Breakouts durch dynamische S/R Zonen.
     """
     
@@ -42,7 +42,7 @@ def get_titan_signal(processed_data: pd.DataFrame, current_candle: pd.Series, pa
         signal_side = "sell"
 
     # --- MTF Bias Filter (Optional) ---
-    # Die SRv2 Strategie ist stark genug, um alleine zu stehen, 
+    # Die StochRSI-Strategie ist stark genug, um alleine zu stehen, 
     # aber wir behalten den Filter bei, falls im Optimizer aktiviert.
     # Standardmäßig ist der Bias oft NEUTRAL, wenn im Optimizer nicht anders gefordert.
     if signal_side and market_bias and market_bias != "NEUTRAL":

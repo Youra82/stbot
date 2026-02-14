@@ -37,7 +37,7 @@ def create_safe_filename(symbol, timeframe):
     return f"{symbol.replace('/', '').replace(':', '')}_{timeframe}"
 
 def objective(trial):
-    # --- SRv2 Strategie Parameter (StBot) ---
+    # --- StochRSI Strategie Parameter (StBot) ---
     strategy_params = {
         'pivot_period': trial.suggest_int('pivot_period', 5, 30),        # Prd
         'max_pivots': trial.suggest_int('max_pivots', 10, 60),           # Max Num PP
@@ -81,7 +81,7 @@ def objective(trial):
 
 def main():
     global HISTORICAL_DATA, CURRENT_SYMBOL, CURRENT_TIMEFRAME, CURRENT_HTF, CONFIG_SUFFIX, MAX_DRAWDOWN_CONSTRAINT, MIN_WIN_RATE_CONSTRAINT, MIN_PNL_CONSTRAINT, START_CAPITAL, OPTIM_MODE
-    parser = argparse.ArgumentParser(description="Parameter-Optimierung für StBot (SRv2)")
+    parser = argparse.ArgumentParser(description="Parameter-Optimierung für StBot (StochRSI)")
     parser.add_argument('--symbols', required=True, type=str)
     parser.add_argument('--timeframes', required=True, type=str)
     parser.add_argument('--start_date', required=True, type=str)

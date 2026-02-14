@@ -115,7 +115,7 @@ def check_and_open_new_position(exchange, model, scaler, params, telegram_config
         return
 
     try:
-        logger.info(f"Prüfe StBot (SRv2) Signal für {symbol} ({timeframe})...")
+        logger.info(f"Prüfe StBot (StochRSI) Signal für {symbol} ({timeframe})...")
 
         recent_data = exchange.fetch_recent_ohlcv(symbol, timeframe, limit=1000)
         if recent_data.empty or len(recent_data) < 50:
@@ -286,7 +286,7 @@ def check_and_open_new_position(exchange, model, scaler, params, telegram_config
 
         if telegram_config and telegram_config.get('bot_token') and telegram_config.get('chat_id'):
             msg = (
-                f"STBOT (SRv2): {symbol} ({timeframe})\n"
+                f"STBOT (StochRSI): {symbol} ({timeframe})\n"
                 f"- Richtung: {pos_side.upper()}\n"
                 f"- Entry: ${entry_price:.6f}\n"
                 f"- SL: ${sl_rounded:.6f}\n"

@@ -19,7 +19,7 @@ def get_titan_signal(processed_data: pd.DataFrame, current_candle: pd.Series, pa
         try:
             vol_avg = processed_data['volume'].tail(20).mean()
             current_vol = current_candle.get('volume', 0)
-            if current_vol < vol_avg * 1.0:  # weniger strikt als SRv2
+            if current_vol < vol_avg * 1.0:  # weniger strikt
                 return None, None
         except Exception:
             pass

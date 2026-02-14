@@ -6,7 +6,7 @@ VENV_PATH="$SCRIPT_DIR/.venv/bin/activate"
 SETTINGS_FILE="$SCRIPT_DIR/settings.json"
 SECRET_FILE="$SCRIPT_DIR/secret.json"
 # *** Korrigierte Pfade, Trainer entfernt ***
-OPTIMIZER="src/stbot/analysis/optimizer.py"
+OPTIMIZER="src/kbot/analysis/optimizer.py"
 CACHE_DIR="$SCRIPT_DIR/data/cache"
 TIMESTAMP_FILE="$CACHE_DIR/.last_cleaned"
 LAST_RUN_FILE="$CACHE_DIR/.last_optimization_run"
@@ -19,7 +19,7 @@ if [ ! -f "$VENV_PATH" ]; then
 fi
 source "$VENV_PATH"
 
-echo "--- Starte automatischen Pipeline-Lauf (StBot SRv2) ---"
+echo "--- Starte automatischen Pipeline-Lauf (KBot StochRSI) ---"
 
 # --- Prüfen ob settings.json existiert ---
 if [ ! -f "$SETTINGS_FILE" ]; then
@@ -217,7 +217,7 @@ echo "Trials: $N_TRIALS | Kerne: $N_CORES | Startkapital: $START_CAPITAL"
 
 START_TIME=$(date +%s)
 
-echo ">>> Starte Handelsparameter-Optimierung (SRv2)..."
+echo ">>> Starte Handelsparameter-Optimierung (StochRSI)..."
 python3 "$OPTIMIZER" \
     --symbols "$SYMBOLS" \
     --timeframes "$TIMEFRAMES" \
@@ -242,7 +242,7 @@ date +%s > "$LAST_RUN_FILE"
 if [ $OPTIMIZER_EXIT_CODE -ne 0 ]; then
     echo "Fehler im Optimierer-Skript. Pipeline wurde abgebrochen."
     if [ "$SEND_TELEGRAM" == "True" ]; then
-        send_telegram "❌ StBot Auto-Optimierung FEHLGESCHLAGEN
+        send_telegram "❌ KBot Auto-Optimierung FEHLGESCHLAGEN
 
 Dauer: ${DURATION} Minuten
 Symbole: $SYMBOLS
@@ -256,9 +256,9 @@ fi
 # --- Erfolgs-Telegram senden ---
 if [ "$SEND_TELEGRAM" == "True" ]; then
     # Zähle generierte Configs
-    CONFIG_COUNT=$(ls -1 "$SCRIPT_DIR/src/stbot/strategy/configs/config_"*.json 2>/dev/null | wc -l)
+    CONFIG_COUNT=$(ls -1 "$SCRIPT_DIR/src/kbot/strategy/configs/config_"*.json 2>/dev/null | wc -l)
     
-    send_telegram "✅ StBot Auto-Optimierung ABGESCHLOSSEN
+    send_telegram "✅ KBot Auto-Optimierung ABGESCHLOSSEN
 
 Dauer: ${DURATION} Minuten
 Symbole: $SYMBOLS

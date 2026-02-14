@@ -1,6 +1,6 @@
-# StBot Auto-Optimizer Scheduler
+# KBot Auto-Optimizer Scheduler
 
-Automatische Optimierung der SRv2-Strategiekonfigurationen mit Zeitplan-Steuerung und Telegram-Benachrichtigungen.
+Automatische Optimierung der StochRSI-Strategiekonfigurationen mit Zeitplan-Steuerung und Telegram-Benachrichtigungen.
 
 ## 📋 Übersicht
 
@@ -132,7 +132,7 @@ Die Datei `secret.json` muss Telegram-Credentials enthalten:
 
 **Bei Erfolg:**
 ```
-✅ StBot Auto-Optimierung ABGESCHLOSSEN
+✅ KBot Auto-Optimierung ABGESCHLOSSEN
 
 Dauer: 45 Minuten
 Symbole: BTC, ETH, SOL
@@ -146,7 +146,7 @@ Nächste Optimierung in 7 Tagen.
 
 **Bei Fehler:**
 ```
-❌ StBot Auto-Optimierung FEHLGESCHLAGEN
+❌ KBot Auto-Optimierung FEHLGESCHLAGEN
 
 Dauer: 12 Minuten
 Fehlercode: 1
