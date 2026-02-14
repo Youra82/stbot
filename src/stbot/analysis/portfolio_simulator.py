@@ -25,7 +25,7 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
     """
     Führt eine chronologische Portfolio-Simulation mit mehreren StBot-Strategien durch.
     """
-    print("\n--- Starte Portfolio-Simulation (StBot SRv2)... ---")
+    print("\n--- Starte Portfolio-Simulation (StBot StochRSI)... ---")
 
     # --- 1. Datenvorbereitung ---
     print("1/3: Bereite Strategie-Daten vor...")
@@ -157,7 +157,7 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
 
                 current_candle = strat['data'].loc[ts]
                 
-                # Kein MTF Bias Check im Simulator nötig, SRv2 ist standalone stark
+                # Kein MTF Bias Check im Simulator nötig, StochRSI ist standalone stark
                 market_bias = Bias.NEUTRAL
                 
                 # Statt Slice übergeben wir nur aktuelle Candle, da sr_signal schon da ist

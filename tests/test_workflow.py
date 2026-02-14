@@ -32,7 +32,8 @@ def test_setup():
     if not secrets.get('kbot') or not secrets['kbot']:
         pytest.skip("Es wird mindestens ein Account unter 'kbot' in secret.json benötigt.")
 
-    test_account = secrets['kbot'][0]    telegram_config = secrets.get('telegram', {})
+    test_account = secrets['kbot'][0]
+    telegram_config = secrets.get('telegram', {})
 
     try:
         exchange = Exchange(test_account)

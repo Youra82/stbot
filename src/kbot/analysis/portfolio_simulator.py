@@ -238,4 +238,3 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
     if not equity_df.empty:
         equity_df.set_index('timestamp', inplace=True)
         equity_df['drawdown_pct'] = None
-```
