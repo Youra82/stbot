@@ -50,11 +50,15 @@ def run_single_analysis(start_date, end_date, start_capital):
     print("  Mehrfach: z.B. '1,3,5' oder '1 3 5'")
     print("  Alle: 'alle'")
     
-    selection = input("\nAuswahl: ").strip()
-    
+    selection = input("\nAuswahl (Enter = alle): ").strip()
+
+    # Standardverhalten: ENTER -> alle auswählen
+    if not selection:
+        selection = 'alle'
+
     selected_files = []
     try:
-        if selection.lower() == 'alle':
+        if selection.lower() in ('alle', 'all', 'a'):
             selected_files = config_files
         else:
             # Unterstütze sowohl Komma- als auch Leerzeichen-getrennte Eingaben
