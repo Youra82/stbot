@@ -12,10 +12,10 @@ def test_project_structure():
     assert os.path.isdir(os.path.join(PROJECT_ROOT, 'src')), "Das 'src'-Verzeichnis fehlt."
     assert os.path.isdir(os.path.join(PROJECT_ROOT, 'artifacts')), "Das 'artifacts'-Verzeichnis fehlt."
     assert os.path.isdir(os.path.join(PROJECT_ROOT, 'tests')), "Das 'tests'-Verzeichnis fehlt."
-    assert os.path.isdir(os.path.join(PROJECT_ROOT, 'src', 'stbot')), "Das 'src/stbot'-Verzeichnis fehlt."
-    assert os.path.isdir(os.path.join(PROJECT_ROOT, 'src', 'stbot', 'strategy')), "Das 'src/stbot/strategy'-Verzeichnis fehlt."
-    assert os.path.isdir(os.path.join(PROJECT_ROOT, 'src', 'stbot', 'analysis')), "Das 'src/stbot/analysis'-Verzeichnis fehlt."
-    assert os.path.isdir(os.path.join(PROJECT_ROOT, 'src', 'stbot', 'utils')), "Das 'src/stbot/utils'-Verzeichnis fehlt."
+    assert os.path.isdir(os.path.join(PROJECT_ROOT, 'src', 'kbot')), "Das 'src/kbot'-Verzeichnis fehlt."
+    assert os.path.isdir(os.path.join(PROJECT_ROOT, 'src', 'kbot', 'strategy')), "Das 'src/kbot/strategy'-Verzeichnis fehlt."
+    assert os.path.isdir(os.path.join(PROJECT_ROOT, 'src', 'kbot', 'analysis')), "Das 'src/kbot/analysis'-Verzeichnis fehlt."
+    assert os.path.isdir(os.path.join(PROJECT_ROOT, 'src', 'kbot', 'utils')), "Das 'src/kbot/utils'-Verzeichnis fehlt."
 
 
 def test_core_script_imports():
@@ -24,18 +24,18 @@ def test_core_script_imports():
     Dies ist ein schneller Check, ob die grundlegende Code-Struktur intakt ist.
     """
     try:
-        # Importiere Kernkomponenten von StBot
-        from stbot.utils.trade_manager import housekeeper_routine, check_and_open_new_position, full_trade_cycle
-        from stbot.utils.exchange import Exchange
+        # Importiere Kernkomponenten von KBot
+        from kbot.utils.trade_manager import housekeeper_routine, check_and_open_new_position, full_trade_cycle
+        from kbot.utils.exchange import Exchange
 
-        # KORREKTUR: SREngine statt IchimokuEngine
-        from stbot.strategy.sr_engine import SREngine
-        from stbot.strategy.trade_logic import get_titan_signal
+        # StochRSI-Engine + Trade-Logic
+        from kbot.strategy.stochrsi_engine import StochRSIEngine
+        from kbot.strategy.trade_logic import get_titan_signal
 
         # Backtester und Optimizer Imports
-        from stbot.analysis.backtester import run_backtest
-        from stbot.analysis.optimizer import main as optimizer_main
-        from stbot.analysis.portfolio_optimizer import run_portfolio_optimizer
+        from kbot.analysis.backtester import run_backtest
+        from kbot.analysis.optimizer import main as optimizer_main
+        from kbot.analysis.portfolio_optimizer import run_portfolio_optimizer
 
     except ImportError as e:
         pytest.fail(f"Kritischer Import-Fehler. Die Code-Struktur scheint defekt zu sein. Fehler: {e}")

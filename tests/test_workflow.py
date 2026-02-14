@@ -11,15 +11,15 @@ from unittest.mock import patch
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
-# Importiere die StBot-Funktionen
-from stbot.utils.exchange import Exchange
-from stbot.utils.trade_manager import check_and_open_new_position, housekeeper_routine
-from stbot.utils.trade_manager import set_trade_lock, is_trade_locked
-from stbot.utils.timeframe_utils import determine_htf
+# Importiere die KBot-Funktionen
+from kbot.utils.exchange import Exchange
+from kbot.utils.trade_manager import check_and_open_new_position, housekeeper_routine
+from kbot.utils.trade_manager import set_trade_lock, is_trade_locked
+from kbot.utils.timeframe_utils import determine_htf
 
 @pytest.fixture(scope="module")
 def test_setup():
-    print("\n--- Starte umfassenden LIVE StBot-Workflow-Test (PEPE) ---")
+    print("\n--- Starte umfassenden LIVE KBot-Workflow-Test (PEPE) ---")
     print("\n[Setup] Bereite Testumgebung vor...")
 
     secret_path = os.path.join(PROJECT_ROOT, 'secret.json')
@@ -29,11 +29,10 @@ def test_setup():
     with open(secret_path, 'r') as f:
         secrets = json.load(f)
 
-    if not secrets.get('stbot') or not secrets['stbot']:
-        pytest.skip("Es wird mindestens ein Account unter 'stbot' in secret.json benötigt.")
+    if not secrets.get('kbot') or not secrets['kbot']:
+        pytest.skip("Es wird mindestens ein Account unter 'kbot' in secret.json benötigt.")
 
-    test_account = secrets['stbot'][0]
-    telegram_config = secrets.get('telegram', {})
+    test_account = secrets['kbot'][0]    telegram_config = secrets.get('telegram', {})
 
     try:
         exchange = Exchange(test_account)
@@ -49,7 +48,7 @@ def test_setup():
 
     params = {
         'market': {'symbol': symbol, 'timeframe': timeframe, 'htf': htf},
-        'strategy': { 'pivot_period': 10, 'max_pivots': 20, 'channel_width_pct': 10, 'max_sr_levels': 5, 'min_strength': 2 },
+        'strategy': { 'rsi_period': 14, 'stoch_rsi_period': 14, 'stoch_k': 3, 'stoch_d': 3, 'stoch_rsi_low': 20, 'stoch_rsi_high': 80 },
         'risk': {
             'margin_mode': 'isolated',
             # 15% Risiko vom verfügbaren Guthaben
@@ -108,16 +107,16 @@ def test_setup():
     except Exception as e:
         print(f"FEHLER beim Aufräumen nach dem Test: {e}")
 
-def test_full_stbot_workflow_on_bitget(test_setup):
+def test_full_kbot_workflow_on_bitget(test_setup):
     exchange, params, telegram_config, symbol, logger = test_setup
 
     # Check Balance vor dem Test
     bal = exchange.fetch_balance_usdt()
     print(f"\n--- Verfügbares Guthaben für Test: {bal:.4f} USDT ---")
 
-    with patch('stbot.utils.trade_manager.set_trade_lock'), \
-         patch('stbot.utils.trade_manager.is_trade_locked', return_value=False), \
-         patch('stbot.utils.trade_manager.get_titan_signal', return_value=('buy', None)): # Simuliere Buy-Signal
+    with patch('kbot.utils.trade_manager.set_trade_lock'), \
+         patch('kbot.utils.trade_manager.is_trade_locked', return_value=False), \
+         patch('kbot.utils.trade_manager.get_titan_signal', return_value=('buy', None)): # Simuliere Buy-Signal
 
         print("\n[Schritt 1/3] Mocke Signal und prüfe Trade-Eröffnung...")
         check_and_open_new_position(exchange, None, None, params, telegram_config, logger)
