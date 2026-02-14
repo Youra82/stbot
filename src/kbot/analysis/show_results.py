@@ -282,11 +282,12 @@ if __name__ == "__main__":
         try:
             from kbot.analysis.interactive_status import main as interactive_main
             interactive_main()
+            sys.exit(0)
         except Exception as e:
             print(f"Fehler beim Ausführen der interaktiven Charts: {e}")
             import traceback
             traceback.print_exc()
-        sys.exit(0)  # Beende sauber nach Mode 4
+            sys.exit(1)  # Fehler weitergeben an das Aufruf-Skript (show_results.sh)
 
     # Für Modi 1, 2, 3: Frage Backtest-Konfiguration ab
     print("\n--- Bitte Konfiguration für den Backtest festlegen ---")
