@@ -7,12 +7,12 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 echo -e "${BLUE}======================================================="
-echo "       StBot SRv2 Optimierungs-Pipeline"
+echo "       KBot StochRSI Optimierungs-Pipeline"
 echo -e "=======================================================${NC}"
 
 # --- Pfade definieren ---
 VENV_PATH=".venv/bin/activate"
-OPTIMIZER="src/stbot/analysis/optimizer.py"
+OPTIMIZER="src/kbot/analysis/optimizer.py"
 
 # --- Umgebung aktivieren ---
 if [ ! -f "$VENV_PATH" ]; then
@@ -23,11 +23,11 @@ source "$VENV_PATH"
 echo -e "${GREEN}✔ Virtuelle Umgebung wurde erfolgreich aktiviert.${NC}"
 
 # --- AUFRÄUM-ASSISTENT ---
-echo -e "\n${YELLOW}Möchtest du alle alten, generierten Configs vor dem Start löschen?${NC}"
+echo -e "\n${YELLOW}Möchtest du alle alten, generierten KBot-Configs vor dem Start löschen?${NC}"
 read -p "Dies wird für einen kompletten Neustart empfohlen. (j/n) [Standard: n]: " CLEANUP_CHOICE; CLEANUP_CHOICE=${CLEANUP_CHOICE:-n}
 if [[ "$CLEANUP_CHOICE" == "j" || "$CLEANUP_CHOICE" == "J" ]]; then
     echo -e "${YELLOW}Lösche alte Konfigurationen...${NC}"; 
-    rm -f src/stbot/strategy/configs/config_*.json; 
+    rm -f src/kbot/strategy/configs/config_*.json; 
     echo -e "${GREEN}✔ Aufräumen abgeschlossen.${NC}"
 else
     echo -e "${GREEN}✔ Alte Ergebnisse werden beibehalten.${NC}"

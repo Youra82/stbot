@@ -12,12 +12,12 @@ PROJECT_ROOT = os.path.abspath(os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(PROJECT_ROOT, 'src'))
 
 # Importiere die Funktionen direkt über die Paketstruktur
-from stbot.utils.exchange import Exchange
-from stbot.utils.trade_manager import check_and_open_new_position, housekeeper_routine, is_trade_locked, set_trade_lock
-from stbot.utils.timeframe_utils import determine_htf
-from stbot.strategy.smc_engine import Bias
+from kbot.utils.exchange import Exchange
+from kbot.utils.trade_manager import check_and_open_new_position, housekeeper_routine, is_trade_locked, set_trade_lock
+from kbot.utils.timeframe_utils import determine_htf
+from kbot.strategy.stochrsi_engine import StochRSIEngine
 # Nur importieren, um sicherzustellen, dass die Abhängigkeit geladen wird
-from stbot.strategy.trade_logic import get_titan_signal 
+from kbot.strategy.trade_logic import get_titan_signal 
 
 
 # Logging Setup (minimal)
@@ -31,7 +31,7 @@ def run_test():
         with open(os.path.join(PROJECT_ROOT, 'secret.json'), "r") as f:
             secrets = json.load(f)
         
-        test_account = secrets['stbot'][0]
+        test_account = secrets['kbot'][0]
         telegram_config = secrets.get('telegram', {})
         exchange = Exchange(test_account)
 

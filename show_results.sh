@@ -5,12 +5,12 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 VENV_PATH=".venv/bin/activate"
-RESULTS_SCRIPT="src/stbot/analysis/show_results.py"
+RESULTS_SCRIPT="src/kbot/analysis/show_results.py"
 
 source "$VENV_PATH"
 
 # --- MODUS-MENÜ ---
-echo -e "\n${YELLOW}Wähle einen Analyse-Modus:${NC}"
+echo -e "\n${YELLOW}Wähle einen Analyse-Modus für KBot:${NC}"
 echo "  1) Einzel-Analyse (jede Strategie wird isoliert getestet)"
 echo "  2) Manuelle Portfolio-Simulation (du wählst das Team)"
 echo "  3) Automatische Portfolio-Optimierung (der Bot wählt das beste Team)"
@@ -22,7 +22,6 @@ MODE=${MODE:-1}
 TARGET_MAX_DD=30 # Standardwert
 if [ "$MODE" == "3" ]; then
     read -p "Gewünschter maximaler Drawdown in % für die Optimierung [Standard: 30]: " DD_INPUT
-    # Prüfe, ob eine gültige Zahl eingegeben wurde, sonst nimm Standard
     if [[ "$DD_INPUT" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
         TARGET_MAX_DD=$DD_INPUT
     else
@@ -37,10 +36,8 @@ if [ ! -f "$RESULTS_SCRIPT" ]; then
     exit 1
 fi
 
-# *** Übergebe Mode und Max DD an das Python Skript (inkl. Mode 4) ***
 python3 "$RESULTS_SCRIPT" --mode "$MODE" --target_max_drawdown "$TARGET_MAX_DD"
 
-# --- OPTION 4: INTERAKTIVE CHARTS (Behandelt direkt in show_results.py) ---
 if [ "$MODE" == "4" ]; then
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}✅ Interaktive Charts wurden generiert!${NC}"
