@@ -1,14 +1,19 @@
 #!/bin/bash
-echo "--- Starte StBot-Sicherheitsnetz ---"
+# Dieses Skript führt das komplette Test-Sicherheitsnetz aus.
+echo "--- Starte KBot-Sicherheitsnetz ---"
 
+# Prüfe ob virtuelle Umgebung existiert
 if [ ! -f ".venv/bin/activate" ]; then
     echo "Fehler: Virtuelle Umgebung nicht gefunden. Bitte install.sh ausführen."
     exit 1
 fi
+
+# Aktiviere die virtuelle Umgebung
 source .venv/bin/activate
 
-echo "Führe Pytest aus (inkl. Live-Workflow-Test)..."
-if python3 -m pytest -v -s; then
+# Führe pytest aus
+echo "Führe Pytest aus (Stoch‑RSI Tests)..."
+if python3 -m pytest tests/ -v -s; then
     echo "Pytest erfolgreich durchgelaufen. Alle Tests bestanden."
     EXIT_CODE=0
 else
@@ -22,6 +27,8 @@ else
     fi
 fi
 
+# Deaktiviere die Umgebung wieder
 deactivate
+
 echo "--- Sicherheitscheck abgeschlossen ---"
 exit $EXIT_CODE
