@@ -1,4 +1,7 @@
 # tests/test_workflow.py
+# =============================================================================
+# KBot: Live-Workflow-Test auf Bitget
+# =============================================================================
 import pytest
 import os
 import sys
@@ -11,28 +14,28 @@ from unittest.mock import patch
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
-# Importiere die StBot-Funktionen
-from stbot.utils.exchange import Exchange
-from stbot.utils.trade_manager import check_and_open_new_position, housekeeper_routine
-from stbot.utils.trade_manager import set_trade_lock, is_trade_locked
-from stbot.utils.timeframe_utils import determine_htf
+# Importiere die KBot-Funktionen
+from kbot.utils.exchange import Exchange
+from kbot.utils.trade_manager import check_and_open_new_position, housekeeper_routine, clear_trade_lock
+from kbot.strategy.stochrsi_engine import StochRSIEngine
+
 
 @pytest.fixture(scope="module")
 def test_setup():
-    print("\n--- Starte umfassenden LIVE StBot-Workflow-Test (PEPE) ---")
+    print("\n--- Starte umfassenden LIVE KBot-Workflow-Test (PEPE) ---")
     print("\n[Setup] Bereite Testumgebung vor...")
 
     secret_path = os.path.join(PROJECT_ROOT, 'secret.json')
     if not os.path.exists(secret_path):
-            pytest.skip("secret.json nicht gefunden. Überspringe Live-Workflow-Test.")
+        pytest.skip("secret.json nicht gefunden. Überspringe Live-Workflow-Test.")
 
     with open(secret_path, 'r') as f:
         secrets = json.load(f)
 
-    if not secrets.get('stbot') or not secrets['stbot']:
-        pytest.skip("Es wird mindestens ein Account unter 'stbot' in secret.json benötigt.")
+    if not secrets.get('kbot') or not secrets['kbot']:
+        pytest.skip("Es wird mindestens ein Account unter 'kbot' in secret.json benötigt.")
 
-    test_account = secrets['stbot'][0]
+    test_account = secrets['kbot'][0]
     telegram_config = secrets.get('telegram', {})
 
     try:
@@ -45,23 +48,26 @@ def test_setup():
     # WIR NEHMEN PEPE (Kleine Mindestgröße, gut zum Testen)
     symbol = 'PEPE/USDT:USDT'
     timeframe = '15m'
-    htf = determine_htf(timeframe)
 
     params = {
-        'market': {'symbol': symbol, 'timeframe': timeframe, 'htf': htf},
-        'strategy': { 'pivot_period': 10, 'max_pivots': 20, 'channel_width_pct': 10, 'max_sr_levels': 5, 'min_strength': 2 },
+        'market': {'symbol': symbol, 'timeframe': timeframe},
+        'strategy': {
+            'rsi_period': 14,
+            'stochrsi_len': 14,
+            'k': 3,
+            'd': 3,
+            'ob': 0.8,
+            'os': 0.2,
+            'atr_period': 14,
+            'sl_atr_mult': 1.5,
+            'risk_reward_ratio': 2.0
+        },
         'risk': {
             'margin_mode': 'isolated',
-            # 15% Risiko vom verfügbaren Guthaben
             'risk_per_trade_pct': 15.0,
-            'risk_reward_ratio': 2.0,
-            'leverage': 20,
-            'trailing_stop_activation_rr': 1.5,
-            'trailing_stop_callback_rate_pct': 0.5,
-            'atr_multiplier_sl': 1.0,
-            'min_sl_pct': 4.0
+            'leverage': 20
         },
-        'behavior': { 'use_longs': True, 'use_shorts': True }
+        'behavior': {'use_longs': True, 'use_shorts': True}
     }
 
     test_logger = logging.getLogger("test-logger")
@@ -76,8 +82,9 @@ def test_setup():
         # Doppelte Sicherheit: Prüfen ob wirklich zu
         pos = exchange.fetch_open_positions(symbol)
         if pos:
-             exchange.create_market_order(symbol, 'sell' if pos[0]['side'] == 'long' else 'buy', float(pos[0]['contracts']), {'reduceOnly': True})
-             time.sleep(2)
+            exchange.create_market_order(symbol, 'sell' if pos[0]['side'] == 'long' else 'buy', 
+                                         float(pos[0]['contracts']), {'reduceOnly': True})
+            time.sleep(2)
 
         print("-> Ausgangszustand ist sauber.")
     except Exception as e:
@@ -87,6 +94,10 @@ def test_setup():
 
     print("\n[Teardown] Räume nach dem Test auf...")
     try:
+        # Löschen des Trade Locks
+        symbol_timeframe = f"{params['market']['symbol'].replace('/', '-')}_{params['market']['timeframe']}"
+        clear_trade_lock(symbol_timeframe)
+        
         print("-> 1. Lösche offene Trigger Orders...")
         exchange.cancel_all_orders_for_symbol(symbol)
         time.sleep(2)
@@ -95,7 +106,8 @@ def test_setup():
         position = exchange.fetch_open_positions(symbol)
         if position:
             print(f"-> Position nach Test noch offen. Schließe sie...")
-            exchange.create_market_order(symbol, 'sell' if position[0]['side'] == 'long' else 'buy', float(position[0]['contracts']), {'reduceOnly': True})
+            exchange.create_market_order(symbol, 'sell' if position[0]['side'] == 'long' else 'buy', 
+                                         float(position[0]['contracts']), {'reduceOnly': True})
             time.sleep(3)
         else:
             print("-> Keine offene Position gefunden.")
@@ -108,19 +120,26 @@ def test_setup():
     except Exception as e:
         print(f"FEHLER beim Aufräumen nach dem Test: {e}")
 
-def test_full_stbot_workflow_on_bitget(test_setup):
+
+def test_full_kbot_workflow_on_bitget(test_setup):
+    """
+    Umfassender Live-Workflow-Test für KBot (Stoch‑RSI).
+    
+    Testet:
+    1. Trade-Eröffnung mit gemocktem Signal
+    2. Position-Verifizierung
+    3. Sauberes Schließen
+    """
     exchange, params, telegram_config, symbol, logger = test_setup
 
     # Check Balance vor dem Test
     bal = exchange.fetch_balance_usdt()
     print(f"\n--- Verfügbares Guthaben für Test: {bal:.4f} USDT ---")
 
-    with patch('stbot.utils.trade_manager.set_trade_lock'), \
-         patch('stbot.utils.trade_manager.is_trade_locked', return_value=False), \
-         patch('stbot.utils.trade_manager.get_titan_signal', return_value=('buy', None)): # Simuliere Buy-Signal
-
+    # Mocke das Signal um einen Trade zu erzwingen
+    with patch('kbot.utils.trade_manager.analyze_and_log_signal', return_value=('long', 'Test-Signal')):
         print("\n[Schritt 1/3] Mocke Signal und prüfe Trade-Eröffnung...")
-        check_and_open_new_position(exchange, None, None, params, telegram_config, logger)
+        check_and_open_new_position(exchange, params, telegram_config, logger)
 
     print("-> Warte 5s auf Order-Ausführung...")
     time.sleep(5)
@@ -160,14 +179,14 @@ def test_full_stbot_workflow_on_bitget(test_setup):
         close_order = exchange.create_market_order(symbol, side_to_close, amount_to_close, params={'reduceOnly': True})
         assert close_order, "FEHLER: Konnte Position nicht schließen!"
         print(f"-> Position erfolgreich geschlossen.")
-        time.sleep(4) # Etwas länger warten
+        time.sleep(4)
 
     # 3. Orders löschen NACH dem Schließen
     print("-> Lösche verbleibende Trigger-Orders NACH dem Schließen...")
     exchange.cancel_all_orders_for_symbol(symbol)
     time.sleep(2)
 
-    # Finale Prüfung mit RELOAD
+    # Finale Prüfung
     final_positions = exchange.fetch_open_positions(symbol)
     final_orders = exchange.fetch_open_trigger_orders(symbol)
 
@@ -178,7 +197,6 @@ def test_full_stbot_workflow_on_bitget(test_setup):
         print(f"WARNUNG: Es sind noch {len(final_orders)} Trigger-Orders offen! Versuche erneutes Löschen...")
         exchange.cancel_all_orders_for_symbol(symbol)
         time.sleep(2)
-        # WICHTIG: Status neu laden für den Assert
         final_orders = exchange.fetch_open_trigger_orders(symbol)
 
     assert len(final_positions) == 0, "FEHLER: Position sollte geschlossen sein."
