@@ -194,7 +194,7 @@ def _send_telegram_plain(message: str):
 
 def _send_start_telegram(pair_display: list, num_trials: int, start_time: datetime):
     msg = (
-        f"StBot Auto-Optimizer GESTARTET\n"
+        f"\U0001f680 StBot Auto-Optimizer GESTARTET\n"
         f"Paare: {', '.join(pair_display)}\n"
         f"Trials: {num_trials}\n"
         f"Start: {start_time.strftime('%Y-%m-%d %H:%M:%S')}"
@@ -206,33 +206,33 @@ def _send_end_telegram(elapsed_seconds: float):
     dur = _format_elapsed(elapsed_seconds)
 
     if not os.path.exists(OPTIMIZER_RESULTS_FILE):
-        _send_telegram_plain(f"StBot Auto-Optimizer abgeschlossen\nDauer: {dur}")
+        _send_telegram_plain(f"\u2705 StBot Auto-Optimizer abgeschlossen\nDauer: {dur}")
         return
 
     try:
         with open(OPTIMIZER_RESULTS_FILE, encoding='utf-8') as f:
             results = json.load(f)
     except Exception:
-        _send_telegram_plain(f"StBot Auto-Optimizer abgeschlossen (Dauer: {dur})")
+        _send_telegram_plain(f"\u2705 StBot Auto-Optimizer abgeschlossen (Dauer: {dur})")
         return
 
     saved  = results.get('saved', [])
     failed = results.get('failed', [])
     total  = len(saved) + len(failed)
 
-    lines = [f"StBot Auto-Optimizer abgeschlossen (Dauer: {dur})"]
+    lines = [f"\u2705 StBot Auto-Optimizer abgeschlossen (Dauer: {dur})"]
 
     if saved:
-        lines.append(f"\nGespeichert ({len(saved)}/{total}):")
+        lines.append(f"\n\u2714 Gespeichert ({len(saved)}/{total}):")
         for s in saved:
             sym_short = s['symbol'].split('/')[0]
-            lines.append(f"  {sym_short}/{s['timeframe']}: +{s['pnl_pct']}% -> {s['config_file']}")
+            lines.append(f"\u2022 {sym_short}/{s['timeframe']}: +{s['pnl_pct']}% \u2192 {s['config_file']}")
 
     if failed:
-        lines.append(f"\nFehlgeschlagen ({len(failed)}/{total}):")
+        lines.append(f"\n\u274c Fehlgeschlagen ({len(failed)}/{total}):")
         for fi in failed:
             sym_short = fi['symbol'].split('/')[0]
-            lines.append(f"  {sym_short}/{fi['timeframe']}: {fi['reason']}")
+            lines.append(f"\u2022 {sym_short}/{fi['timeframe']}: {fi['reason']}")
 
     _send_telegram_plain('\n'.join(lines))
 
