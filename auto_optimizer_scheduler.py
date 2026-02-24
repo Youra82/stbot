@@ -2,11 +2,11 @@
 """
 auto_optimizer_scheduler.py
 
-Prüft bei jedem Aufruf, ob eine automatische Optimierung fällig ist,
-und führt die Pipeline aus (bash oder Python-Fallback).
+Prueft bei jedem Aufruf ob eine Optimierung faellig ist und fuehrt
+die Pipeline aus. Sendet Telegram-Benachrichtigungen bei Start und Ende.
 
 Aufruf:
-  python3 auto_optimizer_scheduler.py           # normale Prüfung
+  python3 auto_optimizer_scheduler.py           # normale Pruefung
   python3 auto_optimizer_scheduler.py --force   # sofort erzwingen
 """
 
@@ -29,8 +29,10 @@ SECRET_FILE      = os.path.join(PROJECT_ROOT, 'secret.json')
 LAST_RUN_FILE    = os.path.join(CACHE_DIR, '.last_optimization_run')
 IN_PROGRESS_FILE = os.path.join(CACHE_DIR, '.optimization_in_progress')
 TRIGGER_LOG      = os.path.join(LOG_DIR, 'auto_optimizer_trigger.log')
+OPTIMIZER_RESULTS_FILE = os.path.join(
+    PROJECT_ROOT, 'artifacts', 'results', 'last_optimizer_run.json')
 
-# Lookback je Timeframe (wie in run_pipeline.sh)
+# Lookback je Timeframe (Tage)
 LOOKBACK_MAP = {
     '5m': 60,  '15m': 60,
     '30m': 365, '1h': 365,
@@ -52,52 +54,19 @@ def _log(msg: str):
 
 
 # ---------------------------------------------------------------------------
-# "auto"-Werte auflösen
+# Hilfsfunktionen
 # ---------------------------------------------------------------------------
 
-def _resolve_symbols(value, live_settings: dict) -> list[str]:
-    """'auto' → Symbole aus active_strategies ableiten (nur aktive)."""
-    if value != 'auto':
-        return value if isinstance(value, list) else [value]
+def _format_elapsed(seconds: float) -> str:
+    s = int(seconds)
+    if s < 60:
+        return f"{s}s"
+    m, s = divmod(s, 60)
+    if m < 60:
+        return f"{m}m {s:02d}s"
+    h, m = divmod(m, 60)
+    return f"{h}h {m:02d}m {s:02d}s"
 
-    strategies = live_settings.get('active_strategies', [])
-    symbols = []
-    for s in strategies:
-        if not s.get('active', True):
-            continue
-        sym = s.get('symbol', '')          # z.B. "BTC/USDT:USDT"
-        base = sym.split('/')[0]           # → "BTC"
-        if base and base not in symbols:
-            symbols.append(base)
-    return symbols or ['BTC', 'ETH']
-
-
-def _resolve_timeframes(value, live_settings: dict) -> list[str]:
-    """'auto' → Timeframes aus active_strategies ableiten (nur aktive)."""
-    if value != 'auto':
-        return value if isinstance(value, list) else [value]
-
-    strategies = live_settings.get('active_strategies', [])
-    tfs = []
-    for s in strategies:
-        if not s.get('active', True):
-            continue
-        tf = s.get('timeframe', '')
-        if tf and tf not in tfs:
-            tfs.append(tf)
-    return tfs or ['1h', '4h']
-
-
-def _resolve_lookback(value, timeframes: list[str]) -> int:
-    """'auto' → höchsten Lookback-Wert der verwendeten Timeframes nehmen."""
-    if value != 'auto':
-        return int(value)
-    return max((LOOKBACK_MAP.get(tf, 365) for tf in timeframes), default=365)
-
-
-# ---------------------------------------------------------------------------
-# Zeitplan-Prüfung
-# ---------------------------------------------------------------------------
 
 def _get_last_run() -> datetime | None:
     if not os.path.exists(LAST_RUN_FILE):
@@ -119,34 +88,27 @@ def _set_last_run():
 
 
 def _is_due(schedule: dict) -> tuple[bool, str]:
-    """Gibt (fällig, grund) zurück."""
-
     if os.path.exists(IN_PROGRESS_FILE):
         _log("SKIP already_in_progress")
         return False, None
 
     last_run = _get_last_run()
-
     if last_run is None:
         return True, 'forced'
 
-    # Intervall-Prüfung
-    interval_cfg = schedule.get('interval', {})
-    value = int(interval_cfg.get('value', 7))
-    unit  = interval_cfg.get('unit', 'days')
-    multipliers = {'minutes': 60, 'hours': 3600, 'days': 86400, 'weeks': 604800}
+    interval_cfg     = schedule.get('interval', {})
+    value            = int(interval_cfg.get('value', 7))
+    unit             = interval_cfg.get('unit', 'days')
+    multipliers      = {'minutes': 60, 'hours': 3600, 'days': 86400, 'weeks': 604800}
     interval_seconds = value * multipliers.get(unit, 86400)
 
-    elapsed = (datetime.now() - last_run).total_seconds()
-    if elapsed >= interval_seconds:
+    if (datetime.now() - last_run).total_seconds() >= interval_seconds:
         return True, 'interval'
 
-    # Wochentag/Uhrzeit-Prüfung
     now    = datetime.now()
     dow    = int(schedule.get('day_of_week', 0))
     hour   = int(schedule.get('hour', 3))
     minute = int(schedule.get('minute', 0))
-
     if now.weekday() == dow and now.hour == hour and minute <= now.minute < minute + 15:
         if last_run.date() < now.date():
             return True, 'scheduled'
@@ -155,31 +117,128 @@ def _is_due(schedule: dict) -> tuple[bool, str]:
 
 
 # ---------------------------------------------------------------------------
-# Telegram-Benachrichtigung
+# Paare / Symbole / Timeframes aufloesen
 # ---------------------------------------------------------------------------
 
-def _send_telegram(message: str):
+def _resolve_pairs_auto(live_settings: dict) -> list:
+    """[(full_symbol, timeframe)] aus aktiven Strategien."""
+    pairs, seen = [], set()
+    for s in live_settings.get('active_strategies', []):
+        if not s.get('active', True):
+            continue
+        sym = s.get('symbol', '')
+        tf  = s.get('timeframe', '')
+        if sym and tf and (sym, tf) not in seen:
+            pairs.append((sym, tf))
+            seen.add((sym, tf))
+    return pairs or [('BTC/USDT:USDT', '1h'), ('ETH/USDT:USDT', '4h')]
+
+
+def _resolve_symbols(value, live_settings: dict) -> list:
+    if value != 'auto':
+        return value if isinstance(value, list) else [value]
+    seen, syms = set(), []
+    for sym, _ in _resolve_pairs_auto(live_settings):
+        base = sym.split('/')[0]
+        if base not in seen:
+            syms.append(base)
+            seen.add(base)
+    return syms or ['BTC', 'ETH']
+
+
+def _resolve_timeframes(value, live_settings: dict) -> list:
+    if value != 'auto':
+        return value if isinstance(value, list) else [value]
+    seen, tfs = set(), []
+    for _, tf in _resolve_pairs_auto(live_settings):
+        if tf not in seen:
+            tfs.append(tf)
+            seen.add(tf)
+    return tfs or ['1h', '4h']
+
+
+def _resolve_lookback(value, timeframes: list) -> int:
+    if value != 'auto':
+        return int(value)
+    return max((LOOKBACK_MAP.get(tf, 365) for tf in timeframes), default=365)
+
+
+# ---------------------------------------------------------------------------
+# Telegram
+# ---------------------------------------------------------------------------
+
+def _get_telegram_credentials():
     try:
         with open(SECRET_FILE, 'r') as f:
             secrets = json.load(f)
+        tg = secrets.get('telegram', {})
+        return tg.get('bot_token'), tg.get('chat_id')
+    except Exception:
+        return None, None
 
-        account = secrets.get('stbot', [{}])[0]
-        bot_token = account.get('telegram_bot_token') or account.get('bot_token')
-        chat_id   = account.get('telegram_chat_id')  or account.get('chat_id')
 
-        if not bot_token or not chat_id:
-            _log("TELEGRAM SKIP no token/chat_id in secret.json")
-            return
-
-        from stbot.utils.telegram import send_message
-        send_message(bot_token, chat_id, message)
+def _send_telegram_plain(message: str):
+    """Sendet eine Telegram-Nachricht als Plain Text."""
+    bot_token, chat_id = _get_telegram_credentials()
+    if not bot_token or not chat_id:
+        _log("TELEGRAM SKIP kein token/chat_id in secret.json")
+        return
+    try:
+        import requests
+        api_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        requests.post(api_url, data={'chat_id': chat_id, 'text': message}, timeout=10)
         _log("TELEGRAM sent")
     except Exception as e:
         _log(f"TELEGRAM ERROR {e}")
 
 
+def _send_start_telegram(pair_display: list, num_trials: int, start_time: datetime):
+    msg = (
+        f"StBot Auto-Optimizer GESTARTET\n"
+        f"Paare: {', '.join(pair_display)}\n"
+        f"Trials: {num_trials}\n"
+        f"Start: {start_time.strftime('%Y-%m-%d %H:%M:%S')}"
+    )
+    _send_telegram_plain(msg)
+
+
+def _send_end_telegram(elapsed_seconds: float):
+    dur = _format_elapsed(elapsed_seconds)
+
+    if not os.path.exists(OPTIMIZER_RESULTS_FILE):
+        _send_telegram_plain(f"StBot Auto-Optimizer abgeschlossen\nDauer: {dur}")
+        return
+
+    try:
+        with open(OPTIMIZER_RESULTS_FILE, encoding='utf-8') as f:
+            results = json.load(f)
+    except Exception:
+        _send_telegram_plain(f"StBot Auto-Optimizer abgeschlossen (Dauer: {dur})")
+        return
+
+    saved  = results.get('saved', [])
+    failed = results.get('failed', [])
+    total  = len(saved) + len(failed)
+
+    lines = [f"StBot Auto-Optimizer abgeschlossen (Dauer: {dur})"]
+
+    if saved:
+        lines.append(f"\nGespeichert ({len(saved)}/{total}):")
+        for s in saved:
+            sym_short = s['symbol'].split('/')[0]
+            lines.append(f"  {sym_short}/{s['timeframe']}: +{s['pnl_pct']}% -> {s['config_file']}")
+
+    if failed:
+        lines.append(f"\nFehlgeschlagen ({len(failed)}/{total}):")
+        for fi in failed:
+            sym_short = fi['symbol'].split('/')[0]
+            lines.append(f"  {sym_short}/{fi['timeframe']}: {fi['reason']}")
+
+    _send_telegram_plain('\n'.join(lines))
+
+
 # ---------------------------------------------------------------------------
-# Pipeline-Ausführung
+# Pipeline-Ausfuehrung
 # ---------------------------------------------------------------------------
 
 def _run_bash_pipeline() -> int:
@@ -191,15 +250,45 @@ def _run_bash_pipeline() -> int:
     return rc
 
 
-def _run_python_fallback(symbols: list, timeframes: list, lookback: int,
-                         opt_settings: dict) -> int:
-    """Direkter Python-Aufruf des Optimizers als Fallback."""
-    python_exe = sys.executable
-    _log(f"FALLBACK method=python interpreter={python_exe}")
-
-    start_date = (date.today() - timedelta(days=lookback)).strftime('%Y-%m-%d')
-    end_date   = date.today().strftime('%Y-%m-%d')
+def _run_python_pairs(pairs: list, lookback: int, opt_settings: dict) -> int:
+    """Python-Aufruf mit expliziten Paaren (auto-Modus)."""
+    python_exe  = sys.executable
+    start_date  = (date.today() - timedelta(days=lookback)).strftime('%Y-%m-%d')
+    end_date    = date.today().strftime('%Y-%m-%d')
+    pairs_str   = ' '.join(f"{sym}|{tf}" for sym, tf in pairs)
     constraints = opt_settings.get('constraints', {})
+
+    display = [f"{s.split('/')[0]}/{t}" for s, t in pairs]
+    _log(f"PIPELINE_EXEC method=python_pairs interpreter={python_exe} pairs={display}")
+
+    cmd = [
+        python_exe, OPTIMIZER_SCRIPT,
+        '--pairs',         pairs_str,
+        '--start_date',    start_date,
+        '--end_date',      end_date,
+        '--jobs',          str(opt_settings.get('cpu_cores', -1)),
+        '--max_drawdown',  str(constraints.get('max_drawdown_pct', 30)),
+        '--start_capital', str(opt_settings.get('start_capital', 1000)),
+        '--min_win_rate',  str(constraints.get('min_win_rate_pct', 50)),
+        '--trials',        str(opt_settings.get('num_trials', 100)),
+        '--min_pnl',       str(constraints.get('min_pnl_pct', 0)),
+        '--mode',          opt_settings.get('mode', 'strict'),
+    ]
+    result = subprocess.run(cmd)
+    rc = result.returncode
+    _log(f"PIPELINE_EXIT rc={rc}")
+    return rc
+
+
+def _run_python_fallback(symbols: list, timeframes: list,
+                         lookback: int, opt_settings: dict) -> int:
+    """Direkter Python-Aufruf (Fallback wenn bash nicht verfuegbar)."""
+    python_exe  = sys.executable
+    start_date  = (date.today() - timedelta(days=lookback)).strftime('%Y-%m-%d')
+    end_date    = date.today().strftime('%Y-%m-%d')
+    constraints = opt_settings.get('constraints', {})
+
+    _log(f"FALLBACK method=python interpreter={python_exe}")
 
     cmd = [
         python_exe, OPTIMIZER_SCRIPT,
@@ -215,63 +304,77 @@ def _run_python_fallback(symbols: list, timeframes: list, lookback: int,
         '--min_pnl',       str(constraints.get('min_pnl_pct', 0)),
         '--mode',          opt_settings.get('mode', 'strict'),
     ]
-
     result = subprocess.run(cmd)
     rc = result.returncode
     _log(f"PIPELINE_EXIT rc={rc}")
     return rc
 
 
-def run_optimization(schedule: dict, opt_settings: dict, live_settings: dict,
-                     reason: str):
-    """Führt die Optimierungs-Pipeline aus."""
+# ---------------------------------------------------------------------------
+# Haupt-Ablauf
+# ---------------------------------------------------------------------------
+
+def run_optimization(schedule: dict, opt_settings: dict,
+                     live_settings: dict, reason: str):
     os.makedirs(CACHE_DIR, exist_ok=True)
 
-    # "auto"-Werte auflösen
-    symbols    = _resolve_symbols(opt_settings.get('symbols_to_optimize', 'auto'), live_settings)
-    timeframes = _resolve_timeframes(opt_settings.get('timeframes_to_optimize', 'auto'), live_settings)
+    # auto-Modus: Paare direkt aus active_strategies
+    is_auto = (opt_settings.get('symbols_to_optimize') == 'auto'
+               or opt_settings.get('timeframes_to_optimize') == 'auto')
+
+    if is_auto:
+        pairs        = _resolve_pairs_auto(live_settings)
+        pair_display = [f"{sym.split('/')[0]}/{tf}" for sym, tf in pairs]
+        timeframes   = list(dict.fromkeys(tf for _, tf in pairs))
+        symbols      = None
+    else:
+        symbols      = _resolve_symbols(opt_settings.get('symbols_to_optimize'), live_settings)
+        timeframes   = _resolve_timeframes(opt_settings.get('timeframes_to_optimize'), live_settings)
+        pair_display = [f"{s}/{tf}" for s in symbols for tf in timeframes]
+        pairs        = None
+
     lookback   = _resolve_lookback(opt_settings.get('lookback_days', 'auto'), timeframes)
+    start_time = datetime.now()
+    num_trials = int(opt_settings.get('num_trials', 100))
 
     _log(f"START reason={reason} scheduled={json.dumps(schedule)} last_run={_get_last_run()}")
-    _log(f"CONFIG symbols={symbols} timeframes={timeframes} lookback_days={lookback}")
+    _log(f"CONFIG pairs={pair_display} lookback_days={lookback} trials={num_trials}")
 
     with open(IN_PROGRESS_FILE, 'w') as f:
-        f.write(datetime.now().isoformat())
+        f.write(start_time.isoformat())
 
-    start_time = time.time()
+    # START-Benachrichtigung
+    send_tg = opt_settings.get('send_telegram_on_completion', False)
+    if send_tg:
+        _send_start_telegram(pair_display, num_trials, start_time)
+
+    start_perf = time.time()
     success    = False
 
     try:
-        rc = _run_bash_pipeline()
-
-        if rc != 0:
-            _log("PIPELINE_WARNING Bash exit != 0 — attempting Python fallback")
-            rc = _run_python_fallback(symbols, timeframes, lookback, opt_settings)
-
+        if is_auto:
+            rc = _run_python_pairs(pairs, lookback, opt_settings)
+        else:
+            rc = _run_bash_pipeline()
+            if rc != 0:
+                _log("PIPELINE_WARNING Bash exit != 0 — attempting Python fallback")
+                rc = _run_python_fallback(symbols, timeframes, lookback, opt_settings)
         success = (rc == 0)
-
     except Exception as e:
         _log(f"ERROR {e}")
-
     finally:
         if os.path.exists(IN_PROGRESS_FILE):
             os.remove(IN_PROGRESS_FILE)
             print(f"DEBUG: cleared in-progress marker {IN_PROGRESS_FILE}", flush=True)
 
-    elapsed = round(time.time() - start_time, 1)
+    elapsed = round(time.time() - start_perf, 1)
 
     if success:
         _set_last_run()
         _log(f"FINISH result=success elapsed_s={elapsed}")
         print("Optimizer finished successfully; updated last-run timestamp.", flush=True)
-
-        if opt_settings.get('send_telegram_on_completion', False):
-            _send_telegram(
-                f"StBot Auto-Optimizer abgeschlossen\n"
-                f"Symbole: {', '.join(symbols)}\n"
-                f"Timeframes: {', '.join(timeframes)}\n"
-                f"Dauer: {elapsed}s"
-            )
+        if send_tg:
+            _send_end_telegram(elapsed)
     else:
         _log(f"FINISH result=failed elapsed_s={elapsed}")
 
@@ -302,14 +405,8 @@ def main():
 
     schedule = opt_settings.get('schedule', {
         '_info':       'day_of_week: 0=Montag, 6=Sonntag | hour: 0-23 (24h Format)',
-        'day_of_week': 0,
-        'hour':        3,
-        'minute':      0,
-        'interval': {
-            '_info': 'Einheit: minutes | hours | days | weeks',
-            'value': 7,
-            'unit':  'days',
-        },
+        'day_of_week': 0, 'hour': 3, 'minute': 0,
+        'interval':    {'value': 7, 'unit': 'days'},
     })
 
     if args.force:
@@ -317,7 +414,7 @@ def main():
     else:
         due, reason = _is_due(schedule)
         if not due:
-            print("Optimierung noch nicht fällig.")
+            print("Optimierung noch nicht faellig.")
             return
 
     run_optimization(schedule, opt_settings, live_settings, reason)
