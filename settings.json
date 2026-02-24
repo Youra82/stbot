@@ -62,8 +62,8 @@
             "minute": 0,
             "interval": {
                 "_info": "Einheit: minutes | hours | days | weeks",
-                "value": 7,
-                "unit": "days"
+                "value": 5,
+                "unit": "minutes"
             }
         },
         "symbols_to_optimize": "auto",
@@ -71,7 +71,7 @@
         "lookback_days": "auto",
         "start_capital": 1000,
         "cpu_cores": -1,
-        "num_trials": 100,
+        "num_trials": 10,
         "constraints": {
             "max_drawdown_pct": 30,
             "min_win_rate_pct": 50,
