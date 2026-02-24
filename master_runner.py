@@ -36,6 +36,16 @@ def main():
     print("StBot Master Runner v1.0")
     print("=======================================================")
 
+    # Auto-Optimizer im Hintergrund prüfen und ggf. starten
+    auto_opt_script = os.path.join(SCRIPT_DIR, 'auto_optimizer_scheduler.py')
+    if os.path.exists(auto_opt_script):
+        print("[Auto-Optimizer] Prüfe ob Optimierung fällig...")
+        subprocess.Popen(
+            [python_executable, auto_opt_script],
+            stdout=open(os.path.join(SCRIPT_DIR, 'logs', 'auto_optimizer_trigger.log'), 'a'),
+            stderr=subprocess.STDOUT,
+        )
+
     try:
         with open(settings_file, 'r') as f:
             settings = json.load(f)
