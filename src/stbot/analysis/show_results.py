@@ -239,9 +239,23 @@ def run_shared_mode(is_auto: bool, start_date, end_date, start_capital, target_m
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', default='1', type=str, help="Analyse-Modus (1=Einzel, 2=Manuell, 3=Auto)")
-    parser.add_argument('--target_max_drawdown', default=30.0, type=float, help="Ziel Max Drawdown % (nur für Modus 3)")
+    parser.add_argument('--mode', default='1', type=str,
+                        choices=['1', '2', '3', '4'],
+                        help="Analyse-Modus: 1=Einzel, 2=Manuell, 3=Auto, 4=Interaktive Charts")
+    parser.add_argument('--target_max_drawdown', default=30.0, type=float,
+                        help="Ziel Max Drawdown %% (nur fuer Modus 3)")
     args = parser.parse_args()
+
+    # Mode 4 hat eigenes Input-System
+    if args.mode == '4':
+        try:
+            from stbot.analysis.interactive_status import main as interactive_main
+            interactive_main()
+        except Exception as e:
+            print(f"Fehler beim Ausfuehren der interaktiven Charts: {e}")
+            import traceback
+            traceback.print_exc()
+        sys.exit(0)
 
     print("\n--- Bitte Konfiguration für den Backtest festlegen ---")
     start_date = input(f"Startdatum (JJJJ-MM-TT) [Standard: 2023-01-01]: ") or "2023-01-01"
@@ -265,5 +279,5 @@ if __name__ == "__main__":
             start_capital=start_capital,
             target_max_dd=args.target_max_drawdown
         )
-    else: 
+    else:
         run_single_analysis(start_date=start_date, end_date=end_date, start_capital=start_capital)

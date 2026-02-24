@@ -27,6 +27,7 @@ urllib3==2.5.0
 
 # Charting
 matplotlib
+plotly
 
 # Fortschrittsanzeige
 tqdm==4.67.1
