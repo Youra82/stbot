@@ -166,7 +166,7 @@ Füge die folgende Zeile am Ende ein (Pfad anpassen, z.B. `/root/stbot`):
 
 ```bash
 # Starte den StBot Master-Runner alle 15 Minuten
-*/15 * * * * /usr/bin/flock -n /root/stbot/stbot.lock /bin/sh -c "cd /root/stbot && /root/stbot/.venv/bin/python3 /root/stbot/master_runner.py >> /root/stbot/logs/cron.log 2>&1"
+*/15 * * * * /usr/bin/flock -n /root/stbot/stbot.lock /bin/sh -c "cd /root/stbot && .venv/bin/python3 master_runner.py >> /root/stbot/logs/cron.log 2>&1"
 ```
 
 Logverzeichnis anlegen:
@@ -201,7 +201,7 @@ Die zentrale `cron.log` enthält alle Aktivitäten.
 Um den `master_runner` sofort auszuführen, ohne auf den Cronjob zu warten:
 
 ```bash
-python3 master_runner.py
+cd /root/stbot && .venv/bin/python3 master_runner.py
 ```
 
 #### Bot aktualisieren
