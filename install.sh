@@ -24,6 +24,11 @@ echo -e "${GREEN}✔ System-Abhängigkeiten installiert.${NC}"
 
 # --- Python Virtuelle Umgebung einrichten ---
 echo -e "\n${YELLOW}2/4: Erstelle eine isolierte Python-Umgebung (.venv)...${NC}"
+# Alte venv löschen falls sie von einem anderen User/Pfad stammt (verhindert "bad interpreter" Fehler)
+if [ -d ".venv" ]; then
+    echo -e "${YELLOW}  Bestehende .venv wird gelöscht (Pfad-Reset)...${NC}"
+    rm -rf .venv
+fi
 python3.12 -m venv .venv # Explizit Version nutzen
 echo -e "${GREEN}✔ Virtuelle Umgebung wurde erstellt.${NC}"
 
