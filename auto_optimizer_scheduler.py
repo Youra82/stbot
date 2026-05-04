@@ -21,16 +21,14 @@ from datetime import datetime, date, timedelta
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(PROJECT_ROOT, 'src'))
 
-CACHE_DIR        = os.path.join(PROJECT_ROOT, 'data', 'cache')
-LOG_DIR          = os.path.join(PROJECT_ROOT, 'logs')
-SETTINGS_FILE    = os.path.join(PROJECT_ROOT, 'settings.json')
-OPTIMIZER_SCRIPT = os.path.join(PROJECT_ROOT, 'src', 'stbot', 'analysis', 'optimizer.py')
-SECRET_FILE      = os.path.join(PROJECT_ROOT, 'secret.json')
-LAST_RUN_FILE    = os.path.join(CACHE_DIR, '.last_optimization_run')
-IN_PROGRESS_FILE = os.path.join(CACHE_DIR, '.optimization_in_progress')
-TRIGGER_LOG      = os.path.join(LOG_DIR, 'auto_optimizer_trigger.log')
-OPTIMIZER_RESULTS_FILE = os.path.join(
-    PROJECT_ROOT, 'artifacts', 'results', 'last_optimizer_run.json')
+CACHE_DIR         = os.path.join(PROJECT_ROOT, 'data', 'cache')
+LOG_DIR           = os.path.join(PROJECT_ROOT, 'logs')
+SETTINGS_FILE     = os.path.join(PROJECT_ROOT, 'settings.json')
+PORTFOLIO_SCRIPT  = os.path.join(PROJECT_ROOT, 'run_portfolio_optimizer.py')
+SECRET_FILE       = os.path.join(PROJECT_ROOT, 'secret.json')
+LAST_RUN_FILE     = os.path.join(CACHE_DIR, '.last_optimization_run')
+IN_PROGRESS_FILE  = os.path.join(CACHE_DIR, '.optimization_in_progress')
+TRIGGER_LOG       = os.path.join(LOG_DIR, 'auto_optimizer_trigger.log')
 
 # Lookback je Timeframe (Tage)
 LOOKBACK_MAP = {
@@ -204,110 +202,43 @@ def _send_start_telegram(pair_display: list, num_trials: int, start_time: dateti
 
 def _send_end_telegram(elapsed_seconds: float):
     dur = _format_elapsed(elapsed_seconds)
-
-    if not os.path.exists(OPTIMIZER_RESULTS_FILE):
-        _send_telegram_plain(f"\u2705 StBot Auto-Optimizer abgeschlossen\nDauer: {dur}")
-        return
-
     try:
-        with open(OPTIMIZER_RESULTS_FILE, encoding='utf-8') as f:
-            results = json.load(f)
+        with open(SETTINGS_FILE, encoding='utf-8') as f:
+            settings = json.load(f)
+        strategies = settings.get('live_trading_settings', {}).get('active_strategies', [])
+        active     = [s for s in strategies if s.get('active')]
+        lines      = [f"\u2705 StBot Portfolio-Optimizer abgeschlossen (Dauer: {dur})"]
+        if active:
+            lines.append(f"\n\u2714 Aktives Portfolio ({len(active)} Strategie(n)):")
+            for s in active:
+                sym_short = s['symbol'].split('/')[0]
+                lines.append(f"\u2022 {sym_short}/{s['timeframe']}")
+        else:
+            lines.append("\nKein Portfolio eingetragen.")
+        _send_telegram_plain('\n'.join(lines))
     except Exception:
-        _send_telegram_plain(f"\u2705 StBot Auto-Optimizer abgeschlossen (Dauer: {dur})")
-        return
-
-    saved  = results.get('saved', [])
-    failed = results.get('failed', [])
-    total  = len(saved) + len(failed)
-
-    lines = [f"\u2705 StBot Auto-Optimizer abgeschlossen (Dauer: {dur})"]
-
-    if saved:
-        lines.append(f"\n\u2714 Gespeichert ({len(saved)}/{total}):")
-        for s in saved:
-            sym_short = s['symbol'].split('/')[0]
-            lines.append(f"\u2022 {sym_short}/{s['timeframe']}: +{s['pnl_pct']}% \u2192 {s['config_file']}")
-
-    if failed:
-        lines.append(f"\n\u274c Fehlgeschlagen ({len(failed)}/{total}):")
-        for fi in failed:
-            sym_short = fi['symbol'].split('/')[0]
-            lines.append(f"\u2022 {sym_short}/{fi['timeframe']}: {fi['reason']}")
-
-    _send_telegram_plain('\n'.join(lines))
+        _send_telegram_plain(f"\u2705 StBot Portfolio-Optimizer abgeschlossen (Dauer: {dur})")
 
 
 # ---------------------------------------------------------------------------
-# Pipeline-Ausfuehrung
+# Portfolio-Optimierung ausfuehren
 # ---------------------------------------------------------------------------
 
-def _run_bash_pipeline() -> int:
-    cmd = ['bash', '-lc', f"cd '{PROJECT_ROOT}' && ./run_pipeline_automated.sh"]
-    _log(f"PIPELINE_EXEC method=bash cmd={cmd}")
+def _run_portfolio_optimizer(opt_settings: dict) -> int:
+    capital    = str(opt_settings.get('start_capital', 100))
+    max_dd     = str(opt_settings.get('constraints', {}).get('max_drawdown_pct', 30))
+    start_date = opt_settings.get('start_date', 'auto')
+    end_date   = opt_settings.get('end_date',   'auto')
+    cmd = [sys.executable, PORTFOLIO_SCRIPT,
+           '--capital', capital, '--max-dd', max_dd, '--auto-write']
+    if start_date not in ('auto', '', None):
+        cmd += ['--start-date', start_date]
+    if end_date not in ('auto', '', None):
+        cmd += ['--end-date', end_date]
+    _log(f"PORTFOLIO_OPTIMIZER_START capital={capital} max_dd={max_dd}")
     result = subprocess.run(cmd)
-    rc = result.returncode
-    _log(f"PIPELINE_EXIT rc={rc}")
-    return rc
-
-
-def _run_python_pairs(pairs: list, lookback: int, opt_settings: dict) -> int:
-    """Python-Aufruf mit expliziten Paaren (auto-Modus)."""
-    python_exe  = sys.executable
-    start_date  = (date.today() - timedelta(days=lookback)).strftime('%Y-%m-%d')
-    end_date    = date.today().strftime('%Y-%m-%d')
-    pairs_str   = ' '.join(f"{sym}|{tf}" for sym, tf in pairs)
-    constraints = opt_settings.get('constraints', {})
-
-    display = [f"{s.split('/')[0]}/{t}" for s, t in pairs]
-    _log(f"PIPELINE_EXEC method=python_pairs interpreter={python_exe} pairs={display}")
-
-    cmd = [
-        python_exe, OPTIMIZER_SCRIPT,
-        '--pairs',         pairs_str,
-        '--start_date',    start_date,
-        '--end_date',      end_date,
-        '--jobs',          str(opt_settings.get('cpu_cores', -1)),
-        '--max_drawdown',  str(constraints.get('max_drawdown_pct', 30)),
-        '--start_capital', str(opt_settings.get('start_capital', 1000)),
-        '--min_win_rate',  str(constraints.get('min_win_rate_pct', 50)),
-        '--trials',        str(opt_settings.get('num_trials', 100)),
-        '--min_pnl',       str(constraints.get('min_pnl_pct', 0)),
-        '--mode',          opt_settings.get('mode', 'strict'),
-    ]
-    result = subprocess.run(cmd)
-    rc = result.returncode
-    _log(f"PIPELINE_EXIT rc={rc}")
-    return rc
-
-
-def _run_python_fallback(symbols: list, timeframes: list,
-                         lookback: int, opt_settings: dict) -> int:
-    """Direkter Python-Aufruf (Fallback wenn bash nicht verfuegbar)."""
-    python_exe  = sys.executable
-    start_date  = (date.today() - timedelta(days=lookback)).strftime('%Y-%m-%d')
-    end_date    = date.today().strftime('%Y-%m-%d')
-    constraints = opt_settings.get('constraints', {})
-
-    _log(f"FALLBACK method=python interpreter={python_exe}")
-
-    cmd = [
-        python_exe, OPTIMIZER_SCRIPT,
-        '--symbols',       ' '.join(symbols),
-        '--timeframes',    ' '.join(timeframes),
-        '--start_date',    start_date,
-        '--end_date',      end_date,
-        '--jobs',          str(opt_settings.get('cpu_cores', -1)),
-        '--max_drawdown',  str(constraints.get('max_drawdown_pct', 30)),
-        '--start_capital', str(opt_settings.get('start_capital', 1000)),
-        '--min_win_rate',  str(constraints.get('min_win_rate_pct', 50)),
-        '--trials',        str(opt_settings.get('num_trials', 100)),
-        '--min_pnl',       str(constraints.get('min_pnl_pct', 0)),
-        '--mode',          opt_settings.get('mode', 'strict'),
-    ]
-    result = subprocess.run(cmd)
-    rc = result.returncode
-    _log(f"PIPELINE_EXIT rc={rc}")
-    return rc
+    _log(f"PORTFOLIO_OPTIMIZER_EXIT rc={result.returncode}")
+    return result.returncode
 
 
 # ---------------------------------------------------------------------------
@@ -317,62 +248,38 @@ def _run_python_fallback(symbols: list, timeframes: list,
 def run_optimization(schedule: dict, opt_settings: dict,
                      live_settings: dict, reason: str):
     os.makedirs(CACHE_DIR, exist_ok=True)
-
-    # auto-Modus: Paare direkt aus active_strategies
-    is_auto = (opt_settings.get('symbols_to_optimize') == 'auto'
-               or opt_settings.get('timeframes_to_optimize') == 'auto')
-
-    if is_auto:
-        pairs        = _resolve_pairs_auto(live_settings)
-        pair_display = [f"{sym.split('/')[0]}/{tf}" for sym, tf in pairs]
-        timeframes   = list(dict.fromkeys(tf for _, tf in pairs))
-        symbols      = None
-    else:
-        symbols      = _resolve_symbols(opt_settings.get('symbols_to_optimize'), live_settings)
-        timeframes   = _resolve_timeframes(opt_settings.get('timeframes_to_optimize'), live_settings)
-        pair_display = [f"{s}/{tf}" for s in symbols for tf in timeframes]
-        pairs        = None
-
-    lookback   = _resolve_lookback(opt_settings.get('lookback_days', 'auto'), timeframes)
     start_time = datetime.now()
-    num_trials = int(opt_settings.get('num_trials', 100))
+    send_tg    = opt_settings.get('send_telegram_on_completion', False)
 
     _log(f"START reason={reason} scheduled={json.dumps(schedule)} last_run={_get_last_run()}")
-    _log(f"CONFIG pairs={pair_display} lookback_days={lookback} trials={num_trials}")
 
     with open(IN_PROGRESS_FILE, 'w') as f:
         f.write(start_time.isoformat())
 
-    # START-Benachrichtigung
-    send_tg = opt_settings.get('send_telegram_on_completion', False)
     if send_tg:
-        _send_start_telegram(pair_display, num_trials, start_time)
+        _send_telegram_plain(
+            f"🔍 StBot Portfolio-Optimizer GESTARTET\n"
+            f"Start: {start_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"Führt frische Backtests aller Configs durch und wählt bestes Portfolio."
+        )
 
     start_perf = time.time()
     success    = False
 
     try:
-        if is_auto:
-            rc = _run_python_pairs(pairs, lookback, opt_settings)
-        else:
-            rc = _run_bash_pipeline()
-            if rc != 0:
-                _log("PIPELINE_WARNING Bash exit != 0 — attempting Python fallback")
-                rc = _run_python_fallback(symbols, timeframes, lookback, opt_settings)
+        rc      = _run_portfolio_optimizer(opt_settings)
         success = (rc == 0)
     except Exception as e:
         _log(f"ERROR {e}")
     finally:
         if os.path.exists(IN_PROGRESS_FILE):
             os.remove(IN_PROGRESS_FILE)
-            print(f"DEBUG: cleared in-progress marker {IN_PROGRESS_FILE}", flush=True)
 
     elapsed = round(time.time() - start_perf, 1)
 
     if success:
         _set_last_run()
         _log(f"FINISH result=success elapsed_s={elapsed}")
-        print("Optimizer finished successfully; updated last-run timestamp.", flush=True)
         if send_tg:
             _send_end_telegram(elapsed)
     else:
@@ -397,7 +304,7 @@ def main():
         return
 
     opt_settings  = settings.get('optimization_settings', {})
-    live_settings = settings.get('live_trading_settings', {})
+    live_settings = settings.get('live_trading_settings', {})  # kept for signature compatibility
 
     if not opt_settings.get('enabled', False) and not args.force:
         print("Auto-Optimierung deaktiviert (optimization_settings.enabled=false).")
