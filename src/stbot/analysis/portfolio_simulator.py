@@ -262,5 +262,6 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
         "max_drawdown_date": max_drawdown_date,
         "min_equity": min_equity_ever,
         "liquidation_date": liquidation_date,
+        "trade_history": trade_history,
         "equity_curve": equity_df
     }
