@@ -21,19 +21,19 @@ class Bias:
     BEARISH = "BEARISH"
     NEUTRAL = "NEUTRAL"
 
-def run_portfolio_simulation(start_capital, strategies_data, start_date, end_date):
+def run_portfolio_simulation(start_capital, strategies_data, start_date, end_date, verbose=True):
     """
     Führt eine chronologische Portfolio-Simulation mit mehreren StBot-Strategien durch.
     """
-    print("\n--- Starte Portfolio-Simulation (StBot SRv2)... ---")
-
-    # --- 1. Datenvorbereitung ---
-    print("1/3: Bereite Strategie-Daten vor...")
+    if verbose:
+        print("\n--- Starte Portfolio-Simulation (StBot SRv2)... ---")
+        print("1/3: Bereite Strategie-Daten vor...")
 
     processed_strategies = {}
     all_timestamps = set()
 
-    for key, strat in tqdm(strategies_data.items(), desc="Verarbeite Strategien"):
+    _iter = tqdm(strategies_data.items(), desc="Verarbeite Strategien") if verbose else strategies_data.items()
+    for key, strat in _iter:
         try:
             df = strat['data'].copy()
             if df.empty or len(df) < 100: continue
@@ -68,14 +68,12 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
             print(f"Fehler bei Vorbereitung von {key}: {e}")
 
     if not processed_strategies:
-        print("Keine gültigen Strategien nach Vorbereitung.")
         return None
 
     sorted_timestamps = sorted(list(all_timestamps))
-    print(f"-> {len(sorted_timestamps)} Zeitschritte zu simulieren.")
-
-    # --- 2. Simulation ---
-    print("2/3: Führe Simulation durch...")
+    if verbose:
+        print(f"-> {len(sorted_timestamps)} Zeitschritte zu simulieren.")
+        print("2/3: Führe Simulation durch...")
 
     equity = start_capital
     peak_equity = start_capital
@@ -93,7 +91,8 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
     absolute_max_notional_value = 1000000
     min_notional = 5.0
 
-    for ts in tqdm(sorted_timestamps, desc="Simuliere"):
+    _ts_iter = tqdm(sorted_timestamps, desc="Simuliere") if verbose else sorted_timestamps
+    for ts in _ts_iter:
         if liquidation_date: break
 
         current_total_equity = equity
@@ -239,7 +238,8 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
             liquidation_date = ts
 
     # --- 3. Abschluss ---
-    print("3/3: Bereite Ergebnisse vor...")
+    if verbose:
+        print("3/3: Bereite Ergebnisse vor...")
     final_equity = equity_curve[-1]['equity'] if equity_curve else start_capital
     total_pnl_pct = (final_equity / start_capital - 1) * 100 if start_capital > 0 else 0
     wins = sum(1 for t in trade_history if t['pnl'] > 0)
