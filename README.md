@@ -343,6 +343,63 @@ Auf 15m entstehen zu viele Fake-Pivots. Ab 2h haben S/R-Zonen ausreichend Testhi
 > **Hinweis:** Das Volumen-Filter (120% des 20-Kerzen-Durchschnitts) ist auf niedrig-liquiden Coins unzuverlässig. BTC und ETH liefern die konstanteste Signalqualität.
 
 
+---
+
+## Coin & Timeframe Empfehlungen
+
+StBot ist eine **S/R-Breakout-Strategie** — er sucht dynamische Unterstützungs- und Widerstandszonen aus Pivot-Hochs/-Tiefs und tradet den Ausbruch. Benötigt: klare Pivot-Struktur, ausreichend Volumen für Bestätigung und erkennbaren Trend für den MTF-EMA-Bias-Filter (EMA20 vs EMA50).
+
+### Effektive Zeitspannen je Timeframe
+
+| TF | Pivot(20) — S/R Zonen | ATR(14) — SL | Vol-MA(20) | EMA20/50 — Bias | Geeignet |
+|---|---|---|---|---|---|
+| 15m | 5h | 3.5h | 5h | 5h / 12.5h | ❌ |
+| 30m | 10h | 7h | 10h | 10h / 25h | ⚠️ |
+| 1h | 20h | 14h | 20h | 20h / 50h | ✅ |
+| **2h** | **40h** | **28h** | **40h** | **40h / 100h** | **✅✅** |
+| **4h** | **80h** | **56h** | **80h** | **80h / 200h** | **✅✅** |
+| 6h | 120h | 84h | 120h | 120h / 300h | ✅ |
+| 1d | 20d | 14d | 20d | 20d / 50d | ✅ |
+
+Auf 15m entstehen zu viele Fake-Pivots. Ab 2h haben S/R-Zonen ausreichend Testhistorie und Volumen-Bestätigung ist aussagekräftig. Die EMA20/50-Bias-Werte auf 4h (80h / 200h) haben industrielle Relevanz.
+
+### Coin-Eignung
+
+| Coin | S/R Struktur | Breakout-Qualität | Vol.-Zuverlässigkeit | Bewertung |
+|---|---|---|---|---|
+| **BTC** | Exzellent — institutionelle S/R Levels | Klare, bestätigte Breakouts | Sehr hohe Liquidität | ✅✅ Beste Wahl |
+| **ETH** | Exzellent — ähnlich BTC | Saubere Ausbrüche | Sehr hohe Liquidität | ✅✅ Sehr gut |
+| **SOL** | Sehr gut — klare Swing-Hochs/-Tiefs | Starke Breakouts mit Volumen | Gute Liquidität | ✅ Gut |
+| **XRP** | Gut — klare historische Levels | Solide Breakouts | Hohe Liquidität | ✅ Gut |
+| **BNB** | Gut — stabile Zonen | Moderate Breakout-Stärke | Gute Liquidität | ✅ Gut |
+| **AVAX** | Gut — klare Swing-Struktur | Gute Breakouts in Bullphasen | Ausreichend | ✅ Gut |
+| **ARB** | Gut — ETH-korreliert | Solide Ausbrüche | Ausreichend | ✅ Gut |
+| **LTC** | Mittel — folgt BTC | Ausbrüche weniger dynamisch | Gut | ⚠️ Mittel |
+| **LINK** | Mittel — S/R-Zonen vorhanden | Breakouts oft kurzlebig | Mittel | ⚠️ Mittel |
+| **ADA** | Mittel — viele False Breakouts | Niedriges Volumen bei Ausbrüchen | Mittel | ⚠️ Mittel |
+| **DOT** | Mittel — in Bullphasen klar | Phasenabhängig | Mittel | ⚠️ Mittel |
+| **AAVE** | Schwach — kleine S/R-Zonen | Breakouts oft Noise | Niedrig | ⚠️ Schwach |
+| **DOGE** | Schlecht — sentiment-getrieben | Zufällige Ausbrüche | Unzuverlässig | ❌ Schlecht |
+| **SHIB/PEPE** | Nicht vorhanden | Keine echten S/R Zonen | Nicht verwendbar | ❌❌ Nicht geeignet |
+
+### Empfohlene Kombinationen (Ranking)
+
+| Rang | Kombination | Begründung |
+|---|---|---|
+| 🥇 1 | **BTC 4h** | Klarste institutionelle S/R-Levels, starke Breakouts mit Volumen |
+| 🥇 1 | **ETH 4h** | Ähnlich BTC, gute MTF-EMA-Bias |
+| 🥈 2 | **BTC 2h** | Mehr Trades als 4h, S/R noch ausreichend strukturiert |
+| 🥈 2 | **SOL 2h / 4h** | Explosive Breakouts, klare Pivot-Struktur |
+| 🥉 3 | **XRP 4h** | Klare historische S/R Levels |
+| 4 | **AVAX 4h** | Gute Breakout-Qualität in Trending-Phasen |
+| 4 | **ARB 4h** | ETH-korreliert, solide Ausbrüche |
+| 4 | **BTC 1d** | Wenige aber sehr zuverlässige Breakouts |
+| ❌ | **Alles auf 15m / 30m** | Zu viele Fake-Pivots, Volumen-Bestätigung bedeutungslos |
+| ❌ | **DOGE / SHIB** | Keine validen S/R-Zonen vorhanden |
+
+> **Hinweis:** Das Volumen-Filter (120% des 20-Kerzen-Durchschnitts) ist auf niedrig-liquiden Coins unzuverlässig. BTC und ETH liefern die konstanteste Signalqualität.
+
+
 -----
 
 ## Git Management
