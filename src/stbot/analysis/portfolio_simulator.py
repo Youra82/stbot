@@ -57,7 +57,9 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
             processed_strategies[key] = {
                 'data': df,
                 'params': params,
-                'risk_params': strat.get('risk_params', {})
+                'risk_params': strat.get('risk_params', {}),
+                'symbol': strat.get('symbol', key),
+                'timeframe': strat.get('timeframe', ''),
             }
 
             all_timestamps.update(df.index)
@@ -129,8 +131,21 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
                 pnl_pct = (exit_price / pos['entry_price'] - 1) if pos['side'] == 'long' else (1 - exit_price / pos['entry_price'])
                 pnl_usd = pos['notional_value'] * pnl_pct
                 total_fees = pos['notional_value'] * fee_pct * 2
-                equity += (pnl_usd - total_fees)
-                trade_history.append({'strategy_key': key, 'pnl': (pnl_usd - total_fees)})
+                net_pnl = pnl_usd - total_fees
+                equity += net_pnl
+                trade_history.append({
+                    'strategy_key': key,
+                    'ts':         ts.isoformat() if hasattr(ts, 'isoformat') else str(ts),
+                    'entry_time': pos.get('entry_time', ts).isoformat() if hasattr(pos.get('entry_time', ts), 'isoformat') else str(pos.get('entry_time', ts)),
+                    'symbol':     pos.get('symbol_key', key),
+                    'timeframe':  pos.get('timeframe', ''),
+                    'direction':  pos['side'],
+                    'entry':      pos['entry_price'],
+                    'exit':       exit_price,
+                    'pnl':        net_pnl,
+                    'leverage':   pos.get('leverage', 0),
+                    'margin_used': round(pos.get('margin_used', 0), 4),
+                })
                 positions_to_close.append(key)
             else:
                 pnl_mult = 1 if pos['side'] == 'long' else -1
@@ -202,7 +217,11 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
                         'activation_price': act, 'trailing_active': False,
                         'peak_price': entry_price, 'callback_rate': risk_params.get('trailing_stop_callback_rate_pct', 1.0)/100,
                         'notional_value': final_notional, 'margin_used': margin_used,
-                        'last_known_price': entry_price
+                        'last_known_price': entry_price,
+                        'entry_time': ts,
+                        'symbol_key': strat.get('symbol', key),
+                        'timeframe':  strat.get('timeframe', ''),
+                        'leverage':   leverage,
                     }
 
         # C) Tracking
