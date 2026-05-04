@@ -136,21 +136,15 @@ def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose
         if position:
             exit_price = None
             if position['side'] == 'long':
-                if not position['trailing_active'] and current_candle['high'] >= position['activation_price']: position['trailing_active'] = True
-                if position['trailing_active']:
-                    position['peak_price'] = max(position['peak_price'], current_candle['high'])
-                    trailing_sl = position['peak_price'] * (1 - callback_rate)
-                    position['stop_loss'] = max(position['stop_loss'], trailing_sl)
-                if current_candle['low'] <= position['stop_loss']: exit_price = position['stop_loss']
-                elif not position['trailing_active'] and current_candle['high'] >= position['take_profit']: exit_price = position['take_profit']
+                if current_candle['low'] <= position['stop_loss']:
+                    exit_price = position['stop_loss']
+                elif current_candle['high'] >= position['take_profit']:
+                    exit_price = position['take_profit']
             elif position['side'] == 'short':
-                if not position['trailing_active'] and current_candle['low'] <= position['activation_price']: position['trailing_active'] = True
-                if position['trailing_active']:
-                    position['peak_price'] = min(position['peak_price'], current_candle['low'])
-                    trailing_sl = position['peak_price'] * (1 + callback_rate)
-                    position['stop_loss'] = min(position['stop_loss'], trailing_sl)
-                if current_candle['high'] >= position['stop_loss']: exit_price = position['stop_loss']
-                elif not position['trailing_active'] and current_candle['low'] <= position['take_profit']: exit_price = position['take_profit']
+                if current_candle['high'] >= position['stop_loss']:
+                    exit_price = position['stop_loss']
+                elif current_candle['low'] <= position['take_profit']:
+                    exit_price = position['take_profit']
 
             if exit_price:
                 pnl_pct = (exit_price / position['entry_price'] - 1) if position['side'] == 'long' else (1 - exit_price / position['entry_price'])
@@ -165,6 +159,7 @@ def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose
                 if peak_capital > 0:
                     drawdown = (peak_capital - current_capital) / peak_capital
                     max_drawdown_pct = max(max_drawdown_pct, drawdown)
+                continue  # Kein Re-Entry auf derselben Kerze nach Trade-Schluss
 
         # --- Einstiegs-Logik ---
         if not position and current_capital > 0:
