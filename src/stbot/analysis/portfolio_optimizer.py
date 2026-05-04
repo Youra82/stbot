@@ -37,7 +37,7 @@ def run_portfolio_optimizer(start_capital, strategies_data, start_date, end_date
             print(f"WARNUNG: Keine Daten für {filename} in Einzelanalyse.")
             continue
 
-        result = run_portfolio_simulation(start_capital, sim_data, start_date, end_date)
+        result = run_portfolio_simulation(start_capital, sim_data, start_date, end_date, verbose=False)
 
         if result and not result.get("liquidation_date"):
             # Max DD aus Ergebnis holen (als Dezimalzahl)
@@ -135,7 +135,7 @@ def run_portfolio_optimizer(start_capital, strategies_data, start_date, end_date
             if not valid_data_for_sim: continue
 
             # Portfolio simulieren
-            result = run_portfolio_simulation(start_capital, current_team_data, start_date, end_date)
+            result = run_portfolio_simulation(start_capital, current_team_data, start_date, end_date, verbose=False)
 
             # Prüfen ob Ergebnis gültig UND Max DD eingehalten wird
             if result and not result.get("liquidation_date"):
