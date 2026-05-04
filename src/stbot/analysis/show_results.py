@@ -218,15 +218,6 @@ def run_shared_mode(is_auto: bool, start_date, end_date, start_capital, target_m
 
             equity_df_export.to_csv(csv_path, index=False)
             print(f"✔ Details zur Equity-Kurve wurden nach '{os.path.basename(csv_path)}' exportiert.")
-            try:
-                with open(os.path.join(PROJECT_ROOT, 'secret.json'), 'r') as f: secrets = json.load(f)
-                telegram_config = secrets.get('telegram', {})
-                if telegram_config.get('bot_token'):
-                    print("Sende Bericht an Telegram...")
-                    send_document(telegram_config.get('bot_token'), telegram_config.get('chat_id'), csv_path, caption)
-                    print("✔ Bericht wurde erfolgreich an Telegram gesendet.")
-            except Exception as e_tg:
-                print(f"ⓘ Konnte Bericht nicht an Telegram senden: {e_tg}")
         except Exception as e_csv:
             print(f"FEHLER beim Speichern der CSV '{csv_path}': {e_csv}")
 
