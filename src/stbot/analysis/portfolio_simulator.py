@@ -114,26 +114,16 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
             callback_rate = pos['callback_rate']
 
             if pos['side'] == 'long':
-                if not pos['trailing_active'] and current_candle['high'] >= pos['activation_price']:
-                    pos['trailing_active'] = True
-                if pos['trailing_active']:
-                    pos['peak_price'] = max(pos['peak_price'], current_candle['high'])
-                    trailing_sl = pos['peak_price'] * (1 - callback_rate)
-                    pos['stop_loss'] = max(pos['stop_loss'], trailing_sl)
-
-                if current_candle['low'] <= pos['stop_loss']: exit_price = pos['stop_loss']
-                elif not pos['trailing_active'] and current_candle['high'] >= pos['take_profit']: exit_price = pos['take_profit']
+                if current_candle['low'] <= pos['stop_loss']:
+                    exit_price = pos['stop_loss']
+                elif current_candle['high'] >= pos['take_profit']:
+                    exit_price = pos['take_profit']
 
             else: # Short
-                if not pos['trailing_active'] and current_candle['low'] <= pos['activation_price']:
-                    pos['trailing_active'] = True
-                if pos['trailing_active']:
-                    pos['peak_price'] = min(pos['peak_price'], current_candle['low'])
-                    trailing_sl = pos['peak_price'] * (1 + callback_rate)
-                    pos['stop_loss'] = min(pos['stop_loss'], trailing_sl)
-
-                if current_candle['high'] >= pos['stop_loss']: exit_price = pos['stop_loss']
-                elif not pos['trailing_active'] and current_candle['low'] <= pos['take_profit']: exit_price = pos['take_profit']
+                if current_candle['high'] >= pos['stop_loss']:
+                    exit_price = pos['stop_loss']
+                elif current_candle['low'] <= pos['take_profit']:
+                    exit_price = pos['take_profit']
 
             if exit_price:
                 pnl_pct = (exit_price / pos['entry_price'] - 1) if pos['side'] == 'long' else (1 - exit_price / pos['entry_price'])
