@@ -1,4 +1,4 @@
-# src/stbot/analysis/portfolio_optimizer.py (Version für StBot SMC mit MaxDD Constraint & Coin-Kollisionsschutz)
+# src/stbot/analysis/portfolio_optimizer.py (Portfolio-Optimierer mit MaxDD Constraint & Coin-Kollisionsschutz)
 import pandas as pd
 import itertools
 from tqdm import tqdm
@@ -15,11 +15,11 @@ from stbot.analysis.portfolio_simulator import run_portfolio_simulation
 # *** Angepasst: Nimmt target_max_dd entgegen ***
 def run_portfolio_optimizer(start_capital, strategies_data, start_date, end_date, target_max_dd: float):
     """
-    Findet die Kombination von SMC-Strategien, die das höchste Endkapital liefert,
+    Findet die Kombination von Strategien, die das höchste Endkapital liefert,
     während der maximale Drawdown unter dem Zielwert (`target_max_dd`) bleibt UND jeder Coin nur einmal vorkommt.
     Verwendet einen modifizierten Greedy-Algorithmus.
     """
-    print(f"\n--- Starte automatische Portfolio-Optimierung (SMC) mit Max DD <= {target_max_dd:.2f}% & ohne Coin-Kollisionen ---")
+    print(f"\n--- Starte automatische Portfolio-Optimierung mit Max DD <= {target_max_dd:.2f}% & ohne Coin-Kollisionen ---")
     target_max_dd_decimal = target_max_dd / 100.0 # Umrechnung in Dezimalzahl für Vergleiche
 
     if not strategies_data:
