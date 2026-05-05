@@ -234,6 +234,19 @@ Oder direkt per `--force`:
 cd ~/stbot && .venv/bin/python3 auto_optimizer_scheduler.py --force
 ```
 
+### Replot — Charts neu generieren (ohne Re-Optimierung)
+
+Das aktive Portfolio erneut simulieren und Equity-Chart + Trades-Excel via Telegram senden — ohne die komplette Optimierung neu durchzuführen:
+
+```bash
+cd ~/stbot && .venv/bin/python3 run_portfolio_optimizer.py --replot
+```
+
+Optionale Parameter (werden sonst aus `settings.json` gelesen):
+```bash
+.venv/bin/python3 run_portfolio_optimizer.py --replot --capital 200 --start-date 2024-01-01 --end-date 2025-01-01
+```
+
 ### Optimizer-Logs überwachen
 
 ```bash
