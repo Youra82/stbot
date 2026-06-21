@@ -69,7 +69,7 @@ def _make_dummy_signal(processed_df: pd.DataFrame, side: str, params: dict) -> d
 
 
 def _build_params(symbol: str, timeframe: str, settings: dict) -> dict:
-    strats = settings.get('active_strategies', [])
+    strats = settings.get('live_trading_settings', {}).get('active_strategies', [])
     strat  = next((s for s in strats
                    if s.get('symbol') == symbol and s.get('timeframe') == timeframe), {})
     risk   = strat.get('risk_settings', settings.get('risk_settings', {}))
@@ -184,7 +184,7 @@ def main():
         print("FEHLER: Exchange konnte nicht initialisiert werden.")
         sys.exit(1)
 
-    active = settings.get('active_strategies', [])
+    active = settings.get('live_trading_settings', {}).get('active_strategies', [])
 
     if args.symbol or args.timeframe:
         targets = [
