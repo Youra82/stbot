@@ -26,3 +26,8 @@ open_trades.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Rohe Bitget-Trade-Exports (Account-UID + Historie, nicht versionieren)
+daten/*.xls
+daten/*.txt
+daten/*.csv
