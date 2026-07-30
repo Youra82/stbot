@@ -133,18 +133,44 @@ def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose
         if current_capital <= 0: break
 
         # --- Positions-Management ---
+        # Live platziert KEINE feste TP-Order (siehe trade_manager.py) - nur ein harter SL-Trigger
+        # und ein Trailing-Stop (Aktivierung bei activation_rr, Rueckzug bei callback_rate).
+        # Die frueher hier simulierte statische TP-Order existiert live nicht und wurde entfernt
+        # (Live-vs-Backtest-Analyse 2026-07-30 zeigte dadurch stark ueberzeichnete Backtest-PnL).
         if position:
+            o, h, l, c = current_candle['open'], current_candle['high'], current_candle['low'], current_candle['close']
+            # Intracandle-Pfad annaehern (keine 1m-Daten im Optimizer-Loop verfuegbar):
+            # bullische Kerze -> Tief vor Hoch, baerische Kerze -> Hoch vor Tief.
+            path = [o, l, h, c] if c >= o else [o, h, l, c]
+
             exit_price = None
-            if position['side'] == 'long':
-                if current_candle['low'] <= position['stop_loss']:
-                    exit_price = position['stop_loss']
-                elif current_candle['high'] >= position['take_profit']:
-                    exit_price = position['take_profit']
-            elif position['side'] == 'short':
-                if current_candle['high'] >= position['stop_loss']:
-                    exit_price = position['stop_loss']
-                elif current_candle['low'] <= position['take_profit']:
-                    exit_price = position['take_profit']
+            for p in path:
+                if position['side'] == 'long':
+                    if p <= position['stop_loss']:
+                        exit_price = position['stop_loss']
+                        break
+                    if not position['trailing_active'] and p >= position['activation_price']:
+                        position['trailing_active'] = True
+                        position['peak_price'] = p
+                    if position['trailing_active']:
+                        position['peak_price'] = max(position['peak_price'], p)
+                        trail_level = position['peak_price'] * (1 - callback_rate)
+                        if p <= trail_level:
+                            exit_price = trail_level
+                            break
+                else:
+                    if p >= position['stop_loss']:
+                        exit_price = position['stop_loss']
+                        break
+                    if not position['trailing_active'] and p <= position['activation_price']:
+                        position['trailing_active'] = True
+                        position['peak_price'] = p
+                    if position['trailing_active']:
+                        position['peak_price'] = min(position['peak_price'], p)
+                        trail_level = position['peak_price'] * (1 + callback_rate)
+                        if p >= trail_level:
+                            exit_price = trail_level
+                            break
 
             if exit_price:
                 pnl_pct = (exit_price / position['entry_price'] - 1) if position['side'] == 'long' else (1 - exit_price / position['entry_price'])

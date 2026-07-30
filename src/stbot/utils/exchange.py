@@ -64,6 +64,19 @@ class Exchange:
                 df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
                 df.set_index('timestamp', inplace=True)
                 df.sort_index(inplace=True)
+
+                # Letzte Kerze verwerfen, falls sie noch nicht geschlossen ist (fetch_ohlcv liefert
+                # sonst die gerade laufende Kerze als letzte Zeile -> würde Signale auf Basis
+                # unvollständiger Daten auslösen, siehe Live-vs-Backtest-Analyse 2026-07-30).
+                if not df.empty:
+                    try:
+                        tf_seconds = self.exchange.parse_timeframe(timeframe)
+                        last_close_time = df.index[-1] + pd.Timedelta(seconds=tf_seconds)
+                        if last_close_time > pd.Timestamp.now(tz='UTC'):
+                            df = df.iloc[:-1]
+                    except Exception:
+                        pass
+
                 return df
 
         except Exception as e:
