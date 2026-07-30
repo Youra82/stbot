@@ -31,3 +31,6 @@ Thumbs.db
 daten/*.xls
 daten/*.txt
 daten/*.csv
+
+# Generierte Analyse-Ergebnisse (reproduzierbar aus den daten/*.py Skripten)
+daten/*.json
