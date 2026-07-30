@@ -41,20 +41,24 @@ def load_data(symbol, timeframe, start_date_str, end_date_str):
             # Konvertiere Index zu Datetime falls nötig
             if not isinstance(data.index, pd.DatetimeIndex):
                 data.index = pd.to_datetime(data.index, utc=True)
-            
+
             data_start = data.index.min()
             data_end = data.index.max()
             req_start = pd.to_datetime(start_date_str, utc=True)
             req_end = pd.to_datetime(end_date_str, utc=True)
-            
+
             # Puffer hinzufügen für Indikatoren
-            req_start_buffer = req_start - pd.Timedelta(days=20) 
+            req_start_buffer = req_start - pd.Timedelta(days=20)
 
             if data_start <= req_start_buffer and data_end >= req_end:
                 return data.loc[req_start_buffer:req_end]
         except Exception:
-            try: os.remove(cache_file)
-            except OSError: pass
+            # NICHT die Cache-Datei loeschen: bei paralleler Nutzung (z.B. mehrere
+            # Optuna-/Multiprocessing-Worker) fuehrt ein einzelner transienter Lesefehler
+            # sonst dazu, dass eine gueltige, von anderen Prozessen genutzte Cache-Datei
+            # geloescht wird -> Netzwerk-Fetch-Sturm + Rate-Limiting (siehe 2026-07-30).
+            # Ein zu kurzer/kaputter Cache wird unten ohnehin per atomarem Replace ersetzt.
+            pass
 
     try:
         if secrets_cache is None:
@@ -76,7 +80,11 @@ def load_data(symbol, timeframe, start_date_str, end_date_str):
         full_data = exchange.fetch_historical_ohlcv(symbol, timeframe, start_dt.strftime('%Y-%m-%d'), end_date_str)
         
         if not full_data.empty:
-            full_data.to_csv(cache_file)
+            # Atomar schreiben (temp-Datei + os.replace), damit parallele Leser nie eine
+            # halb geschriebene Cache-Datei sehen (siehe Kommentar oben zum Race-Condition-Fix).
+            tmp_file = f"{cache_file}.tmp.{os.getpid()}"
+            full_data.to_csv(tmp_file)
+            os.replace(tmp_file, cache_file)
             req_start_dt = pd.to_datetime(start_date_str, utc=True)
             req_end_dt = pd.to_datetime(end_date_str, utc=True)
             # Wir geben Daten AB Puffer zurück
