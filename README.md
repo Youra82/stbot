@@ -212,6 +212,26 @@ Um den neuesten Code von GitHub zu laden und die Umgebung sauber zu halten:
 ./update.sh
 ```
 
+#### Live-Trades gegen Backtest-Erwartung prüfen
+
+Vergleicht reale Bitget-Trades gegen die Backtest-Erwartung der jeweiligen Config —
+über den gesamten Config-Pool (`src/stbot/strategy/configs/`), nicht nur die
+aktuell in `settings.json` aktiven Strategien, damit auch Trades von zwischenzeitlich
+rotierten Symbolen/Timeframes erfasst werden. Benötigt einen aktuellen Bitget-Export
+("Exported USDT-M Futures position history ...xls") im `daten/`-Ordner (API-Zugriff
+auf die Trade-Historie ist IP-beschränkt und funktioniert nur vom Server aus nicht
+zuverlässig lokal).
+
+```bash
+python daten/track_live_team.py
+```
+
+Optional mit eigenem Startdatum oder Export-Pfad:
+
+```bash
+python daten/track_live_team.py --since 2026-07-31 --xls "daten/Exported ....xls"
+```
+
 ## 🔄 Auto-Optimizer Verwaltung
 
 Der Bot verfügt über einen automatischen Optimizer, der wöchentlich die besten Parameter für alle aktiven Strategien sucht (Support/Resistance SRv2). Die folgenden Befehle helfen beim manuellen Triggern, Debugging und Monitoring des Optimizers.
