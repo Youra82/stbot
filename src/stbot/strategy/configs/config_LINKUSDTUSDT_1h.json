@@ -1,25 +1,25 @@
 {
     "market": {
-        "symbol": "XRP/USDT:USDT",
+        "symbol": "LINK/USDT:USDT",
         "timeframe": "1h",
         "htf": "4h"
     },
     "strategy": {
-        "pivot_period": 12,
-        "max_pivots": 11,
-        "channel_width_pct": 24,
+        "pivot_period": 7,
+        "max_pivots": 14,
+        "channel_width_pct": 20,
         "max_sr_levels": 5,
         "min_strength": 2,
         "source": "Close/Open"
     },
     "risk": {
         "margin_mode": "isolated",
-        "risk_per_trade_pct": 2.81,
+        "risk_per_trade_pct": 1.65,
         "risk_reward_ratio": 4.74,
-        "leverage": 6,
-        "trailing_stop_activation_rr": 1.02,
-        "trailing_stop_callback_rate_pct": 0.35,
-        "atr_multiplier_sl": 1.64,
+        "leverage": 16,
+        "trailing_stop_activation_rr": 1.39,
+        "trailing_stop_callback_rate_pct": 0.3,
+        "atr_multiplier_sl": 1.51,
         "min_sl_pct": 0.3
     },
     "behavior": {
@@ -27,7 +27,7 @@
         "use_shorts": true
     },
     "_meta": {
-        "pnl_pct": 58.46,
-        "optimized_at": "2026-07-31T00:47:09"
+        "pnl_pct": 35.6,
+        "optimized_at": "2026-07-31T02:36:26"
     }
 }

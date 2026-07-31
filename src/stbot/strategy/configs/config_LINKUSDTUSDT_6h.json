@@ -1,23 +1,23 @@
 {
     "market": {
-        "symbol": "DOGE/USDT:USDT",
-        "timeframe": "2h",
+        "symbol": "LINK/USDT:USDT",
+        "timeframe": "6h",
         "htf": "1d"
     },
     "strategy": {
-        "pivot_period": 7,
-        "max_pivots": 16,
-        "channel_width_pct": 14,
+        "pivot_period": 11,
+        "max_pivots": 25,
+        "channel_width_pct": 17,
         "max_sr_levels": 5,
-        "min_strength": 2,
+        "min_strength": 1,
         "source": "Close/Open"
     },
     "risk": {
         "margin_mode": "isolated",
-        "risk_per_trade_pct": 2.92,
-        "risk_reward_ratio": 2.51,
-        "leverage": 19,
-        "trailing_stop_activation_rr": 1.85,
+        "risk_per_trade_pct": 2.95,
+        "risk_reward_ratio": 1.9,
+        "leverage": 10,
+        "trailing_stop_activation_rr": 2.27,
         "trailing_stop_callback_rate_pct": 0.28,
         "atr_multiplier_sl": 1.5,
         "min_sl_pct": 0.3
@@ -27,7 +27,7 @@
         "use_shorts": true
     },
     "_meta": {
-        "pnl_pct": 173.74,
-        "optimized_at": "2026-07-31T04:19:09"
+        "pnl_pct": 465.36,
+        "optimized_at": "2026-07-31T02:25:33"
     }
 }

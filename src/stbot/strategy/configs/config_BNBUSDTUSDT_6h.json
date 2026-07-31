@@ -1,11 +1,11 @@
 {
     "market": {
-        "symbol": "SOL/USDT:USDT",
-        "timeframe": "2h",
+        "symbol": "BNB/USDT:USDT",
+        "timeframe": "6h",
         "htf": "1d"
     },
     "strategy": {
-        "pivot_period": 13,
+        "pivot_period": 17,
         "max_pivots": 35,
         "channel_width_pct": 6,
         "max_sr_levels": 5,
@@ -14,12 +14,12 @@
     },
     "risk": {
         "margin_mode": "isolated",
-        "risk_per_trade_pct": 2.61,
-        "risk_reward_ratio": 4.8,
-        "leverage": 11,
-        "trailing_stop_activation_rr": 1.16,
-        "trailing_stop_callback_rate_pct": 0.88,
-        "atr_multiplier_sl": 1.56,
+        "risk_per_trade_pct": 3.0,
+        "risk_reward_ratio": 3.79,
+        "leverage": 8,
+        "trailing_stop_activation_rr": 2.96,
+        "trailing_stop_callback_rate_pct": 1.0,
+        "atr_multiplier_sl": 1.57,
         "min_sl_pct": 0.3
     },
     "behavior": {
@@ -27,7 +27,7 @@
         "use_shorts": true
     },
     "_meta": {
-        "pnl_pct": 49.11,
-        "optimized_at": "2026-07-31T00:18:46"
+        "pnl_pct": 326.87,
+        "optimized_at": "2026-07-31T01:02:15"
     }
 }
