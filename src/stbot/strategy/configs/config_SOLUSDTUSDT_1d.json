@@ -6,24 +6,28 @@
     },
     "strategy": {
         "pivot_period": 5,
-        "max_pivots": 34,
-        "channel_width_pct": 14,
+        "max_pivots": 44,
+        "channel_width_pct": 15,
         "max_sr_levels": 5,
         "min_strength": 2,
-        "source": "High/Low"
+        "source": "Close/Open"
     },
     "risk": {
         "margin_mode": "isolated",
-        "risk_per_trade_pct": 1.21,
-        "risk_reward_ratio": 4.89,
-        "leverage": 10,
-        "trailing_stop_activation_rr": 1.31,
-        "trailing_stop_callback_rate_pct": 1.75,
-        "atr_multiplier_sl": 1.5,
+        "risk_per_trade_pct": 1.65,
+        "risk_reward_ratio": 4.67,
+        "leverage": 8,
+        "trailing_stop_activation_rr": 1.25,
+        "trailing_stop_callback_rate_pct": 1.67,
+        "atr_multiplier_sl": 1.95,
         "min_sl_pct": 0.3
     },
     "behavior": {
         "use_longs": true,
         "use_shorts": true
+    },
+    "_meta": {
+        "pnl_pct": -3.71,
+        "optimized_at": "2026-07-31T00:03:04"
     }
 }
