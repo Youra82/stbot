@@ -218,18 +218,19 @@ Vergleicht reale Bitget-Trades gegen die Backtest-Erwartung der jeweiligen Confi
 über den gesamten Config-Pool (`src/stbot/strategy/configs/`), nicht nur die
 aktuell in `settings.json` aktiven Strategien, damit auch Trades von zwischenzeitlich
 rotierten Symbolen/Timeframes erfasst werden. Benötigt einen aktuellen Bitget-Export
-("Exported USDT-M Futures position history ...xls") im `daten/`-Ordner (API-Zugriff
-auf die Trade-Historie ist IP-beschränkt und funktioniert nur vom Server aus nicht
-zuverlässig lokal).
+("Exported USDT-M Futures position history ...xls") im `daten/`-Ordner — der direkte
+API-Abruf der Trade-Historie ist bei diesem Account IP-beschränkt und schlägt von
+manchen Rechnern aus fehl (`bitget requires "apiKey" credential`), daher der manuelle
+Export als zuverlässiger Weg.
 
 ```bash
-python daten/track_live_team.py
+cd ~/stbot && .venv/bin/python3 daten/track_live_team.py
 ```
 
 Optional mit eigenem Startdatum oder Export-Pfad:
 
 ```bash
-python daten/track_live_team.py --since 2026-07-31 --xls "daten/Exported ....xls"
+.venv/bin/python3 daten/track_live_team.py --since 2026-07-31 --xls "daten/Exported ....xls"
 ```
 
 ## 🔄 Auto-Optimizer Verwaltung
