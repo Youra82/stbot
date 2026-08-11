@@ -17,12 +17,13 @@ warnings.filterwarnings('ignore', category=UserWarning, module='keras')
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
-from stbot.analysis.backtester import load_data, run_backtest
+from stbot.analysis.backtester import load_data, run_backtest, FINE_TF_MAP
 from stbot.utils.timeframe_utils import determine_htf
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 HISTORICAL_DATA = None
+FINE_DATA = None  # feinere Kerzen fuer Intrabar-Pfad-Aufloesung (oraclebot-Muster)
 CURRENT_SYMBOL = None
 CURRENT_TIMEFRAME = None
 CURRENT_HTF = None
@@ -63,7 +64,7 @@ def objective(trial):
         'min_sl_pct': 0.3,
     }
 
-    result   = run_backtest(HISTORICAL_DATA.copy(), strategy_params, risk_params, START_CAPITAL, verbose=False)
+    result   = run_backtest(HISTORICAL_DATA.copy(), strategy_params, risk_params, START_CAPITAL, verbose=False, fine_data=FINE_DATA)
     pnl      = result.get('total_pnl_pct', -1000)
     drawdown = result.get('max_drawdown_pct', 1.0)
     trades   = result.get('trades_count', 0)
@@ -81,7 +82,7 @@ def objective(trial):
 
 
 def main():
-    global HISTORICAL_DATA, CURRENT_SYMBOL, CURRENT_TIMEFRAME, CURRENT_HTF, CONFIG_SUFFIX
+    global HISTORICAL_DATA, FINE_DATA, CURRENT_SYMBOL, CURRENT_TIMEFRAME, CURRENT_HTF, CONFIG_SUFFIX
     global MAX_DRAWDOWN_CONSTRAINT, MIN_WIN_RATE_CONSTRAINT, MIN_PNL_CONSTRAINT, START_CAPITAL, OPTIM_MODE
 
     parser = argparse.ArgumentParser(description="Parameter-Optimierung fuer StBot (SRv2)")
@@ -148,6 +149,21 @@ def main():
             run_results['failed'].append(
                 {'symbol': symbol, 'timeframe': timeframe, 'reason': 'no_data'})
             continue
+
+        # Feinere Kerzen fuer Intrabar-Pfad-Aufloesung (oraclebot-Muster) -- ersetzt
+        # die grobe Kerzenfarben-Annaeherung im Backtester, wenn verfuegbar.
+        FINE_DATA = None
+        fine_tf = FINE_TF_MAP.get(timeframe)
+        if fine_tf:
+            try:
+                FINE_DATA = load_data(symbol, fine_tf, args.start_date, args.end_date)
+                if FINE_DATA is None or FINE_DATA.empty:
+                    FINE_DATA = None
+                else:
+                    print(f"  Fein-Daten geladen: {fine_tf} ({len(FINE_DATA)} Kerzen).")
+            except Exception as _e:
+                print(f"  Warnung: Fein-Daten-Abruf ({fine_tf}) fehlgeschlagen ({_e}).")
+                FINE_DATA = None
 
         DB_FILE      = os.path.join(PROJECT_ROOT, 'artifacts', 'db', 'optuna_studies_stbot.db')
         os.makedirs(os.path.dirname(DB_FILE), exist_ok=True)

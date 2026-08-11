@@ -22,7 +22,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
 from stbot.strategy.sr_engine import SREngine
-from stbot.analysis.backtester import load_data, run_backtest
+from stbot.analysis.backtester import load_data, run_backtest, FINE_TF_MAP
 
 logger = logging.getLogger('interactive_status')
 if not logger.handlers:
@@ -557,8 +557,17 @@ def main():
             strategy_params = {**config.get('strategy', {}),
                                'symbol': symbol, 'timeframe': timeframe,
                                'htf': config['market'].get('htf')}
+            fine_data = None
+            fine_tf = FINE_TF_MAP.get(timeframe)
+            if fine_tf:
+                try:
+                    fine_data = load_data(symbol, fine_tf, start_date_load, end_date_load)
+                    if fine_data is None or fine_data.empty:
+                        fine_data = None
+                except Exception:
+                    fine_data = None
             stats = run_backtest(df.copy(), strategy_params, config.get('risk', {}),
-                                 start_capital, verbose=False)
+                                 start_capital, verbose=False, fine_data=fine_data)
             equity_df = build_equity_curve(df, trades, start_capital)
 
             # Chart erstellen

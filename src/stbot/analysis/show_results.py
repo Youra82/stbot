@@ -16,7 +16,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
 # KORREKTUR: Import run_backtest statt run_smc_backtest
-from stbot.analysis.backtester import load_data, run_backtest
+from stbot.analysis.backtester import load_data, run_backtest, FINE_TF_MAP
 from stbot.analysis.portfolio_simulator import run_portfolio_simulation
 from stbot.analysis.portfolio_optimizer import run_portfolio_optimizer
 from stbot.utils.telegram import send_document
@@ -60,8 +60,18 @@ def run_single_analysis(start_date, end_date, start_capital):
             strategy_params['timeframe'] = timeframe
             strategy_params['htf'] = config['market'].get('htf')
 
+            fine_data = None
+            fine_tf = FINE_TF_MAP.get(timeframe)
+            if fine_tf:
+                try:
+                    fine_data = load_data(symbol, fine_tf, start_date, end_date)
+                    if fine_data is None or fine_data.empty:
+                        fine_data = None
+                except Exception:
+                    fine_data = None
+
             # KORREKTUR: Aufruf von run_backtest statt run_smc_backtest
-            result = run_backtest(data.copy(), strategy_params, risk_params, start_capital, verbose=False)
+            result = run_backtest(data.copy(), strategy_params, risk_params, start_capital, verbose=False, fine_data=fine_data)
             
             all_results.append({
                 "Strategie": strategy_name,

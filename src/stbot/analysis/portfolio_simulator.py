@@ -14,7 +14,7 @@ sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 # Imports auf StBot angepasst
 from stbot.strategy.sr_engine import SREngine
 from stbot.strategy.trade_logic import get_titan_signal
-from stbot.analysis.backtester import load_data
+from stbot.analysis.backtester import load_data, _build_fine_path
 
 class Bias:
     BULLISH = "BULLISH"
@@ -60,6 +60,8 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
                 'risk_params': strat.get('risk_params', {}),
                 'symbol': strat.get('symbol', key),
                 'timeframe': strat.get('timeframe', ''),
+                'fine_data': strat.get('fine_data'),
+                'coarse_duration': df.index[1] - df.index[0] if len(df.index) >= 2 else None,
             }
 
             all_timestamps.update(df.index)
@@ -117,7 +119,19 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
             # und ueberzeichnete die Portfolio-Auswahl (Live-vs-Backtest-Analyse 2026-07-30).
             callback_rate = pos['callback_rate']
             o, h, l, c = current_candle['open'], current_candle['high'], current_candle['low'], current_candle['close']
-            path = [o, l, h, c] if c >= o else [o, h, l, c]
+            # Intracandle-Pfad: bevorzugt aus echten feineren Kerzen aufgebaut
+            # (oraclebot-Muster), sonst Fallback auf die alte 4-Punkte-Annaeherung.
+            path = None
+            fine_data = strat.get('fine_data')
+            coarse_duration = strat.get('coarse_duration')
+            if fine_data is not None and coarse_duration is not None:
+                fine_slice = fine_data.loc[
+                    (fine_data.index >= ts) & (fine_data.index < ts + coarse_duration)
+                ]
+                if not fine_slice.empty:
+                    path = _build_fine_path(fine_slice)
+            if not path:
+                path = [o, l, h, c] if c >= o else [o, h, l, c]
 
             exit_price = None
             for p in path:
