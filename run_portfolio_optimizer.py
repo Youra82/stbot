@@ -45,7 +45,7 @@ def _scan_configs() -> list:
 
 
 def _build_strategies_data(config_files: list, start_date: str, end_date: str) -> dict:
-    from stbot.analysis.backtester import load_data
+    from stbot.analysis.backtester import load_data, FINE_TF_MAP
     strategies_data = {}
     for path in tqdm(config_files, desc='Lade Configs & Daten'):
         fname = os.path.basename(path)
@@ -62,10 +62,25 @@ def _build_strategies_data(config_files: list, start_date: str, end_date: str) -
             if data is None or data.empty or len(data) < 50:
                 print(f"  {Y}Uebersprungen (keine Daten): {fname}{NC}")
                 continue
+
+            # Feinere Kerzen fuer Intrabar-Pfad-Aufloesung (oraclebot-Muster),
+            # einmalig pro Strategie geladen. Best-effort, faellt sonst auf die
+            # alte Kerzenfarben-Annaeherung zurueck.
+            fine_data = None
+            fine_tf = FINE_TF_MAP.get(timeframe)
+            if fine_tf:
+                try:
+                    fine_data = load_data(symbol, fine_tf, start_date, end_date)
+                    if fine_data is None or fine_data.empty:
+                        fine_data = None
+                except Exception:
+                    fine_data = None
+
             strategies_data[fname] = {
                 'symbol':     symbol,
                 'timeframe':  timeframe,
                 'data':       data,
+                'fine_data':  fine_data,
                 'smc_params': config.get('strategy', {}),
                 'risk_params': config.get('risk', {}),
                 'htf':        htf,

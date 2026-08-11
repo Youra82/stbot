@@ -23,6 +23,31 @@ class Bias:
     BEARISH = "BEARISH"
     NEUTRAL = "NEUTRAL"
 
+# Feinere Timeframe je Strategie-Timeframe fuer die Intrabar-Pfad-Aufloesung
+# (oraclebot-Muster). Verhaeltnis ~8-30:1, an verfuegbare Exchange-Granularitaeten
+# angepasst.
+FINE_TF_MAP = {
+    '5m': '1m', '15m': '1m', '30m': '1m',
+    '1h': '5m', '2h': '5m',
+    '4h': '15m', '6h': '15m',
+    '1d': '1h',
+}
+
+
+def _build_fine_path(fine_slice):
+    """
+    Baut aus den feineren Kerzen innerhalb einer Coarse-Kerze eine granulare
+    Preis-Pfad-Liste (statt der 4-Punkte-Annaeherung [o,l,h,c]/[o,h,l,c] anhand
+    der Kerzenfarbe). Jede Fein-Kerze traegt ihrerseits [open, low/high in
+    Farbrichtung, close] bei -- deutlich naeher an der Realitaet als eine
+    einzelne Grobkerze.
+    """
+    path = []
+    for _, bar in fine_slice.iterrows():
+        o, h, l, c = bar['open'], bar['high'], bar['low'], bar['close']
+        path.extend([o, l, h, c] if c >= o else [o, h, l, c])
+    return path
+
 def load_data(symbol, timeframe, start_date_str, end_date_str):
     global secrets_cache
     data_dir = os.path.join(PROJECT_ROOT, 'data')
@@ -94,7 +119,7 @@ def load_data(symbol, timeframe, start_date_str, end_date_str):
     except Exception: return pd.DataFrame()
 
 
-def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose=False):
+def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose=False, fine_data=None):
     if data.empty or len(data) < 100:
         return {"total_pnl_pct": -100, "trades_count": 0, "win_rate": 0, "max_drawdown_pct": 1.0, "end_capital": start_capital}
 
@@ -135,6 +160,7 @@ def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose
     
     params_for_logic = {"strategy": strategy_params, "risk": risk_params}
 
+    coarse_duration = processed_data.index[1] - processed_data.index[0] if len(processed_data.index) >= 2 else None
     iterator = processed_data.iterrows()
 
     for timestamp, current_candle in iterator:
@@ -147,9 +173,17 @@ def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose
         # (Live-vs-Backtest-Analyse 2026-07-30 zeigte dadurch stark ueberzeichnete Backtest-PnL).
         if position:
             o, h, l, c = current_candle['open'], current_candle['high'], current_candle['low'], current_candle['close']
-            # Intracandle-Pfad annaehern (keine 1m-Daten im Optimizer-Loop verfuegbar):
-            # bullische Kerze -> Tief vor Hoch, baerische Kerze -> Hoch vor Tief.
-            path = [o, l, h, c] if c >= o else [o, h, l, c]
+            # Intracandle-Pfad: bevorzugt aus echten feineren Kerzen aufgebaut (oraclebot-Muster),
+            # sonst Fallback auf die alte 4-Punkte-Annaeherung anhand der Kerzenfarbe.
+            path = None
+            if fine_data is not None and coarse_duration is not None:
+                fine_slice = fine_data.loc[
+                    (fine_data.index >= timestamp) & (fine_data.index < timestamp + coarse_duration)
+                ]
+                if not fine_slice.empty:
+                    path = _build_fine_path(fine_slice)
+            if not path:
+                path = [o, l, h, c] if c >= o else [o, h, l, c]
 
             exit_price = None
             for p in path:
