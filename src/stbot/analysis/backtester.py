@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import json
 import sys
+import bisect
 from tqdm import tqdm
 import ta
 import math
@@ -32,6 +33,171 @@ FINE_TF_MAP = {
     '4h': '15m', '6h': '15m',
     '1d': '1h',
 }
+
+
+# Pandas-Resample-Regel je Timeframe, fuer die HTF-Trend-Bias-Berechnung.
+_PD_RESAMPLE = {
+    '5m': '5min', '15m': '15min', '30m': '30min',
+    '1h': '1h', '2h': '2h', '4h': '4h', '6h': '6h', '1d': '1D', '1w': '1W',
+}
+
+
+def _compute_htf_bias(data: pd.DataFrame, timeframe: str, htf: str, ema_period: int = 20):
+    """
+    Berechnet einen einfachen HTF-Trend-Bias (EMA-basiert) fuer den optionalen
+    MTF-Filter in trade_logic.py. Bisher wurde dort immer Bias.NEUTRAL uebergeben
+    (kein Look-Ahead: Bias einer HTF-Kerze gilt erst ab ihrem Close, daher per
+    bisect auf die vorherige abgeschlossene HTF-Kerze gemappt).
+    Rueckgabe: (htf_bias_times, htf_bias_values) -- beide leer, wenn Berechnung
+    nicht moeglich ist (Aufrufer faellt dann auf NEUTRAL zurueck).
+    """
+    pd_rule = _PD_RESAMPLE.get(htf)
+    if not pd_rule:
+        return [], []
+    try:
+        htf_data = data[['open', 'high', 'low', 'close']].resample(pd_rule).agg(
+            {'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last'}
+        ).dropna()
+        if len(htf_data) < ema_period + 5:
+            return [], []
+        ema = htf_data['close'].ewm(span=ema_period, adjust=False).mean()
+        bias_series = np.where(htf_data['close'] > ema, Bias.BULLISH,
+                       np.where(htf_data['close'] < ema, Bias.BEARISH, Bias.NEUTRAL))
+        # Bias einer HTF-Kerze ist erst NACH ihrem Schluss bekannt -> Timestamps
+        # um eine HTF-Kerze verschieben, damit bisect keine zukuenftigen Daten sieht.
+        return list(htf_data.index[1:]), list(bias_series[:-1])
+    except Exception:
+        return [], []
+
+
+# --- Regime-Klassifikation (TREND / RANGE / CHAOS), portiert aus superbots
+# regime_gate.py (Hurst+ADX-Kombination, dort bereits aus apexbot/pbot/mbot/
+# ltbbot-Ansaetzen konsolidiert und die Hurst-Formel dort schon korrigiert;
+# die Entropie-Komponente wird bewusst NICHT uebernommen -- superbots eigene
+# Tests zeigten, dass sie kaum zwischen Regimes trennt).
+_REGIME_CFG = {
+    "hurst_trend_min": 0.55, "adx_trend_min": 25.0,
+    "hurst_range_max": 0.50, "adx_range_max": 20.0,
+}
+
+
+def _compute_hurst(close: pd.Series, lags: int = 20, min_lookback: int = 60) -> float:
+    """R/S-Analyse auf Log-Returns (nicht auf rohen Preisen -- das waere
+    methodisch falsch, siehe superbot-Docstring). H>0.5 trending, H<0.5
+    mean-reverting, H=0.5 Random Walk."""
+    n_needed = max(min_lookback, lags * 4)
+    if len(close) < n_needed + 1:
+        return 0.5
+    prices = close.values[-(n_needed + 1):]
+    log_returns = np.diff(np.log(np.maximum(prices, 1e-10)))
+    tau, lag_list = [], []
+    max_lag = min(lags, len(log_returns) // 4)
+    for lag in range(2, max(max_lag, 3)):
+        n_chunks = len(log_returns) // lag
+        if n_chunks < 4:
+            continue
+        rs_vals = []
+        for c in range(n_chunks):
+            chunk = log_returns[c * lag:(c + 1) * lag]
+            dev = np.cumsum(chunk - chunk.mean())
+            r = dev.max() - dev.min()
+            s = chunk.std()
+            if s > 1e-10:
+                rs_vals.append(r / s)
+        if rs_vals:
+            tau.append(float(np.mean(rs_vals)))
+            lag_list.append(lag)
+    if len(tau) < 2:
+        return 0.5
+    try:
+        poly = np.polyfit(np.log(lag_list), np.log(np.maximum(tau, 1e-10)), 1)
+        return float(np.clip(poly[0], 0.0, 1.0))
+    except Exception:
+        return 0.5
+
+
+def _classify_regime(window: pd.DataFrame) -> str:
+    """TREND / RANGE / uneindeutig=RANGE (kein hartes CHAOS-Handelsverbot hier
+    -- s. Anmerkung unten: staerker haette Tradezahl zu stark reduziert)."""
+    close = window['close']
+    hurst = _compute_hurst(close)
+    adx_ind = ta.trend.ADXIndicator(high=window['high'], low=window['low'], close=close, window=14)
+    adx = adx_ind.adx().iloc[-1]
+    adx = float(adx) if pd.notna(adx) else 0.0
+    if hurst >= _REGIME_CFG["hurst_trend_min"] and adx >= _REGIME_CFG["adx_trend_min"]:
+        return "TREND"
+    return "RANGE"
+
+
+def _compute_regime_series(data: pd.DataFrame, lookback_days: int = 90):
+    """Tages-Kadenz TREND/RANGE-Serie (Hurst braucht laengere Historie, taeglich
+    neu berechnen ist ausreichend feinfuehlig und bleibt performant -- kein
+    Look-Ahead: Regime eines Tages gilt erst ab dessen Schluss).
+    lookback_days muss > _compute_hurst()'s intern benoetigte Mindestlaenge
+    (lags*4+1 = 81 bei Default lags=20) sein, sonst liefert Hurst IMMER den
+    0.5-Fallback und TREND wird nie erkannt (gefundener Bug: 60-Tage-Fenster
+    war knapp zu kurz, jedes Regime wurde faelschlich als RANGE klassifiziert)."""
+    try:
+        daily = data[['open', 'high', 'low', 'close']].resample('1D').agg(
+            {'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last'}
+        ).dropna()
+        if len(daily) < lookback_days + 5:
+            return [], []
+        times, regimes = [], []
+        for i in range(lookback_days, len(daily)):
+            window = daily.iloc[i - lookback_days:i + 1]
+            regimes.append(_classify_regime(window))
+            times.append(daily.index[i])
+        return times[1:], regimes[:-1]
+    except Exception:
+        return [], []
+
+
+class LazyFineData:
+    """
+    On-Demand-Fetcher fuer Fein-Daten (Intrabar-Aufloesung). Laedt Fein-Kerzen
+    nur fuer die Tage, an denen im Backtest tatsaechlich eine offene Position
+    liegt, statt den kompletten Backtest-Zeitraum vorab herunterzuladen -- der
+    weit ueberwiegende Teil der Kerzen braucht nie eine Intrabar-Aufloesung.
+    Ergebnis ist identisch zum eagerly geladenen DataFrame, nur die Reihenfolge
+    und Groesse der Netzwerk-Fetches aendert sich (viele kleine Tages-Fetches
+    statt einem grossen Fetch ueber den gesamten Zeitraum).
+    Pro (symbol, fine_tf)-Instanz wiederverwendbar -- z.B. ueber alle Optuna-
+    Trials eines Optimizer-Laufs hinweg, damit einmal geladene Tage nicht
+    mehrfach abgerufen werden.
+    """
+    def __init__(self, symbol, fine_tf):
+        self.symbol = symbol
+        self.fine_tf = fine_tf
+        self._days = {}
+
+    def get_slice(self, start_ts, end_ts):
+        if self.fine_tf is None:
+            return None
+        day = pd.Timestamp(start_ts).floor('D')
+        if day not in self._days:
+            day_str = day.strftime('%Y-%m-%d')
+            next_day_str = (day + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+            try:
+                df = load_data(self.symbol, self.fine_tf, day_str, next_day_str)
+                self._days[day] = df if df is not None and not df.empty else None
+            except Exception:
+                self._days[day] = None
+        df = self._days[day]
+        if df is None:
+            return None
+        return df.loc[(df.index >= start_ts) & (df.index < end_ts)]
+
+
+def _get_fine_slice(fine_data, start_ts, end_ts):
+    """Liest ein Fein-Daten-Fenster aus -- akzeptiert sowohl einen bereits
+    komplett geladenen DataFrame (alte, eager Nutzung) als auch ein
+    LazyFineData-Objekt (neue, on-demand Nutzung), per Duck-Typing."""
+    if fine_data is None:
+        return None
+    if hasattr(fine_data, 'get_slice'):
+        return fine_data.get_slice(start_ts, end_ts)
+    return fine_data.loc[(fine_data.index >= start_ts) & (fine_data.index < end_ts)]
 
 
 def _build_fine_path(fine_slice):
@@ -119,13 +285,47 @@ def load_data(symbol, timeframe, start_date_str, end_date_str):
     except Exception: return pd.DataFrame()
 
 
-def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose=False, fine_data=None):
+def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose=False, fine_data=None, regime_data=None):
     if data.empty or len(data) < 100:
         return {"total_pnl_pct": -100, "trades_count": 0, "win_rate": 0, "max_drawdown_pct": 1.0, "end_capital": start_capital}
 
     symbol = strategy_params.get('symbol', '')
     timeframe = strategy_params.get('timeframe', '')
     htf = strategy_params.get('htf')
+
+    # --- HTF-Trend-Bias (optional, standardmaessig aus) ---
+    use_htf_filter = strategy_params.get('use_htf_filter', False)
+    htf_bias_times, htf_bias_values = ([], [])
+    if use_htf_filter and htf:
+        htf_bias_times, htf_bias_values = _compute_htf_bias(data, timeframe, htf)
+
+    # --- Wochentrend-Filter (optional, standardmaessig aus) ---
+    # Grobe, langsame Trendrichtung (EMA auf Wochenkerzen) -- nur Trades in
+    # Richtung des uebergeordneten Trends zulassen. Getrennt vom schnellen
+    # use_htf_filter oben (der nutzt den naechsthoeheren, schnell wechselnden
+    # Timeframe und zeigte in Tests eher negative Wirkung).
+    use_weekly_trend_filter = strategy_params.get('use_weekly_trend_filter', False)
+    weekly_bias_times, weekly_bias_values = ([], [])
+    if use_weekly_trend_filter:
+        weekly_ema = strategy_params.get('weekly_trend_ema', 8)
+        weekly_bias_times, weekly_bias_values = _compute_htf_bias(data, timeframe, '1w', ema_period=weekly_ema)
+
+    # --- Regime-Gate (optional, standardmaessig aus) ---
+    # Der Wochentrend-Filter oben hilft in Trendphasen, schadet aber im Range
+    # (validiert per Backtest ueber Baer/Bulle/Seitwaerts) -- der Wochentrend
+    # wird deshalb nur angewendet, wenn Hurst+ADX tatsaechlich TREND anzeigen;
+    # im RANGE-Regime bleiben beide Richtungen offen wie ohne Filter.
+    use_regime_gate = strategy_params.get('use_regime_gate', False)
+    regime_times, regime_values = ([], [])
+    if use_regime_gate and use_weekly_trend_filter:
+        regime_lookback_days = strategy_params.get('regime_lookback_days', 90)
+        # regime_data (falls uebergeben): laengere Vorlauf-Historie NUR fuer die
+        # Regime-Klassifikation, unabhaengig vom eigentlichen Handels-/Auswertungs-
+        # zeitraum in `data` -- sonst braeuchte ein langes Lookback-Fenster (z.B.
+        # 180 Tage) selbst schon einen 180+ Tage langen Testzeitraum, um ueberhaupt
+        # einen einzigen Regime-Punkt zu liefern.
+        regime_source = regime_data if regime_data is not None and not regime_data.empty else data
+        regime_times, regime_values = _compute_regime_series(regime_source, lookback_days=regime_lookback_days)
 
     # --- ATR Berechnung ---
     try:
@@ -134,6 +334,19 @@ def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose
         data.dropna(subset=['atr'], inplace=True)
     except Exception:
         return {"total_pnl_pct": -100, "end_capital": start_capital}
+
+    # --- ADX-Trendstaerke-Filter (optional, standardmaessig aus) ---
+    # Klassischer Breakout-Filter: verhindert Einstiege in seitwaertslaufenden
+    # (chop) Maerkten, in denen Ausbrueche gegenueber echten Trends ueberwiegen
+    # Fehlausbrueche sind (bereits bei titanbot validiert).
+    use_adx_filter = strategy_params.get('use_adx_filter', False)
+    if use_adx_filter:
+        try:
+            adx_period = int(strategy_params.get('adx_period', 14))
+            adx_indicator = ta.trend.ADXIndicator(high=data['high'], low=data['low'], close=data['close'], window=adx_period)
+            data['adx'] = adx_indicator.adx()
+        except Exception:
+            data['adx'] = np.nan
 
     # --- SREngine (Neu) ---
     engine = SREngine(settings=strategy_params)
@@ -156,6 +369,16 @@ def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose
     atr_multiplier_sl = risk_params.get('atr_multiplier_sl', 2.0)
     min_sl_pct = risk_params.get('min_sl_pct', 0.3) / 100.0
 
+    # Profit-Protection (optional, standardmaessig aus): schuetzt Gewinne, BEVOR
+    # der Trailing-Stop aktiviert. Ohne das faellt ein Trade, der z.B. 0.7R im
+    # Plus war und dann komplett zurueckdreht, auf den vollen urspruenglichen
+    # SL zurueck -- der zwischenzeitliche Gewinn ist ungeschuetzt.
+    breakeven_trigger_rr = risk_params.get('breakeven_trigger_rr', 0)  # 0 = aus
+    # Zweite, engere Trailing-Stufe ab einem hoeheren RR-Vielfachen -- sichert
+    # mehr vom Gewinn, wenn der Trend deutlich weiterlaeuft.
+    tight_trail_rr = risk_params.get('tight_trail_rr', 0)  # 0 = aus
+    tight_callback_rate = risk_params.get('tight_callback_rate_pct', 0) / 100
+
     absolute_max_notional_value = 1000000
     
     params_for_logic = {"strategy": strategy_params, "risk": risk_params}
@@ -177,10 +400,8 @@ def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose
             # sonst Fallback auf die alte 4-Punkte-Annaeherung anhand der Kerzenfarbe.
             path = None
             if fine_data is not None and coarse_duration is not None:
-                fine_slice = fine_data.loc[
-                    (fine_data.index >= timestamp) & (fine_data.index < timestamp + coarse_duration)
-                ]
-                if not fine_slice.empty:
+                fine_slice = _get_fine_slice(fine_data, timestamp, timestamp + coarse_duration)
+                if fine_slice is not None and not fine_slice.empty:
                     path = _build_fine_path(fine_slice)
             if not path:
                 path = [o, l, h, c] if c >= o else [o, h, l, c]
@@ -191,12 +412,19 @@ def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose
                     if p <= position['stop_loss']:
                         exit_price = position['stop_loss']
                         break
+                    if (breakeven_trigger_rr > 0 and not position['breakeven_done']
+                            and p >= position['entry_price'] + position['sl_dist'] * breakeven_trigger_rr):
+                        position['stop_loss'] = max(position['stop_loss'], position['entry_price'])
+                        position['breakeven_done'] = True
                     if not position['trailing_active'] and p >= position['activation_price']:
                         position['trailing_active'] = True
                         position['peak_price'] = p
                     if position['trailing_active']:
                         position['peak_price'] = max(position['peak_price'], p)
-                        trail_level = position['peak_price'] * (1 - callback_rate)
+                        active_callback = callback_rate
+                        if tight_trail_rr > 0 and p >= position['entry_price'] + position['sl_dist'] * tight_trail_rr:
+                            active_callback = tight_callback_rate
+                        trail_level = position['peak_price'] * (1 - active_callback)
                         if p <= trail_level:
                             exit_price = trail_level
                             break
@@ -204,12 +432,19 @@ def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose
                     if p >= position['stop_loss']:
                         exit_price = position['stop_loss']
                         break
+                    if (breakeven_trigger_rr > 0 and not position['breakeven_done']
+                            and p <= position['entry_price'] - position['sl_dist'] * breakeven_trigger_rr):
+                        position['stop_loss'] = min(position['stop_loss'], position['entry_price'])
+                        position['breakeven_done'] = True
                     if not position['trailing_active'] and p <= position['activation_price']:
                         position['trailing_active'] = True
                         position['peak_price'] = p
                     if position['trailing_active']:
                         position['peak_price'] = min(position['peak_price'], p)
-                        trail_level = position['peak_price'] * (1 + callback_rate)
+                        active_callback = callback_rate
+                        if tight_trail_rr > 0 and p <= position['entry_price'] - position['sl_dist'] * tight_trail_rr:
+                            active_callback = tight_callback_rate
+                        trail_level = position['peak_price'] * (1 + active_callback)
                         if p >= trail_level:
                             exit_price = trail_level
                             break
@@ -235,13 +470,38 @@ def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose
             # Für reine Indikator-basierte Signale wie 'sr_signal' reicht current_candle oft.
             # Wir nutzen hier slice für Kompatibilität.
             
-            # Bias ist hier vereinfacht NEUTRAL, da SR Engine das Hauptsignal gibt
-            market_bias = Bias.NEUTRAL 
-            
+            # HTF-Bias per bisect auf den letzten abgeschlossenen HTF-Balken (kein
+            # Look-Ahead) -- NEUTRAL, wenn Filter aus oder Bias nicht berechenbar.
+            market_bias = Bias.NEUTRAL
+            if htf_bias_times:
+                _pos = bisect.bisect_right(htf_bias_times, timestamp) - 1
+                if _pos >= 0:
+                    market_bias = htf_bias_values[_pos]
+
             # data_slice = processed_data.loc[:timestamp] # Performance-Killer
             # Stattdessen:
             
             side, price = get_titan_signal(processed_data, current_candle, params_for_logic, market_bias)
+
+            if side and use_adx_filter:
+                adx_threshold = strategy_params.get('adx_threshold', 20)
+                current_adx = current_candle.get('adx', np.nan)
+                if not (current_adx > adx_threshold):
+                    side = None
+
+            if side and use_weekly_trend_filter and weekly_bias_times:
+                apply_trend_filter = True
+                if use_regime_gate and regime_times:
+                    _rpos = bisect.bisect_right(regime_times, timestamp) - 1
+                    apply_trend_filter = _rpos >= 0 and regime_values[_rpos] == "TREND"
+                if apply_trend_filter:
+                    _wpos = bisect.bisect_right(weekly_bias_times, timestamp) - 1
+                    if _wpos >= 0:
+                        weekly_bias = weekly_bias_values[_wpos]
+                        if weekly_bias == Bias.BEARISH and side == 'buy':
+                            side = None
+                        elif weekly_bias == Bias.BULLISH and side == 'sell':
+                            side = None
 
             if side:
                 entry_price = current_candle['close']
@@ -275,7 +535,8 @@ def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose
                     'take_profit': tp, 'margin_used': margin_needed,
                     'notional_value': final_notional,
                     'trailing_active': False, 'activation_price': act,
-                    'peak_price': entry_price
+                    'peak_price': entry_price,
+                    'sl_dist': sl_dist, 'breakeven_done': False,
                 }
 
     win_rate = (wins_count / trades_count * 100) if trades_count > 0 else 0
