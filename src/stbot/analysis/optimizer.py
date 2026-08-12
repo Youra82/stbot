@@ -17,7 +17,7 @@ warnings.filterwarnings('ignore', category=UserWarning, module='keras')
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
-from stbot.analysis.backtester import load_data, run_backtest, FINE_TF_MAP
+from stbot.analysis.backtester import load_data, run_backtest, FINE_TF_MAP, LazyFineData
 from stbot.utils.timeframe_utils import determine_htf
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -43,6 +43,13 @@ def create_safe_filename(symbol, timeframe):
 
 
 def objective(trial):
+    # Wochentrend-Filter (EMA auf Wochenkerzen, nur Trades in Trendrichtung
+    # zulassen) -- per Backtest ueber Baer/Bulle/Seitwaerts validiert: hilft
+    # in Trendphasen deutlich, kostet im Seitwaertsmarkt etwas PnL. Optuna
+    # entscheidet pro Symbol/Timeframe selbst, ob sich das lohnt.
+    use_weekly_trend_filter = trial.suggest_categorical('use_weekly_trend_filter', [True, False])
+    weekly_trend_ema = trial.suggest_int('weekly_trend_ema', 3, 12) if use_weekly_trend_filter else 4
+
     strategy_params = {
         'pivot_period':      trial.suggest_int('pivot_period', 5, 30),
         'max_pivots':        trial.suggest_int('max_pivots', 10, 60),
@@ -50,6 +57,8 @@ def objective(trial):
         'max_sr_levels':     5,
         'min_strength':      trial.suggest_int('min_strength', 1, 4),
         'source':            trial.suggest_categorical('source', ['High/Low', 'Close/Open']),
+        'use_weekly_trend_filter': use_weekly_trend_filter,
+        'weekly_trend_ema':  weekly_trend_ema,
         'symbol':    CURRENT_SYMBOL,
         'timeframe': CURRENT_TIMEFRAME,
         'htf':       CURRENT_HTF,
@@ -152,18 +161,12 @@ def main():
 
         # Feinere Kerzen fuer Intrabar-Pfad-Aufloesung (oraclebot-Muster) -- ersetzt
         # die grobe Kerzenfarben-Annaeherung im Backtester, wenn verfuegbar.
-        FINE_DATA = None
+        # On-Demand (LazyFineData): laedt nur die Tage, an denen im Backtest
+        # tatsaechlich eine offene Position liegt, statt den ganzen Zeitraum
+        # vorab herunterzuladen -- eine Instanz wird ueber alle Optuna-Trials
+        # dieses Symbols hinweg wiederverwendet (Cache bleibt erhalten).
         fine_tf = FINE_TF_MAP.get(timeframe)
-        if fine_tf:
-            try:
-                FINE_DATA = load_data(symbol, fine_tf, args.start_date, args.end_date)
-                if FINE_DATA is None or FINE_DATA.empty:
-                    FINE_DATA = None
-                else:
-                    print(f"  Fein-Daten geladen: {fine_tf} ({len(FINE_DATA)} Kerzen).")
-            except Exception as _e:
-                print(f"  Warnung: Fein-Daten-Abruf ({fine_tf}) fehlgeschlagen ({_e}).")
-                FINE_DATA = None
+        FINE_DATA = LazyFineData(symbol, fine_tf) if fine_tf else None
 
         DB_FILE      = os.path.join(PROJECT_ROOT, 'artifacts', 'db', 'optuna_studies_stbot.db')
         os.makedirs(os.path.dirname(DB_FILE), exist_ok=True)
@@ -221,6 +224,8 @@ def main():
             'max_sr_levels':     5,
             'min_strength':      best_params['min_strength'],
             'source':            best_params['source'],
+            'use_weekly_trend_filter': best_params['use_weekly_trend_filter'],
+            'weekly_trend_ema':  best_params.get('weekly_trend_ema', 4),
         }
         risk_config = {
             'margin_mode':                    "isolated",

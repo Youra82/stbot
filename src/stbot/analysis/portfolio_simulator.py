@@ -14,7 +14,7 @@ sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 # Imports auf StBot angepasst
 from stbot.strategy.sr_engine import SREngine
 from stbot.strategy.trade_logic import get_titan_signal
-from stbot.analysis.backtester import load_data, _build_fine_path
+from stbot.analysis.backtester import load_data, _build_fine_path, _get_fine_slice
 
 class Bias:
     BULLISH = "BULLISH"
@@ -125,10 +125,8 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
             fine_data = strat.get('fine_data')
             coarse_duration = strat.get('coarse_duration')
             if fine_data is not None and coarse_duration is not None:
-                fine_slice = fine_data.loc[
-                    (fine_data.index >= ts) & (fine_data.index < ts + coarse_duration)
-                ]
-                if not fine_slice.empty:
+                fine_slice = _get_fine_slice(fine_data, ts, ts + coarse_duration)
+                if fine_slice is not None and not fine_slice.empty:
                     path = _build_fine_path(fine_slice)
             if not path:
                 path = [o, l, h, c] if c >= o else [o, h, l, c]
