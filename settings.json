@@ -4,38 +4,13 @@
         "use_auto_optimizer_results": false,
         "active_strategies": [
             {
-                "symbol": "AVAX/USDT:USDT",
-                "timeframe": "1h",
-                "use_macd_filter": false,
-                "active": true
-            },
-            {
-                "symbol": "AAVE/USDT:USDT",
+                "symbol": "DOT/USDT:USDT",
                 "timeframe": "30m",
-                "use_macd_filter": false,
-                "active": true
-            },
-            {
-                "symbol": "LINK/USDT:USDT",
-                "timeframe": "1h",
-                "use_macd_filter": false,
                 "active": true
             },
             {
                 "symbol": "XRP/USDT:USDT",
                 "timeframe": "6h",
-                "use_macd_filter": false,
-                "active": true
-            },
-            {
-                "symbol": "DOT/USDT:USDT",
-                "timeframe": "1h",
-                "use_macd_filter": false,
-                "active": true
-            },
-            {
-                "symbol": "LTC/USDT:USDT",
-                "timeframe": "1h",
                 "use_macd_filter": false,
                 "active": true
             },
@@ -46,20 +21,24 @@
                 "active": true
             },
             {
-                "symbol": "BTC/USDT:USDT",
-                "timeframe": "6h",
+                "symbol": "AAVE/USDT:USDT",
+                "timeframe": "30m",
                 "use_macd_filter": false,
                 "active": true
             },
             {
-                "symbol": "SOL/USDT:USDT",
-                "timeframe": "4h",
-                "use_macd_filter": false,
+                "symbol": "BTC/USDT:USDT",
+                "timeframe": "6h",
                 "active": true
             },
             {
                 "symbol": "ETH/USDT:USDT",
-                "timeframe": "6h",
+                "timeframe": "1d",
+                "active": true
+            },
+            {
+                "symbol": "LINK/USDT:USDT",
+                "timeframe": "1h",
                 "use_macd_filter": false,
                 "active": true
             }
