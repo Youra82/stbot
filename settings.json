@@ -58,6 +58,8 @@
             }
         },
         "start_capital": 100,
+        "backtest_lookback_weeks": 26,
+        "_backtest_lookback_weeks_note": "Rollendes Fenster (heute - N Wochen) fuer die Portfolio-Auswahl -- hat Vorrang vor start_date.",
         "start_date": "2025-01-01",
         "end_date": "auto",
         "constraints": {
