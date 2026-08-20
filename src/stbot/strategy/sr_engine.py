@@ -74,7 +74,7 @@ class SREngine:
         arr_cwidth = cwidths.fillna(0).values
         
         signals = np.zeros(len(df), dtype=int)
-        pivotvals = [] 
+        pivotvals = []
         
         for i in range(len(df)):
             # A. Pivots aktualisieren
@@ -151,11 +151,11 @@ class SREngine:
                 
                 if prev_close <= mid and curr_close > mid * (1 + breakout_threshold):
                     signals[i] = 1
-                    break 
-                
+                    break
+
                 if prev_close >= mid and curr_close < mid * (1 - breakout_threshold):
                     signals[i] = -1
                     break
-        
+
         df['sr_signal'] = signals
         return df

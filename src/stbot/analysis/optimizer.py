@@ -50,6 +50,18 @@ def objective(trial):
     use_weekly_trend_filter = trial.suggest_categorical('use_weekly_trend_filter', [True, False])
     weekly_trend_ema = trial.suggest_int('weekly_trend_ema', 3, 12) if use_weekly_trend_filter else 4
 
+    # Momentum-Filter (avalanche_percentile / energy_zscore / energy_rising_streak):
+    # aus Live-Trade-Forensik 2026-08-20 abgeleitet, siehe Memory
+    # research_stbot_energy_zscore_filter -- alle drei unabhaengig, Optuna waehlt
+    # pro Symbol/Timeframe, welche (falls ueberhaupt) sich lohnen.
+    use_avalanche_filter = trial.suggest_categorical('use_avalanche_filter', [True, False])
+    avalanche_percentile_threshold = trial.suggest_int('avalanche_percentile_threshold', 50, 85) if use_avalanche_filter else 60
+
+    use_energy_filter = trial.suggest_categorical('use_energy_filter', [True, False])
+    min_energy_zscore = trial.suggest_float('min_energy_zscore', -0.5, 1.0) if use_energy_filter else 0.0
+
+    use_energy_streak_filter = trial.suggest_categorical('use_energy_streak_filter', [True, False])
+
     strategy_params = {
         'pivot_period':      trial.suggest_int('pivot_period', 5, 30),
         'max_pivots':        trial.suggest_int('max_pivots', 10, 60),
@@ -59,6 +71,11 @@ def objective(trial):
         'source':            trial.suggest_categorical('source', ['High/Low', 'Close/Open']),
         'use_weekly_trend_filter': use_weekly_trend_filter,
         'weekly_trend_ema':  weekly_trend_ema,
+        'use_avalanche_filter': use_avalanche_filter,
+        'avalanche_percentile_threshold': avalanche_percentile_threshold,
+        'use_energy_filter': use_energy_filter,
+        'min_energy_zscore': min_energy_zscore,
+        'use_energy_streak_filter': use_energy_streak_filter,
         'symbol':    CURRENT_SYMBOL,
         'timeframe': CURRENT_TIMEFRAME,
         'htf':       CURRENT_HTF,
@@ -226,6 +243,11 @@ def main():
             'source':            best_params['source'],
             'use_weekly_trend_filter': best_params['use_weekly_trend_filter'],
             'weekly_trend_ema':  best_params.get('weekly_trend_ema', 4),
+            'use_avalanche_filter': best_params.get('use_avalanche_filter', False),
+            'avalanche_percentile_threshold': best_params.get('avalanche_percentile_threshold', 60),
+            'use_energy_filter': best_params.get('use_energy_filter', False),
+            'min_energy_zscore': best_params.get('min_energy_zscore', 0.0),
+            'use_energy_streak_filter': best_params.get('use_energy_streak_filter', False),
         }
         risk_config = {
             'margin_mode':                    "isolated",

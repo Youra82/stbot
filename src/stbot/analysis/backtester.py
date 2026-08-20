@@ -335,18 +335,35 @@ def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose
     except Exception:
         return {"total_pnl_pct": -100, "end_capital": start_capital}
 
-    # --- ADX-Trendstaerke-Filter (optional, standardmaessig aus) ---
-    # Klassischer Breakout-Filter: verhindert Einstiege in seitwaertslaufenden
-    # (chop) Maerkten, in denen Ausbrueche gegenueber echten Trends ueberwiegen
-    # Fehlausbrueche sind (bereits bei titanbot validiert).
-    use_adx_filter = strategy_params.get('use_adx_filter', False)
-    if use_adx_filter:
-        try:
-            adx_period = int(strategy_params.get('adx_period', 14))
-            adx_indicator = ta.trend.ADXIndicator(high=data['high'], low=data['low'], close=data['close'], window=adx_period)
-            data['adx'] = adx_indicator.adx()
-        except Exception:
-            data['adx'] = np.nan
+    # --- Momentum-Filter (optional, standardmaessig aus) ---
+    # Aus Live-Trade-Forensik (2026-08-20, 172 echte stbot-Trades, siehe Memory
+    # research_stbot_energy_zscore_filter): der reine SR-Breakout unterscheidet nicht,
+    # ob die durchbrechende Kerze eine statistisch aussergewoehnliche Bewegung war
+    # (avalanche_percentile, Gutenberg-Richter-inspiriert: Perzentil der |Rendite|
+    # ggue. der letzten 100 Kerzen -- p=0.0038, LOO-CV-Test verlustfrei) bzw. ob
+    # echtes kinetisches Momentum dahintersteckt (energy_zscore = Geschwindigkeit^2
+    # als Z-Score ggue. eigener 50-Kerzen-Verteilung, p=0.0008 / energy_rising_streak
+    # = Energie steigt 3 Kerzen in Folge, p=0.02-0.03, haelt auf mehreren Teildatensaetzen
+    # unabhaengig). Alle drei mechanistisch bestaetigt: gefilterte Trades zeigen in der
+    # MAE/MFE-Rekonstruktion deutlich weniger Drawdown und mehr Favorable Excursion.
+    use_avalanche_filter = strategy_params.get('use_avalanche_filter', False)
+    if use_avalanche_filter:
+        abs_ret = data['close'].pct_change().fillna(0.0).abs()
+
+        def _pct_rank_last(x):
+            return (x[:-1] < x[-1]).mean() * 100.0
+
+        data['avalanche_percentile'] = abs_ret.rolling(window=101, min_periods=51).apply(_pct_rank_last, raw=True)
+
+    use_energy_filter = strategy_params.get('use_energy_filter', False)
+    use_energy_streak_filter = strategy_params.get('use_energy_streak_filter', False)
+    if use_energy_filter or use_energy_streak_filter:
+        velocity = data['close'].diff().fillna(0.0)
+        energy = velocity ** 2
+        data['energy_zscore'] = (energy - energy.rolling(50).mean()) / energy.rolling(50).std()
+    if use_energy_streak_filter:
+        ez = data['energy_zscore']
+        data['energy_rising_streak'] = (ez > ez.shift(1)) & (ez.shift(1) > ez.shift(2))
 
     # --- SREngine (Neu) ---
     engine = SREngine(settings=strategy_params)
@@ -483,10 +500,21 @@ def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose
             
             side, price = get_titan_signal(processed_data, current_candle, params_for_logic, market_bias)
 
-            if side and use_adx_filter:
-                adx_threshold = strategy_params.get('adx_threshold', 20)
-                current_adx = current_candle.get('adx', np.nan)
-                if not (current_adx > adx_threshold):
+            if side and use_avalanche_filter:
+                threshold = strategy_params.get('avalanche_percentile_threshold', 60)
+                cur_val = current_candle.get('avalanche_percentile', np.nan)
+                if not (pd.notna(cur_val) and cur_val > threshold):
+                    side = None
+
+            if side and use_energy_filter:
+                min_ez = strategy_params.get('min_energy_zscore', 0.0)
+                cur_ez = current_candle.get('energy_zscore', np.nan)
+                if not (pd.notna(cur_ez) and cur_ez > min_ez):
+                    side = None
+
+            if side and use_energy_streak_filter:
+                cur_streak = current_candle.get('energy_rising_streak', False)
+                if not bool(cur_streak):
                     side = None
 
             if side and use_weekly_trend_filter and weekly_bias_times:
