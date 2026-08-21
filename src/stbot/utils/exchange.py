@@ -184,13 +184,43 @@ class Exchange:
                     time.sleep(5)
 
             if not all_ohlcv: return pd.DataFrame()
-            if not quiet:
-                logger.info(f"  ✔ {symbol} ({timeframe}): {len(all_ohlcv)} Kerzen fertig geladen.")
 
             df = pd.DataFrame(all_ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
             df.set_index('timestamp', inplace=True)
-            return df[~df.index.duplicated(keep='first')].sort_index()
+            df = df[~df.index.duplicated(keep='first')].sort_index()
+
+            if not quiet and not df.empty:
+                # Luecken-Erkennung: Bitget hat manche Fenster in der eigenen Historie
+                # schlicht nicht gespeichert (bestaetigt bei dnabot per Tages-Sweep,
+                # z.B. BTC 1h komplett fehlend 2026-04-18 bis 2026-05-10). Aktive Suche
+                # nach dem naechsten verfuegbaren Datenpunkt (wie bei dnabot) ist hier
+                # nicht implementiert -- nur Erkennung + Meldung, damit Luecken nicht
+                # unbemerkt in den Backtest einfliessen.
+                tf_seconds = self.exchange.parse_timeframe(timeframe)
+                expected_delta = pd.Timedelta(seconds=tf_seconds)
+                deltas = df.index.to_series().diff().dropna()
+                gaps = deltas[deltas > expected_delta * 1.5]
+                if len(gaps) > 0:
+                    missing = int(((gaps - expected_delta) / expected_delta).round().sum())
+                    logger.warning(
+                        f"  ⚠ {symbol} ({timeframe}): {len(gaps)} Datenlücke(n) erkannt, "
+                        f"~{missing} fehlende Kerzen insgesamt (größte Lücke: {gaps.max()})."
+                    )
+
+                target_end = pd.Timestamp(end_ts, unit='ms', tz='UTC')
+                if df.index.max() < target_end - expected_delta:
+                    logger.warning(
+                        f"  ⚠ {symbol} ({timeframe}): Download endet bei {df.index.max().date()}, "
+                        f"Ziel war {target_end.date()} — vorzeitig abgebrochen."
+                    )
+
+                logger.info(
+                    f"  ✔ {symbol} ({timeframe}): {len(df)} Kerzen fertig geladen "
+                    f"({df.index.min().date()} → {df.index.max().date()})."
+                )
+
+            return df
         except Exception as e:
             logger.error(f"Fehler beim Laden historischer Daten: {e}")
             return pd.DataFrame()
