@@ -12,6 +12,10 @@ logging.getLogger('absl').setLevel(logging.ERROR)
 import warnings
 warnings.filterwarnings('ignore', category=UserWarning, module='keras')
 
+# Ohne konfigurierten Handler verschluckt Python logger.info() komplett --
+# siehe optimizer.py fuer Details (gleiches Problem, gleicher Fix).
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s', datefmt='%H:%M:%S')
+
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 

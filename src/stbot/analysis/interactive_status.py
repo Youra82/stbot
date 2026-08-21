@@ -18,6 +18,10 @@ import pandas as pd
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 warnings.filterwarnings('ignore')
 
+# Ohne konfigurierten Handler verschluckt Python logger.info() komplett --
+# siehe optimizer.py fuer Details (gleiches Problem, gleicher Fix).
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s', datefmt='%H:%M:%S')
+
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
