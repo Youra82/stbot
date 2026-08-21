@@ -45,6 +45,7 @@ START_CAPITAL = 1000
 OPTIM_MODE = "strict"
 IS_FRACTION = 0.70       # analog dnabot/alphabet_optimizer.py: 70% In-Sample, 30% Out-of-Sample
 MIN_OOS_TRADES = 10      # Bestaetigung erfordert genug OOS-Trades fuer eine belastbare Aussage
+K_FOLDS = 3              # IS-Teilfenster fuer den Robustheits-Score (siehe objective())
 
 # Ergebnisdatei fuer den Scheduler (Telegram-Benachrichtigung)
 RESULTS_FILE = os.path.join(PROJECT_ROOT, 'artifacts', 'results', 'last_optimizer_run.json')
@@ -142,13 +143,33 @@ def objective(trial):
     trial.set_user_attr('strategy_params', strategy_params)
     trial.set_user_attr('risk_params', risk_params)
 
-    return pnl
+    # Robustheits-Score statt reiner Gesamt-IS-PnL: IS_DATA in K_FOLDS
+    # aufeinanderfolgende Teilfenster splitten, jedes einzeln backtesten
+    # (weiterhin fine_data=None, billig) und das SCHLECHTESTE Teilfenster
+    # als Optuna-Zielwert nehmen. Reine Gesamt-PnL-Optimierung bevorzugt
+    # Parameter, die eine einzelne Marktphase zufaellig gut treffen -- genau
+    # das Muster, das beim ersten echten Testlauf auffiel (BTC 6h: IS +190%,
+    # OOS -11.8%). Das Minimum ueber mehrere Teilfenster bestraft das schon
+    # WAEHREND der Suche, nicht erst hinterher im OOS-Check. Pruning-Kriterien
+    # oben bleiben auf dem VOLLEN IS-Fenster (genug Daten fuer eine
+    # verlaessliche trades>=20/Drawdown-Pruefung; einzelne Teilfenster waeren
+    # dafuer oft zu kurz).
+    fold_size = len(IS_DATA) // K_FOLDS
+    fold_pnls = []
+    for k in range(K_FOLDS):
+        fold_data = IS_DATA.iloc[k * fold_size: (k + 1) * fold_size if k < K_FOLDS - 1 else len(IS_DATA)]
+        fold_result = run_backtest(fold_data.copy(), strategy_params, risk_params, START_CAPITAL, verbose=False, fine_data=None)
+        fold_pnls.append(fold_result.get('total_pnl_pct', -1000))
+    trial.set_user_attr('fold_pnls', fold_pnls)
+    robust_score = min(fold_pnls)
+
+    return robust_score
 
 
 def main():
     global HISTORICAL_DATA, IS_DATA, OOS_DATA, CURRENT_SYMBOL, CURRENT_TIMEFRAME, CURRENT_HTF, CONFIG_SUFFIX
     global MAX_DRAWDOWN_CONSTRAINT, MIN_WIN_RATE_CONSTRAINT, MIN_PNL_CONSTRAINT, START_CAPITAL, OPTIM_MODE
-    global IS_FRACTION, MIN_OOS_TRADES
+    global IS_FRACTION, MIN_OOS_TRADES, K_FOLDS
 
     parser = argparse.ArgumentParser(description="Parameter-Optimierung fuer StBot (SRv2)")
     parser.add_argument('--symbols',    type=str, default="",
@@ -172,6 +193,8 @@ def main():
                         help='Anteil In-Sample (Rest ist Out-of-Sample-Validierung), Standard 0.70')
     parser.add_argument('--min_oos_trades', type=int, default=10,
                         help='Mindestanzahl OOS-Trades fuer eine belastbare Bestaetigung, Standard 10')
+    parser.add_argument('--k_folds',       type=int, default=3,
+                        help='Anzahl IS-Teilfenster fuer den Robustheits-Score (Minimum ueber alle Fenster), Standard 3')
     args = parser.parse_args()
 
     CONFIG_SUFFIX           = args.config_suffix
@@ -183,6 +206,7 @@ def main():
     OPTIM_MODE              = args.mode
     IS_FRACTION             = args.is_fraction
     MIN_OOS_TRADES          = args.min_oos_trades
+    K_FOLDS                 = args.k_folds
 
     # TASKS aufbauen: --pairs hat Vorrang vor --symbols/--timeframes
     if args.pairs.strip():
@@ -244,9 +268,23 @@ def main():
         STORAGE_URL  = f"sqlite:///{DB_FILE}?timeout=60"
         study_name   = f"sr_{create_safe_filename(symbol, timeframe)}{CONFIG_SUFFIX}_{OPTIM_MODE}"
 
+        # Jeder Lauf startet frisch (analog dnabot/alphabet_optimizer.py) --
+        # KEIN load_if_exists=True mehr. Grund: eine gefundene alte Studie
+        # (sr_BTCUSDTUSDT_6h_best_profit, 695 Trials seit 2025-11-23) enthielt
+        # Trials aus VOR-IS/OOS-Codeversionen ohne user_attrs['strategy_params']
+        # -- max(trials, key=value) waehlte davon den hoechsten rohen PnL-Wert
+        # (476.8%, Monate alt) als "besten Trial", die anschliessende
+        # Nachbewertung griff auf leere user_attrs zurueck -> 0 Trades/0% ueberall
+        # in der Tabelle. Alte Studien sind nach Aenderungen an der Zielfunktion
+        # (wie heute: roh-PnL -> K-Fold-Robustheits-Score) ohnehin nicht mehr
+        # mit neuen Trials vergleichbar.
+        try:
+            optuna.delete_study(study_name=study_name, storage=STORAGE_URL)
+        except KeyError:
+            pass  # existierte noch nicht
         study = optuna.create_study(
             storage=STORAGE_URL, study_name=study_name,
-            direction="maximize", load_if_exists=True)
+            direction="maximize")
         # Eigener tqdm-Fortschrittsbalken statt Optunas generischem
         # show_progress_bar=True -- zeigt Symbol/Timeframe als Beschriftung
         # und das bisher beste gefundene PnL als Zusatzinfo live mit, statt
@@ -344,6 +382,10 @@ def main():
 
         mark = '[BESTAETIGT]' if confirmed else '[nicht bestaetigt -- Ist-Zustand behalten]'
         print(f"\n  --- {symbol} ({timeframe}) --- {mark}")
+        fold_pnls = best_trial.user_attrs.get('fold_pnls')
+        if fold_pnls:
+            fold_str = " / ".join(f"{p:+.1f}%" for p in fold_pnls)
+            print(f"  IS-Teilfenster ({K_FOLDS}x, Robustheits-Score=Minimum): {fold_str}")
         if baseline_is is not None:
             print(f"  {'Metrik':<14}{'Baseline IS':>13}{'Best IS':>13}   |{'Baseline OOS':>14}{'Best OOS':>13}")
             print(f"  {'Trades':<14}{baseline_is.get('trades_count',0):>13}{best_is.get('trades_count',0):>13}   |"
