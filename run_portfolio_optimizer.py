@@ -206,20 +206,33 @@ def generate_trades_excel(final, strategies_data, capital, start_date, end_date)
     if not trades:
         return None
 
+    fee_pct = 0.06 / 100  # muss zu portfolio_simulator.py passen (dort hart codiert)
+
     equity = capital
     rows = []
     for i, t in enumerate(trades, 1):
-        pnl = t.get('pnl', 0.0)
+        pnl       = t.get('pnl', 0.0)
+        entry     = t.get('entry', 0.0)
+        exit_px   = t.get('exit', 0.0)
+        direction = str(t.get('direction', 'long'))
+        leverage  = t.get('leverage', 1) or 1
+        margin    = t.get('margin_used', 0.0)
+        notional  = margin * leverage
+        move_pct  = ((exit_px / entry - 1) if direction == 'long' else (1 - exit_px / entry)) * 100 if entry else 0.0
+        fee       = notional * fee_pct * 2
         equity += pnl
         rows.append({
-            'Nr':            i,
-            'Datum':         str(t.get('entry_time', t.get('ts', '')))[:16].replace('T', ' '),
-            'Symbol':        t.get('symbol', '?'),
-            'Timeframe':     t.get('timeframe', '?'),
-            'Richtung':      str(t.get('direction', '?')).upper(),
-            'Ergebnis':      'TP erreicht' if pnl >= 0 else 'SL erreicht',
-            'PnL (USDT)':    round(pnl, 4),
-            'Gesamtkapital': round(equity, 4),
+            'Nr':                 i,
+            'Datum':              str(t.get('entry_time', t.get('ts', '')))[:16].replace('T', ' '),
+            'Coin':               str(t.get('symbol', '?')).split('/')[0],
+            'Timeframe':          t.get('timeframe', '?'),
+            'Richtung':           direction.upper(),
+            'Ergebnis':           'TP erreicht' if pnl >= 0 else 'SL erreicht',
+            'Reale Bewegung (%)': round(move_pct, 4),
+            'Marge (USDT)':       round(margin, 4),
+            'Gebühr (USDT)':      round(fee, 4),
+            'PnL (USDT)':         round(pnl, 4),
+            'Gesamtkapital':      round(equity, 4),
         })
 
     wb = openpyxl.Workbook()
@@ -228,11 +241,11 @@ def generate_trades_excel(final, strategies_data, capital, start_date, end_date)
     hdr  = PatternFill('solid', fgColor='1E3A5F')
     win  = PatternFill('solid', fgColor='D6F4DC')
     loss = PatternFill('solid', fgColor='FAD7D7')
-    alt  = PatternFill('solid', fgColor='F2F2F2')
     brd  = Border(left=Side(style='thin', color='CCCCCC'), right=Side(style='thin', color='CCCCCC'),
                   top=Side(style='thin', color='CCCCCC'), bottom=Side(style='thin', color='CCCCCC'))
-    cw   = {'Nr': 6, 'Datum': 18, 'Symbol': 22, 'Timeframe': 12, 'Richtung': 10,
-             'Ergebnis': 14, 'PnL (USDT)': 14, 'Gesamtkapital': 16}
+    cw   = {'Nr': 6, 'Datum': 18, 'Coin': 10, 'Timeframe': 12, 'Richtung': 10,
+             'Ergebnis': 14, 'Reale Bewegung (%)': 20, 'Marge (USDT)': 14,
+             'Gebühr (USDT)': 14, 'PnL (USDT)': 14, 'Gesamtkapital': 16}
     hdrs = list(rows[0].keys())
     for c, h in enumerate(hdrs, 1):
         cell = ws.cell(row=1, column=c, value=h)
@@ -243,13 +256,13 @@ def generate_trades_excel(final, strategies_data, capital, start_date, end_date)
         ws.column_dimensions[get_column_letter(c)].width = cw.get(h, 14)
     ws.row_dimensions[1].height = 22
     for ri, row in enumerate(rows, 2):
-        f = win if row['Ergebnis'] == 'TP erreicht' else (loss if ri % 2 == 0 else alt)
+        f = win if row['Ergebnis'] == 'TP erreicht' else loss
         for c, key in enumerate(hdrs, 1):
             cell = ws.cell(row=ri, column=c, value=row[key])
             cell.fill = f
             cell.border = brd
             cell.alignment = Alignment(horizontal='center', vertical='center')
-            if key in ('PnL (USDT)', 'Gesamtkapital'):
+            if key in ('Reale Bewegung (%)', 'Marge (USDT)', 'Gebühr (USDT)', 'PnL (USDT)', 'Gesamtkapital'):
                 cell.number_format = '#,##0.0000'
         ws.row_dimensions[ri].height = 18
     pnl = final.get('total_pnl_pct', 0)
@@ -258,6 +271,8 @@ def generate_trades_excel(final, strategies_data, capital, start_date, end_date)
     eq  = final.get('end_capital', equity)
     n   = final.get('trade_count', len(trades))
     sr  = len(rows) + 3
+    ws.cell(row=sr, column=1, value='Zusammenfassung').font = Font(bold=True, size=11)
+    sr += 1
     for label, val in [('Zeitraum', f'{start_date} -> {end_date}'), ('Trades', n),
                         ('Win-Rate', f'{wr:.1f}%'), ('PnL', f'{pnl:+.1f}%'),
                         ('Endkapital', f'{eq:.2f} USDT'), ('Max Drawdown', f'{dd:.1f}%')]:
@@ -271,38 +286,115 @@ def generate_trades_excel(final, strategies_data, capital, start_date, end_date)
 
 
 def generate_equity_html(final, capital, start_date, end_date, labels):
-    """Erstellt interaktiven Portfolio-Equity-Chart."""
+    """Erstellt interaktiven Portfolio-Equity-Chart (Optik wie dnabot:
+    duenne Einzel-Symbol-Linien auf der primaeren Achse, dicke blaue
+    Portfolio-Equity auf der sekundaeren Achse, Entry-/Exit-Marker)."""
     try:
         import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
+        import pandas as pd
     except ImportError:
-        print(f'  {Y}plotly nicht installiert — Chart uebersprungen.{NC}')
+        print(f'  {Y}plotly/pandas nicht installiert — Chart uebersprungen.{NC}')
         return None
 
     eq_df = final.get('equity_curve')
     if eq_df is None or (hasattr(eq_df, 'empty') and eq_df.empty):
         return None
 
-    times = [str(t) for t in eq_df['timestamp']]
-    vals  = [float(v) for v in eq_df['equity']]
-    pnl   = final.get('total_pnl_pct', 0)
-    dd    = final.get('max_drawdown_pct', 0)
-    wr    = final.get('win_rate', 0)
-    n     = final.get('trade_count', 0)
-    eq    = final.get('end_capital', vals[-1] if vals else capital)
-    sign  = '+' if pnl >= 0 else ''
+    trades   = final.get('trade_history', [])
+    eq_times = pd.to_datetime(eq_df['timestamp'])
+    eq_vals  = [float(v) for v in eq_df['equity']]
+    pnl      = final.get('total_pnl_pct', 0)
+    dd       = final.get('max_drawdown_pct', 0)
+    wr       = final.get('win_rate', 0)
+    n        = final.get('trade_count', 0)
+    eq       = final.get('end_capital', eq_vals[-1] if eq_vals else capital)
+    sign     = '+' if pnl >= 0 else ''
     title = (f"{BOT_NAME} Portfolio — {', '.join(labels)} | "
              f"PnL: {sign}{pnl:.1f}% | Equity: {eq:.2f} USDT | "
              f"MaxDD: {dd:.1f}% | WR: {wr:.1f}% | {n} Trades")
 
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=times, y=vals, mode='lines', name='Portfolio Equity',
-                             line=dict(color='#2563eb', width=2)))
-    fig.add_hline(y=capital, line=dict(color='rgba(100,100,100,0.4)', width=1, dash='dash'),
+    # Nachschlage-Kurve fuer Marker-Positionen (naechster bekannter Portfolio-
+    # Equity-Wert zu einem Trade-Zeitpunkt).
+    eq_series = pd.Series(eq_vals, index=eq_times).sort_index()
+
+    PAIR_COLORS = ['#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6',
+                   '#f97316', '#84cc16', '#06b6d4', '#a78bfa']
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    # Einzel-Equity je Symbol/Timeframe (primaere Achse, duenn) -- eigene
+    # Trade-Historie je Paar kumuliert, unabhaengig vom Gesamtportfolio.
+    by_symbol = {}
+    for t in trades:
+        key = f"{t.get('symbol', '?')}/{t.get('timeframe', '?')}"
+        by_symbol.setdefault(key, []).append(t)
+    for idx, key in enumerate(sorted(by_symbol)):
+        sym_trades = sorted(by_symbol[key], key=lambda t: str(t.get('entry_time', '')))
+        peq    = capital
+        ptimes = [sym_trades[0].get('entry_time', '')]
+        pvals  = [peq]
+        for t in sym_trades:
+            peq += t.get('pnl', 0.0)
+            ptimes.append(t.get('ts', t.get('entry_time', '')))
+            pvals.append(round(peq, 2))
+        fig.add_trace(go.Scatter(
+            x=ptimes, y=pvals, mode='lines', name=key,
+            line=dict(color=PAIR_COLORS[idx % len(PAIR_COLORS)], width=1),
+            opacity=0.55,
+        ), secondary_y=False)
+
+    fig.add_hline(y=capital, line=dict(color='rgba(100,100,100,0.35)', width=1, dash='dash'),
                   annotation_text=f'Start {capital:.0f} USDT', annotation_position='top left')
-    fig.update_layout(title=dict(text=title, font=dict(size=12), x=0.5),
-                      height=600, template='plotly_white', hovermode='x unified',
-                      xaxis=dict(rangeslider=dict(visible=True), fixedrange=False),
-                      yaxis=dict(title='Equity (USDT)', fixedrange=False))
+
+    # Entry-/Exit-Marker auf der Portfolio-Equity (sekundaere Achse)
+    entry_x, entry_y, entry_txt = [], [], []
+    exit_win_x, exit_win_y   = [], []
+    exit_loss_x, exit_loss_y = [], []
+    for t in trades:
+        try:
+            y_entry = float(eq_series.asof(pd.Timestamp(t.get('entry_time'))))
+            y_exit  = float(eq_series.asof(pd.Timestamp(t.get('ts'))))
+        except Exception:
+            continue
+        entry_x.append(t.get('entry_time')); entry_y.append(y_entry)
+        entry_txt.append(f"{t.get('symbol', '?')} {t.get('timeframe', '?')}<br>Equity: {y_entry:.2f} USDT")
+        if t.get('pnl', 0.0) >= 0:
+            exit_win_x.append(t.get('ts'));  exit_win_y.append(y_exit)
+        else:
+            exit_loss_x.append(t.get('ts')); exit_loss_y.append(y_exit)
+
+    fig.add_trace(go.Scatter(x=list(eq_times), y=eq_vals, mode='lines', name='Portfolio Equity',
+                             line=dict(color='#2563eb', width=2), opacity=0.75), secondary_y=True)
+
+    if entry_x:
+        fig.add_trace(go.Scatter(
+            x=entry_x, y=entry_y, mode='markers',
+            marker=dict(color='#16a34a', symbol='triangle-up', size=14, line=dict(width=1, color='#0f5132')),
+            name='Entry ▲', text=entry_txt, hovertemplate='%{text}<extra>Entry</extra>',
+        ), secondary_y=True)
+    if exit_win_x:
+        fig.add_trace(go.Scatter(
+            x=exit_win_x, y=exit_win_y, mode='markers',
+            marker=dict(color='#22d3ee', symbol='circle', size=11, line=dict(width=1, color='#0e7490')),
+            name='Exit TP ✓',
+        ), secondary_y=True)
+    if exit_loss_x:
+        fig.add_trace(go.Scatter(
+            x=exit_loss_x, y=exit_loss_y, mode='markers',
+            marker=dict(color='#ef4444', symbol='x', size=11, line=dict(width=2, color='#7f1d1d')),
+            name='Exit SL ✗',
+        ), secondary_y=True)
+
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=13), x=0.5, xanchor='center'),
+        height=750, hovermode='x unified', template='plotly_white', dragmode='zoom',
+        xaxis=dict(rangeslider=dict(visible=True), fixedrange=False),
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='center', x=0.5),
+    )
+    fig.update_yaxes(title_text='Einzel-Equity (USDT)', secondary_y=False, fixedrange=False)
+    fig.update_yaxes(title_text='Portfolio-Equity (USDT)', secondary_y=True, fixedrange=False)
+
     outfile = f'/tmp/{BOT_NAME}_portfolio_equity.html'
     fig.write_html(outfile)
     print(f'  {G}✓ Chart erstellt: {outfile}{NC}')

@@ -1,6 +1,7 @@
 # src/stbot/analysis/portfolio_optimizer.py (Portfolio-Optimierer mit MaxDD Constraint & Coin-Kollisionsschutz)
 import pandas as pd
 import itertools
+import threading
 from tqdm import tqdm
 import sys
 import os
@@ -11,6 +12,32 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
 from stbot.analysis.portfolio_simulator import run_portfolio_simulation
+
+
+class _LiveTicker:
+    """Haelt eine tqdm-Leiste am Leben (aktualisiert die {elapsed}-Anzeige),
+    auch waehrend eines einzelnen, mehrere Minuten dauernden Simulations-
+    aufrufs zwischen zwei Iterationen -- ohne das faellt die Leiste zwischen
+    zwei Schritten in eine eingefrorene Anzeige. Schreibt auf dieselbe Zeile
+    (kein Zeilen-Spam), per set_postfix_str() zusaetzlich sichtbar, welche
+    Strategie gerade getestet wird."""
+    def __init__(self, pbar, interval=0.5):
+        self._pbar = pbar
+        self._interval = interval
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def _run(self):
+        while not self._stop.wait(self._interval):
+            self._pbar.refresh()
+
+    def __enter__(self):
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self._stop.set()
+        self._thread.join(timeout=1)
 
 # *** Angepasst: Nimmt target_max_dd entgegen ***
 def run_portfolio_optimizer(start_capital, strategies_data, start_date, end_date, target_max_dd: float):
@@ -30,7 +57,10 @@ def run_portfolio_optimizer(start_capital, strategies_data, start_date, end_date
     print("1/3: Analysiere Einzel-Performance & filtere nach Max DD...")
     single_strategy_results = []
 
-    for filename, strat_data in tqdm(strategies_data.items(), desc="Bewerte Einzelstrategien"):
+    pbar = tqdm(strategies_data.items(), desc="Bewerte Einzelstrategien")
+    with _LiveTicker(pbar):
+      for filename, strat_data in pbar:
+        pbar.set_postfix_str(f"{strat_data['symbol']} {strat_data['timeframe']}")
         strategy_key = f"{strat_data['symbol']}_{strat_data['timeframe']}"
         sim_data = {strategy_key: strat_data}
         if 'data' not in strat_data or strat_data['data'].empty:
@@ -94,6 +124,8 @@ def run_portfolio_optimizer(start_capital, strategies_data, start_date, end_date
         current_best_result_for_addition = best_portfolio_result # Merke dir das Ergebnis dieser Runde
 
         progress_bar = tqdm(candidate_pool, desc=f"Teste Team mit {len(best_portfolio_files)+1} Mitgliedern")
+        ticker = _LiveTicker(progress_bar)
+        ticker.__enter__()
         for candidate_file in progress_bar:
 
             # --- START: NEUER CODE ZUR KOLLISIONSPRÜFUNG ---
@@ -101,6 +133,7 @@ def run_portfolio_optimizer(start_capital, strategies_data, start_date, end_date
             if not candidate_strat_data:
                 continue # Überspringe, falls Daten für Kandidat fehlen
 
+            progress_bar.set_postfix_str(f"{candidate_strat_data['symbol']} {candidate_strat_data['timeframe']}")
             candidate_coin = candidate_strat_data['symbol'].split('/')[0]
 
             # Prüfe, ob der Coin dieses Kandidaten bereits im Portfolio ist
@@ -147,6 +180,8 @@ def run_portfolio_optimizer(start_capital, strategies_data, start_date, end_date
                     best_capital_with_addition = result['end_capital']
                     best_next_addition = candidate_file
                     current_best_result_for_addition = result # Aktualisiere das beste Ergebnis dieser Runde
+
+        ticker.__exit__(None, None, None)
 
         # Prüfe, ob eine Verbesserung gefunden wurde (best_next_addition ist nicht None)
         if best_next_addition:
