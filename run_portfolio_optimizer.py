@@ -15,9 +15,14 @@ import io
 import os
 import sys
 import json
+import logging
 import argparse
 from datetime import date, timedelta
 from tqdm import tqdm
+
+# Ohne konfigurierten Handler verschluckt Python logger.info() komplett --
+# siehe optimizer.py fuer Details (gleiches Problem, gleicher Fix).
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s', datefmt='%H:%M:%S')
 
 PROJECT_ROOT  = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(PROJECT_ROOT, 'src'))

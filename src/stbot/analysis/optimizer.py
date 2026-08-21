@@ -14,6 +14,14 @@ logging.getLogger('tensorflow').setLevel(logging.ERROR)
 logging.getLogger('absl').setLevel(logging.ERROR)
 warnings.filterwarnings('ignore', category=UserWarning, module='keras')
 
+# Ohne explizit konfigurierten Handler verschluckt Python logger.info()-Aufrufe
+# komplett (nur WARNING+ kommt ueber den lastResort-Handler durch) -- der
+# Fortschritts-Log aus exchange.py::fetch_historical_ohlcv (2026-08-21,
+# quiet=False-Pfad) blieb dadurch unsichtbar. Einmal hier konfigurieren, da
+# optimizer.py als eigenstaendiges CLI-Skript laeuft (kein setup_logging()
+# wie run.py fuer den Live-Betrieb).
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s', datefmt='%H:%M:%S')
+
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
