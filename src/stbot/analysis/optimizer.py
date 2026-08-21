@@ -404,13 +404,11 @@ def main():
             print(f"  {'PnL %':<14}{best_is.get('total_pnl_pct',0):>+12.1f}%   |{best_oos.get('total_pnl_pct',0):>+12.1f}%")
             print(f"  {'MaxDD %':<14}{best_is.get('max_drawdown_pct',0)*100:>12.1f}%   |{best_oos.get('max_drawdown_pct',0)*100:>12.1f}%")
 
-        if not confirmed:
-            run_results['failed'].append({
-                'symbol': symbol, 'timeframe': timeframe,
-                'reason': 'not_confirmed_oos',
-            })
-            continue
-
+        # Config wird IMMER geschrieben (auch unbestaetigt) -- auf Nutzerwunsch,
+        # damit nie ein Paar komplett ohne Config dasteht. Die Bestaetigung wird
+        # aber weiterhin klar in _meta.confirmed + der Konsolen-Ausgabe markiert
+        # -- die Entscheidung, ein unbestaetigtes Ergebnis live zu verwenden,
+        # liegt bewusst beim Nutzer, nicht bei einem automatischen Gate.
         strategy_config = {
             'pivot_period':      best_params['pivot_period'],
             'max_pivots':        best_params['max_pivots'],
@@ -448,17 +446,24 @@ def main():
                 "oos_pnl_pct":     round(best_oos.get('total_pnl_pct', 0), 2),
                 "oos_trades":      best_oos.get('trades_count', 0),
                 "is_oos_split_date": str(split_ts.date()),
+                "confirmed":       confirmed,
                 "optimized_at":    _dt.now().isoformat(timespec='seconds'),
             },
         }
         with open(config_output_path, 'w') as f:
             json.dump(config_output, f, indent=4)
-        print(f"\n[OK] Beste Konfiguration gespeichert.")
+        if confirmed:
+            print(f"\n[OK] Bestaetigte Konfiguration gespeichert.")
+        else:
+            print(f"\n[WARNUNG] NICHT bestaetigte Konfiguration trotzdem gespeichert "
+                  f"(OOS-PnL {best_oos.get('total_pnl_pct', 0):+.1f}%) -- vor Live-Einsatz pruefen.")
 
         run_results['saved'].append({
             'symbol':      symbol,
             'timeframe':   timeframe,
             'pnl_pct':     round(new_pnl, 2),
+            'oos_pnl_pct': round(best_oos.get('total_pnl_pct', 0), 2),
+            'confirmed':   confirmed,
             'config_file': config_filename,
         })
 
