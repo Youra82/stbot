@@ -63,6 +63,23 @@ def _build_strategies_data(config_files: list, start_date: str, end_date: str) -
             htf       = market.get('htf')
             if not symbol or not timeframe:
                 continue
+
+            # Configs, die der Optimizer explizit als NICHT durch die IS/OOS-
+            # Bestaetigung gelaufen markiert hat (_meta.confirmed == False),
+            # fliessen nicht in die automatische Portfolio-Auswahl ein -- sonst
+            # kann eine Kombination, die bereits als "haette live Geld verloren"
+            # erkannt wurde, trotzdem in settings.json landen (live beobachtet:
+            # 2026-08-21, unbestaetigtes BTC/6h mit OOS -20.1% wurde ins Portfolio
+            # gewaehlt, weil dieser Optimizer eine eigene, unabhaengige Bewertung
+            # ohne IS/OOS-Split macht und den confirmed-Status ignorierte).
+            # Configs OHNE das Feld (aeltere, vor der IS/OOS-Aenderung erzeugte)
+            # bleiben zugelassen, damit bestehende funktionierende Strategien
+            # nicht ploetzlich rausfallen.
+            meta = config.get('_meta', {})
+            if meta.get('confirmed') is False:
+                print(f"  {Y}Uebersprungen (IS/OOS nicht bestaetigt): {fname}{NC}")
+                continue
+
             data = load_data(symbol, timeframe, start_date, end_date)
             if data is None or data.empty or len(data) < 50:
                 print(f"  {Y}Uebersprungen (keine Daten): {fname}{NC}")
