@@ -97,17 +97,38 @@ class Exchange:
             end_ts = int(self.exchange.parse8601(end_date_str + 'T00:00:00Z'))
             all_ohlcv = []
 
-            while start_ts < end_ts:
-                # WICHTIG: limit darf Bitgets tatsaechliches Server-Maximum (200 fuer
-                # diesen Endpoint) nicht ueberschreiten. Bei zu hohem limit liefert
-                # Bitget/ccxt still schweigend nur 200 Kerzen zurueck, verankert diese
-                # aber am FALSCHEN Ende des nominell angefragten (aber nicht lieferbaren)
-                # Fensters statt am angefragten "since" -- fuehrte bei schnellen
-                # Timeframes (1m/5m/15m) zu systematischen ~8-Tage-Luecken.
-                ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe, since=start_ts, limit=200)
-                if not ohlcv: break
-                all_ohlcv.extend(ohlcv)
-                start_ts = ohlcv[-1][0] + 1
+            # Schutz gegen Endlosschleife + Retry-mit-Backoff bei Bitget-429
+            # ("Too Many Requests") -- uebernommen aus dnabot/exchange.py. Optuna
+            # startet pro Symbol/Timeframe viele parallele Worker-Threads (--jobs -1);
+            # solange die Cache-Datei fuer diese Kombination noch nicht existiert,
+            # loesen ALLE Worker gleichzeitig einen Bulk-Download aus (Thundering-Herd,
+            # siehe backtester.py::load_data Kommentar zur Cache-Race-Condition). Ohne
+            # Retry brach der Download beim ersten 429 sofort ab und lieferte leere
+            # Daten (-> Trial schlaegt fehl), UND jeder der parallelen Worker loggte
+            # denselben Fehler ungebremst erneut -- daher die Log-Flut.
+            max_retries = 5
+            retries = 0
+
+            while start_ts < end_ts and retries < max_retries:
+                try:
+                    # WICHTIG: limit darf Bitgets tatsaechliches Server-Maximum (200 fuer
+                    # diesen Endpoint) nicht ueberschreiten. Bei zu hohem limit liefert
+                    # Bitget/ccxt still schweigend nur 200 Kerzen zurueck, verankert diese
+                    # aber am FALSCHEN Ende des nominell angefragten (aber nicht lieferbaren)
+                    # Fensters statt am angefragten "since" -- fuehrte bei schnellen
+                    # Timeframes (1m/5m/15m) zu systematischen ~8-Tage-Luecken.
+                    ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe, since=start_ts, limit=200)
+                    if not ohlcv: break
+                    all_ohlcv.extend(ohlcv)
+                    start_ts = ohlcv[-1][0] + 1
+                    retries = 0
+                    time.sleep(self.exchange.rateLimit / 1000)
+                except ccxt.RateLimitExceeded:
+                    retries += 1
+                    time.sleep(10)
+                except ccxt.NetworkError:
+                    retries += 1
+                    time.sleep(5)
 
             if not all_ohlcv: return pd.DataFrame()
 
