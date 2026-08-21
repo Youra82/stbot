@@ -105,6 +105,37 @@ for symbol in $SYMBOLS; do
              FINAL_START_DATE=$START_DATE_INPUT
         fi
 
+        # --- TRIAL-SKALIERUNG NACH KERZENDICHTE ---
+        # Pro Trial wird der komplette IS-Zeitraum durchgerechnet -- bei gleicher
+        # Trial-Zahl kostet ein niedrigeres Zeitfenster (mehr Kerzen im selben
+        # Rückblick-Zeitraum) ein Vielfaches der Zeit eines 1d-Laufs (live
+        # gemessen: 6h ~4x mehr IS-Kerzen als 1d bei gleichem 1095-Tage-Rückblick
+        # -> ~4x langsamer pro Trial). Ohne Skalierung waeren komplette Pipelines
+        # mit vielen Paaren nicht in sinnvoller Zeit fertig.
+        case "$timeframe" in
+             5m)  TRIALS_PCT=15  ;;
+             15m) TRIALS_PCT=20  ;;
+             30m) TRIALS_PCT=15  ;;
+             1h)  TRIALS_PCT=15  ;;
+             2h)  TRIALS_PCT=15  ;;
+             4h)  TRIALS_PCT=25  ;;
+             6h)  TRIALS_PCT=25  ;;
+             1d)  TRIALS_PCT=100 ;;
+             *)   TRIALS_PCT=50  ;;
+        esac
+        SCALED_TRIALS=$(( N_TRIALS * TRIALS_PCT / 100 ))
+        MIN_TRIALS_FLOOR=30
+        if [ "$SCALED_TRIALS" -lt "$MIN_TRIALS_FLOOR" ]; then
+             if [ "$N_TRIALS" -lt "$MIN_TRIALS_FLOOR" ]; then
+                  SCALED_TRIALS=$N_TRIALS
+             else
+                  SCALED_TRIALS=$MIN_TRIALS_FLOOR
+             fi
+        fi
+        if [ "$SCALED_TRIALS" -ne "$N_TRIALS" ]; then
+             echo -e "${YELLOW}INFO: Trials für $timeframe skaliert: $N_TRIALS -> $SCALED_TRIALS (${TRIALS_PCT}% je Kerzendichte, begrenzt Gesamtlaufzeit)${NC}"
+        fi
+
         echo -e "\n${BLUE}=======================================================${NC}";
         echo -e "${BLUE}  Bearbeite Pipeline für: $symbol ($timeframe)${NC}";
         echo -e "${BLUE}  Datenzeitraum: $FINAL_START_DATE bis $END_DATE${NC}";
@@ -115,7 +146,7 @@ for symbol in $SYMBOLS; do
              --start_date "$FINAL_START_DATE" --end_date "$END_DATE" \
              --jobs "$N_CORES" --max_drawdown "$MAX_DD" \
              --start_capital "$START_CAPITAL" --min_win_rate "$MIN_WR" \
-             --trials "$N_TRIALS" --min_pnl "$MIN_PNL" --mode "$OPTIM_MODE_ARG"
+             --trials "$SCALED_TRIALS" --min_pnl "$MIN_PNL" --mode "$OPTIM_MODE_ARG"
 
         if [ $? -ne 0 ]; then
             echo -e "${RED}Fehler im Optimierer für $symbol ($timeframe). Überspringe...${NC}";
