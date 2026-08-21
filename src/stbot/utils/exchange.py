@@ -6,8 +6,20 @@ from datetime import datetime, timezone, timedelta
 import time
 import logging
 import os
+import threading
 
 logger = logging.getLogger(__name__)
+
+# Prozessweiter Markets-Cache: LazyFineData/load_data() erzeugen pro Tages-Fetch
+# eine NEUE Exchange-Instanz (siehe backtester.py::load_data) -- ohne Cache
+# loeste jede einzelne Instanz ihren eigenen load_markets()-Netzwerk-Call aus.
+# Bei einem Mehrjahres-Backtest mit vielen parallelen Optuna-Worker-Threads
+# (--jobs -1) fuehrte das zu hunderten gleichzeitigen load_markets()-Aufrufen
+# und einem harten Bitget-429-Abbruch (2026-08-21). Marktliste ist statisch
+# genug fuer die Laufzeit eines Optimizer-Laufs -- einmal laden, per
+# ccxt.set_markets() (kein Netzwerk-Call) in jede neue Instanz uebernehmen.
+_markets_cache = {}
+_markets_cache_lock = threading.Lock()
 
 # --- Pfad für Fallback-Cache ---
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -42,12 +54,36 @@ class Exchange:
             },
             'enableRateLimit': True,
         })
-        try:
-            self.markets = self.exchange.load_markets()
-            logger.info("Bitget Märkte erfolgreich geladen.")
-        except Exception as e:
-            logger.critical(f"FATAL: Fehler beim Laden der Märkte: {e}")
-            self.markets = None
+        cache_key = 'bitget-swap'
+        # Lock bleibt waehrend des gesamten Ladevorgangs gehalten (nicht nur der
+        # Cache-Pruefung) -- sonst koennten mehrere Threads gleichzeitig
+        # "noch nicht im Cache" sehen und trotzdem parallel laden. So wartet
+        # jeder weitere Thread einfach, bis der erste fertig ist, und bekommt
+        # dann das Ergebnis aus dem Cache ohne eigenen Netzwerk-Call.
+        with _markets_cache_lock:
+            cached_markets = _markets_cache.get(cache_key)
+            if cached_markets is not None:
+                self.markets = cached_markets
+            else:
+                self.markets = None
+                max_retries = 5
+                for attempt in range(max_retries):
+                    try:
+                        self.markets = self.exchange.load_markets()
+                        logger.info("Bitget Märkte erfolgreich geladen.")
+                        _markets_cache[cache_key] = self.markets
+                        break
+                    except (ccxt.RateLimitExceeded, ccxt.NetworkError) as e:
+                        if attempt < max_retries - 1:
+                            time.sleep(10)
+                        else:
+                            logger.critical(f"FATAL: Fehler beim Laden der Märkte nach {max_retries} Versuchen: {e}")
+                    except Exception as e:
+                        logger.critical(f"FATAL: Fehler beim Laden der Märkte: {e}")
+                        break
+
+        if self.markets is not None and self.exchange.markets is not self.markets:
+            self.exchange.set_markets(self.markets)
 
     # --- 1. DATA FETCHING (Live Data Priority) ---
 
@@ -90,12 +126,23 @@ class Exchange:
 
         return pd.DataFrame()
 
-    def fetch_historical_ohlcv(self, symbol, timeframe, start_date_str, end_date_str):
+    def fetch_historical_ohlcv(self, symbol, timeframe, start_date_str, end_date_str, quiet=False):
+        """
+        quiet=True unterdrueckt die Fortschritts-Logs (nicht die Fehler-Logs) --
+        fuer LazyFineData, das diese Funktion pro Kalendertag einzeln aufruft
+        (potenziell hunderte Male pro Backtest) und sonst die Konsole zuspammen
+        wuerde. Der normale Mehrjahres-Bulk-Download (optimizer.py) bleibt
+        sichtbar, aber gedrosselt (alle 10 Chunks = ~2000 Kerzen eine Zeile)
+        statt bei jeder einzelnen Anfrage zu loggen.
+        """
         if not self.markets: return pd.DataFrame()
         try:
             start_ts = int(self.exchange.parse8601(start_date_str + 'T00:00:00Z'))
             end_ts = int(self.exchange.parse8601(end_date_str + 'T00:00:00Z'))
             all_ohlcv = []
+            chunk_count = 0
+            if not quiet:
+                logger.info(f"Lade historische Daten: {symbol} ({timeframe}) | {start_date_str} → {end_date_str}...")
 
             # Schutz gegen Endlosschleife + Retry-mit-Backoff bei Bitget-429
             # ("Too Many Requests") -- uebernommen aus dnabot/exchange.py. Optuna
@@ -122,15 +169,23 @@ class Exchange:
                     all_ohlcv.extend(ohlcv)
                     start_ts = ohlcv[-1][0] + 1
                     retries = 0
+                    chunk_count += 1
+                    if not quiet and chunk_count % 10 == 0:
+                        cur_date = pd.Timestamp(ohlcv[-1][0], unit='ms', tz='UTC').date()
+                        logger.info(f"  ... {symbol} ({timeframe}): {len(all_ohlcv)} Kerzen geladen, aktuell bei {cur_date}")
                     time.sleep(self.exchange.rateLimit / 1000)
                 except ccxt.RateLimitExceeded:
                     retries += 1
+                    if not quiet:
+                        logger.warning(f"  ... {symbol} ({timeframe}): Rate-Limit erreicht, warte 10s (Versuch {retries}/{max_retries})...")
                     time.sleep(10)
                 except ccxt.NetworkError:
                     retries += 1
                     time.sleep(5)
 
             if not all_ohlcv: return pd.DataFrame()
+            if not quiet:
+                logger.info(f"  ✔ {symbol} ({timeframe}): {len(all_ohlcv)} Kerzen fertig geladen.")
 
             df = pd.DataFrame(all_ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)

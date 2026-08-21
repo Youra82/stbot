@@ -179,7 +179,7 @@ class LazyFineData:
             day_str = day.strftime('%Y-%m-%d')
             next_day_str = (day + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
             try:
-                df = load_data(self.symbol, self.fine_tf, day_str, next_day_str)
+                df = load_data(self.symbol, self.fine_tf, day_str, next_day_str, quiet=True)
                 self._days[day] = df if df is not None and not df.empty else None
             except Exception:
                 self._days[day] = None
@@ -214,7 +214,7 @@ def _build_fine_path(fine_slice):
         path.extend([o, l, h, c] if c >= o else [o, h, l, c])
     return path
 
-def load_data(symbol, timeframe, start_date_str, end_date_str):
+def load_data(symbol, timeframe, start_date_str, end_date_str, quiet=False):
     global secrets_cache
     data_dir = os.path.join(PROJECT_ROOT, 'data')
     cache_dir = os.path.join(data_dir, 'cache')
@@ -268,7 +268,7 @@ def load_data(symbol, timeframe, start_date_str, end_date_str):
 
         # Hole mehr Daten für den Vorlauf (Puffer für Pivots)
         start_dt = pd.to_datetime(start_date_str, utc=True) - pd.Timedelta(days=30)
-        full_data = exchange.fetch_historical_ohlcv(symbol, timeframe, start_dt.strftime('%Y-%m-%d'), end_date_str)
+        full_data = exchange.fetch_historical_ohlcv(symbol, timeframe, start_dt.strftime('%Y-%m-%d'), end_date_str, quiet=quiet)
         
         if not full_data.empty:
             # Atomar schreiben (temp-Datei + os.replace), damit parallele Leser nie eine
