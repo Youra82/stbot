@@ -26,13 +26,14 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s', datefm
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
-from stbot.analysis.backtester import load_data, run_backtest, FINE_TF_MAP, LazyFineData
+from stbot.analysis.backtester import load_data, run_backtest, FINE_TF_MAP
 from stbot.utils.timeframe_utils import determine_htf
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 HISTORICAL_DATA = None
-FINE_DATA = None  # feinere Kerzen fuer Intrabar-Pfad-Aufloesung (oraclebot-Muster)
+IS_DATA = None   # vorderer Teil (IS_FRACTION) der Historie -- das sieht Optuna, wird optimiert
+OOS_DATA = None  # hinterer Teil -- fliesst NIE in die Zielfunktion ein, nur Bestaetigung danach
 CURRENT_SYMBOL = None
 CURRENT_TIMEFRAME = None
 CURRENT_HTF = None
@@ -42,6 +43,8 @@ MIN_WIN_RATE_CONSTRAINT = 55.0
 MIN_PNL_CONSTRAINT = 0.0
 START_CAPITAL = 1000
 OPTIM_MODE = "strict"
+IS_FRACTION = 0.70       # analog dnabot/alphabet_optimizer.py: 70% In-Sample, 30% Out-of-Sample
+MIN_OOS_TRADES = 10      # Bestaetigung erfordert genug OOS-Trades fuer eine belastbare Aussage
 
 # Ergebnisdatei fuer den Scheduler (Telegram-Benachrichtigung)
 RESULTS_FILE = os.path.join(PROJECT_ROOT, 'artifacts', 'results', 'last_optimizer_run.json')
@@ -99,11 +102,21 @@ def objective(trial):
         'min_sl_pct': 0.3,
     }
 
-    result   = run_backtest(HISTORICAL_DATA.copy(), strategy_params, risk_params, START_CAPITAL, verbose=False, fine_data=FINE_DATA)
-    pnl      = result.get('total_pnl_pct', -1000)
-    drawdown = result.get('max_drawdown_pct', 1.0)
-    trades   = result.get('trades_count', 0)
-    win_rate = result.get('win_rate', 0)
+    # Zielfunktion sieht NUR IS-Daten -- OOS fliesst nie in die Optimierung
+    # ein, nur in die Bestaetigung des besten Trials danach (siehe main()).
+    # fine_data=None waehrend der SUCHE (grobe 4-Punkte-Kerzennaeherung statt
+    # Intrabar-Fein-Aufloesung) -- analog dnabot/alphabet_optimizer.py
+    # (fine_df=None fuer Trials, praezise Aufloesung nur fuer den finalen
+    # Trial). Ein einzelner Backtest MIT LazyFineData brauchte gemessen >140s
+    # (viele einzelne Tages-Netzwerk-Fetches), OHNE nur 0.1s -- bei 100+
+    # Trials ist das der Unterschied zwischen Minuten und Stunden. Die
+    # praezisen Zahlen (fuer Tabelle + Config) kommen aus einer einmaligen
+    # Nachbewertung des besten Trials nach der Suche, siehe main().
+    is_result = run_backtest(IS_DATA.copy(), strategy_params, risk_params, START_CAPITAL, verbose=False, fine_data=None)
+    pnl      = is_result.get('total_pnl_pct', -1000)
+    drawdown = is_result.get('max_drawdown_pct', 1.0)
+    trades   = is_result.get('trades_count', 0)
+    win_rate = is_result.get('win_rate', 0)
 
     if OPTIM_MODE == "strict" and (
         drawdown > MAX_DRAWDOWN_CONSTRAINT or win_rate < MIN_WIN_RATE_CONSTRAINT
@@ -113,12 +126,29 @@ def objective(trial):
     elif OPTIM_MODE == "best_profit" and (drawdown > MAX_DRAWDOWN_CONSTRAINT or trades < 20):
         raise optuna.exceptions.TrialPruned()
 
+    # OOS nur fuer Trials rechnen, die die IS-Kriterien ueberhaupt erfuellen
+    # (spart Rechenzeit fuer die vielen von vornherein verworfenen Trials).
+    # Bekannte Vereinfachung ggue. dnabot: dort laeuft EIN durchgehender
+    # Backtest, dessen Trade-Liste danach nach entry_time gesplittet wird --
+    # stbots run_backtest() gibt keine Trade-Liste zurueck (nur Aggregat-
+    # Stats), daher hier zwei UNABHAENGIGE Backtests. Nachteil: Indikatoren
+    # mit Rolling-Fenstern (z.B. avalanche_percentile, energy_zscore) muessen
+    # im OOS-Abschnitt eigenstaendig neu "warmlaufen" statt nahtlos an IS
+    # anzuschliessen -- die ersten ~100 OOS-Kerzen sind dadurch etwas
+    # konservativer als im echten Live-Betrieb (Filter dort ggf. noch NaN).
+    oos_result = run_backtest(OOS_DATA.copy(), strategy_params, risk_params, START_CAPITAL, verbose=False, fine_data=None)
+    trial.set_user_attr('is_stats', is_result)
+    trial.set_user_attr('oos_stats', oos_result)
+    trial.set_user_attr('strategy_params', strategy_params)
+    trial.set_user_attr('risk_params', risk_params)
+
     return pnl
 
 
 def main():
-    global HISTORICAL_DATA, FINE_DATA, CURRENT_SYMBOL, CURRENT_TIMEFRAME, CURRENT_HTF, CONFIG_SUFFIX
+    global HISTORICAL_DATA, IS_DATA, OOS_DATA, CURRENT_SYMBOL, CURRENT_TIMEFRAME, CURRENT_HTF, CONFIG_SUFFIX
     global MAX_DRAWDOWN_CONSTRAINT, MIN_WIN_RATE_CONSTRAINT, MIN_PNL_CONSTRAINT, START_CAPITAL, OPTIM_MODE
+    global IS_FRACTION, MIN_OOS_TRADES
 
     parser = argparse.ArgumentParser(description="Parameter-Optimierung fuer StBot (SRv2)")
     parser.add_argument('--symbols',    type=str, default="",
@@ -138,6 +168,10 @@ def main():
     parser.add_argument('--min_pnl',       required=True, type=float)
     parser.add_argument('--mode',          required=True, type=str)
     parser.add_argument('--config_suffix', type=str, default="")
+    parser.add_argument('--is_fraction',   type=float, default=0.70,
+                        help='Anteil In-Sample (Rest ist Out-of-Sample-Validierung), Standard 0.70')
+    parser.add_argument('--min_oos_trades', type=int, default=10,
+                        help='Mindestanzahl OOS-Trades fuer eine belastbare Bestaetigung, Standard 10')
     args = parser.parse_args()
 
     CONFIG_SUFFIX           = args.config_suffix
@@ -147,6 +181,8 @@ def main():
     START_CAPITAL           = args.start_capital
     N_TRIALS                = args.trials
     OPTIM_MODE              = args.mode
+    IS_FRACTION             = args.is_fraction
+    MIN_OOS_TRADES          = args.min_oos_trades
 
     # TASKS aufbauen: --pairs hat Vorrang vor --symbols/--timeframes
     if args.pairs.strip():
@@ -185,14 +221,23 @@ def main():
                 {'symbol': symbol, 'timeframe': timeframe, 'reason': 'no_data'})
             continue
 
-        # Feinere Kerzen fuer Intrabar-Pfad-Aufloesung (oraclebot-Muster) -- ersetzt
-        # die grobe Kerzenfarben-Annaeherung im Backtester, wenn verfuegbar.
-        # On-Demand (LazyFineData): laedt nur die Tage, an denen im Backtest
-        # tatsaechlich eine offene Position liegt, statt den ganzen Zeitraum
-        # vorab herunterzuladen -- eine Instanz wird ueber alle Optuna-Trials
-        # dieses Symbols hinweg wiederverwendet (Cache bleibt erhalten).
+        # Chronologischer IS/OOS-Split (analog dnabot/alphabet_optimizer.py):
+        # die ersten IS_FRACTION der Kerzen sieht Optuna (Zielfunktion), der
+        # Rest dient ausschliesslich der spaeteren Bestaetigung.
+        split_idx = int(len(HISTORICAL_DATA) * IS_FRACTION)
+        split_ts  = HISTORICAL_DATA.index[split_idx]
+        IS_DATA   = HISTORICAL_DATA.iloc[:split_idx]
+        OOS_DATA  = HISTORICAL_DATA.iloc[split_idx:]
+        logging.info(
+            f"{symbol} ({timeframe}): {len(HISTORICAL_DATA)} Kerzen | "
+            f"IS bis {split_ts.date()} ({split_idx} Kerzen) | "
+            f"OOS ab {split_ts.date()} ({len(HISTORICAL_DATA) - split_idx} Kerzen)"
+        )
+
+        # Fein-Timeframe fuer die spaetere praezise Nachbewertung (siehe unten,
+        # nach der Suche) -- waehrend der Suche selbst nutzt objective() bewusst
+        # KEINE Fein-Daten (fine_data=None), siehe dortiger Kommentar.
         fine_tf = FINE_TF_MAP.get(timeframe)
-        FINE_DATA = LazyFineData(symbol, fine_tf) if fine_tf else None
 
         DB_FILE      = os.path.join(PROJECT_ROOT, 'artifacts', 'db', 'optuna_studies_stbot.db')
         os.makedirs(os.path.dirname(DB_FILE), exist_ok=True)
@@ -232,26 +277,95 @@ def main():
         best_params = best_trial.params
         new_pnl     = best_trial.value
 
+        # Praezise Nachbewertung NUR des besten Trials mit echter Intrabar-
+        # Aufloesung -- waehrend der Suche liefen alle Trials bewusst mit
+        # fine_data=None (grobe Naeherung, siehe objective()) fuer Geschwindigkeit.
+        #
+        # WICHTIG: hier bewusst EIN grosser Bulk-Fetch (load_data, wie im
+        # normalen Backtest-Modus) statt LazyFineData -- LazyFineData holt
+        # Tag fuer Tag einzeln, was fuer EINEN durchgehenden Nachbewertungs-
+        # Lauf ueber Monate/Jahre viel zu viele Einzel-Requests bedeutet
+        # (gemessen: >12 Min fuer ein 3-Jahres-Fenster, dabei >80% reine
+        # Netzwerk-Wartezeit). Ausserdem teilen sich alle LazyFineData-Tage
+        # DIESELBE Cache-Datei (siehe load_data()) -- jeder neue Tag ueberschreibt
+        # den Cache des vorherigen, der Disk-Cache bringt beim Tag-fuer-Tag-
+        # Muster also nichts. Ein einziger zusammenhaengender Bulk-Fetch nutzt
+        # Bitgets 200-Kerzen-Pagination viel effizienter (wenige grosse statt
+        # viele kleine Requests) UND landet in einem wiederverwendbaren Cache.
+        fine_data_precise = None
+        if fine_tf:
+            fine_data_precise = load_data(symbol, fine_tf, args.start_date, args.end_date, quiet=True)
+            if fine_data_precise.empty:
+                fine_data_precise = None
+
+        best_strategy_params = best_trial.user_attrs.get('strategy_params')
+        best_risk_params     = best_trial.user_attrs.get('risk_params')
+        if best_strategy_params is not None and best_risk_params is not None:
+            best_is  = run_backtest(IS_DATA.copy(), best_strategy_params, best_risk_params, START_CAPITAL, verbose=False, fine_data=fine_data_precise)
+            best_oos = run_backtest(OOS_DATA.copy(), best_strategy_params, best_risk_params, START_CAPITAL, verbose=False, fine_data=fine_data_precise)
+            new_pnl  = best_is.get('total_pnl_pct', new_pnl)
+        else:
+            # Fallback (sollte nicht vorkommen): grobe Such-Werte verwenden
+            best_is  = best_trial.user_attrs.get('is_stats', {})
+            best_oos = best_trial.user_attrs.get('oos_stats', {})
+
         config_dir         = os.path.join(PROJECT_ROOT, 'src', 'stbot', 'strategy', 'configs')
         os.makedirs(config_dir, exist_ok=True)
         config_filename    = f'config_{create_safe_filename(symbol, timeframe)}{CONFIG_SUFFIX}.json'
         config_output_path = os.path.join(config_dir, config_filename)
 
-        # Nur speichern wenn besser als bestehende Config
-        existing_pnl = None
+        # Baseline = bestehende Config (falls vorhanden), auf denselben IS/OOS-
+        # Daten ausgewertet -- das ist der "Ist-Zustand", gegen den der beste
+        # Trial bestaetigt werden muss (analog dnabots DEFAULT_ALPHABET-Baseline,
+        # aber stbot hat keinen universellen Default -- die aktuell aktive
+        # Config IST hier der sinnvolle Vergleichsmassstab).
+        baseline_is, baseline_oos = None, None
         if os.path.exists(config_output_path):
             try:
                 with open(config_output_path) as cf:
                     existing_cfg = json.load(cf)
-                existing_pnl = existing_cfg.get('_meta', {}).get('pnl_pct')
-            except Exception:
-                pass
+                baseline_strategy = dict(existing_cfg['strategy'])
+                baseline_strategy.update({'symbol': symbol, 'timeframe': timeframe, 'htf': CURRENT_HTF})
+                baseline_risk = dict(existing_cfg['risk'])
+                baseline_is  = run_backtest(IS_DATA.copy(), baseline_strategy, baseline_risk, START_CAPITAL, verbose=False, fine_data=fine_data_precise)
+                baseline_oos = run_backtest(OOS_DATA.copy(), baseline_strategy, baseline_risk, START_CAPITAL, verbose=False, fine_data=fine_data_precise)
+            except Exception as e:
+                print(f"  Warnung: Baseline-Bewertung fehlgeschlagen ({e}) -- werte ohne Baseline-Vergleich.")
+                baseline_is, baseline_oos = None, None
 
-        if existing_pnl is not None and new_pnl <= existing_pnl:
-            print(f"  Bestehende Config besser ({existing_pnl:.2f}% vs {new_pnl:.2f}%) — wird nicht ueberschrieben.")
+        # Bestaetigung (analog dnabot): genug OOS-Trades fuer eine belastbare
+        # Aussage, OOS-PnL positiv, UND (falls Baseline vorhanden) besser als
+        # die bestehende Config auf denselben OOS-Daten.
+        confirmed = (
+            best_oos.get('trades_count', 0) >= MIN_OOS_TRADES
+            and best_oos.get('total_pnl_pct', -1e9) > 0.0
+            and (baseline_oos is None or best_oos.get('total_pnl_pct', -1e9) > baseline_oos.get('total_pnl_pct', -1e9))
+        )
+
+        mark = '[BESTAETIGT]' if confirmed else '[nicht bestaetigt -- Ist-Zustand behalten]'
+        print(f"\n  --- {symbol} ({timeframe}) --- {mark}")
+        if baseline_is is not None:
+            print(f"  {'Metrik':<14}{'Baseline IS':>13}{'Best IS':>13}   |{'Baseline OOS':>14}{'Best OOS':>13}")
+            print(f"  {'Trades':<14}{baseline_is.get('trades_count',0):>13}{best_is.get('trades_count',0):>13}   |"
+                  f"{baseline_oos.get('trades_count',0):>14}{best_oos.get('trades_count',0):>13}")
+            print(f"  {'WinRate':<14}{baseline_is.get('win_rate',0):>12.1f}%{best_is.get('win_rate',0):>12.1f}%   |"
+                  f"{baseline_oos.get('win_rate',0):>13.1f}%{best_oos.get('win_rate',0):>12.1f}%")
+            print(f"  {'PnL %':<14}{baseline_is.get('total_pnl_pct',0):>+12.1f}%{best_is.get('total_pnl_pct',0):>+12.1f}%   |"
+                  f"{baseline_oos.get('total_pnl_pct',0):>+13.1f}%{best_oos.get('total_pnl_pct',0):>+12.1f}%")
+            print(f"  {'MaxDD %':<14}{baseline_is.get('max_drawdown_pct',0)*100:>12.1f}%{best_is.get('max_drawdown_pct',0)*100:>12.1f}%   |"
+                  f"{baseline_oos.get('max_drawdown_pct',0)*100:>13.1f}%{best_oos.get('max_drawdown_pct',0)*100:>12.1f}%")
+        else:
+            print(f"  (kein bestehender Config zum Vergleich -- erster Lauf fuer dieses Paar)")
+            print(f"  {'Metrik':<14}{'Best IS':>13}   |{'Best OOS':>13}")
+            print(f"  {'Trades':<14}{best_is.get('trades_count',0):>13}   |{best_oos.get('trades_count',0):>13}")
+            print(f"  {'WinRate':<14}{best_is.get('win_rate',0):>12.1f}%   |{best_oos.get('win_rate',0):>12.1f}%")
+            print(f"  {'PnL %':<14}{best_is.get('total_pnl_pct',0):>+12.1f}%   |{best_oos.get('total_pnl_pct',0):>+12.1f}%")
+            print(f"  {'MaxDD %':<14}{best_is.get('max_drawdown_pct',0)*100:>12.1f}%   |{best_oos.get('max_drawdown_pct',0)*100:>12.1f}%")
+
+        if not confirmed:
             run_results['failed'].append({
                 'symbol': symbol, 'timeframe': timeframe,
-                'reason': f'existing_better_{existing_pnl:.2f}pct',
+                'reason': 'not_confirmed_oos',
             })
             continue
 
@@ -288,8 +402,11 @@ def main():
             "risk":     risk_config,
             "behavior": behavior_config,
             "_meta": {
-                "pnl_pct":      round(new_pnl, 2),
-                "optimized_at": _dt.now().isoformat(timespec='seconds'),
+                "pnl_pct":         round(new_pnl, 2),
+                "oos_pnl_pct":     round(best_oos.get('total_pnl_pct', 0), 2),
+                "oos_trades":      best_oos.get('trades_count', 0),
+                "is_oos_split_date": str(split_ts.date()),
+                "optimized_at":    _dt.now().isoformat(timespec='seconds'),
             },
         }
         with open(config_output_path, 'w') as f:
