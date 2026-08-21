@@ -8,6 +8,7 @@ import argparse
 import logging
 import warnings
 from datetime import datetime as _dt
+from tqdm import tqdm
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 logging.getLogger('tensorflow').setLevel(logging.ERROR)
@@ -201,13 +202,25 @@ def main():
         study = optuna.create_study(
             storage=STORAGE_URL, study_name=study_name,
             direction="maximize", load_if_exists=True)
-        try:
-            study.optimize(objective, n_trials=N_TRIALS, n_jobs=args.jobs, show_progress_bar=True)
-        except Exception as e:
-            print(f"FEHLER: {e}")
-            run_results['failed'].append(
-                {'symbol': symbol, 'timeframe': timeframe, 'reason': str(e)[:80]})
-            continue
+        # Eigener tqdm-Fortschrittsbalken statt Optunas generischem
+        # show_progress_bar=True -- zeigt Symbol/Timeframe als Beschriftung
+        # und das bisher beste gefundene PnL als Zusatzinfo live mit, statt
+        # nur eines nackten Prozentbalkens.
+        with tqdm(total=N_TRIALS, desc=f"{symbol} {timeframe}", unit="trial") as pbar:
+            def _progress(study, trial):
+                pbar.update(1)
+                try:
+                    pbar.set_postfix({'bestes PnL': f"{study.best_value:.1f}%"})
+                except ValueError:
+                    pass  # noch kein abgeschlossener (nicht-gepruneter) Trial
+
+            try:
+                study.optimize(objective, n_trials=N_TRIALS, n_jobs=args.jobs, callbacks=[_progress])
+            except Exception as e:
+                print(f"FEHLER: {e}")
+                run_results['failed'].append(
+                    {'symbol': symbol, 'timeframe': timeframe, 'reason': str(e)[:80]})
+                continue
 
         valid_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
         if not valid_trials:

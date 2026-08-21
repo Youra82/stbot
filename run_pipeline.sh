@@ -69,8 +69,26 @@ else
     MIN_WR=0; MIN_PNL=-99999
 fi
 
+# --- Paar-Zaehler + Gesamtlaufzeit (Format wie dnabot: "[N/Total] SYMBOL (TF) | bisher gelaufen: Xh Ym Zs") ---
+TOTAL_PAIRS=$(( $(echo $SYMBOLS | wc -w) * $(echo $TIMEFRAMES | wc -w) ))
+PIPELINE_START=$(date +%s)
+PAIR_IDX=0
+
+fmt_duration() {
+    local total_s=$1
+    local h=$((total_s / 3600))
+    local m=$(((total_s % 3600) / 60))
+    local s=$((total_s % 60))
+    if [ "$h" -gt 0 ]; then echo "${h}h ${m}m ${s}s";
+    elif [ "$m" -gt 0 ]; then echo "${m}m ${s}s";
+    else echo "${s}s"; fi
+}
+
 for symbol in $SYMBOLS; do
     for timeframe in $TIMEFRAMES; do
+        PAIR_IDX=$((PAIR_IDX + 1))
+        ELAPSED=$(( $(date +%s) - PIPELINE_START ))
+        echo -e "\n${BLUE}[$PAIR_IDX/$TOTAL_PAIRS] $symbol ($timeframe) | bisher gelaufen: $(fmt_duration $ELAPSED)${NC}"
 
         # --- DATUMSBERECHNUNG ---
         if [ "$START_DATE_INPUT" == "a" ]; then
