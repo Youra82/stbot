@@ -4,8 +4,8 @@
         "use_auto_optimizer_results": false,
         "active_strategies": [
             {
-                "symbol": "DOT/USDT:USDT",
-                "timeframe": "30m",
+                "symbol": "BTC/USDT:USDT",
+                "timeframe": "6h",
                 "active": true
             },
             {
@@ -15,31 +15,8 @@
                 "active": true
             },
             {
-                "symbol": "DOGE/USDT:USDT",
-                "timeframe": "6h",
-                "use_macd_filter": false,
-                "active": true
-            },
-            {
-                "symbol": "AAVE/USDT:USDT",
-                "timeframe": "30m",
-                "use_macd_filter": false,
-                "active": true
-            },
-            {
-                "symbol": "BTC/USDT:USDT",
-                "timeframe": "6h",
-                "active": true
-            },
-            {
                 "symbol": "ETH/USDT:USDT",
-                "timeframe": "1d",
-                "active": true
-            },
-            {
-                "symbol": "LINK/USDT:USDT",
-                "timeframe": "1h",
-                "use_macd_filter": false,
+                "timeframe": "6h",
                 "active": true
             }
         ]
