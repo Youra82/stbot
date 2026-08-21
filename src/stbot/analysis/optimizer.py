@@ -374,7 +374,16 @@ def main():
         # Bestaetigung (analog dnabot): genug OOS-Trades fuer eine belastbare
         # Aussage, OOS-PnL positiv, UND (falls Baseline vorhanden) besser als
         # die bestehende Config auf denselben OOS-Daten.
-        confirmed = (
+        # bool(...) UM DEN GESAMTAUSDRUCK: die einzelnen Vergleiche liefern bei
+        # numpy.float64-Operanden (total_pnl_pct kommt aus run_backtest(), das
+        # mit pandas/numpy rechnet) ein numpy.bool_ statt eines echten Python
+        # bool. Je nachdem, an welchem "and" die Kurzschluss-Auswertung landet,
+        # ist das Ergebnis mal ein echter bool (z.B. wenn schon die erste
+        # Bedingung False ist), mal ein numpy.bool_ -- und json.dump() bricht
+        # bei numpy.bool_ mit "Object of type bool is not JSON serializable"
+        # ab (im Live-Lauf beobachtet: BTC 4h/2h stuerzten NACH dem vollen
+        # Optuna-Lauf beim Speichern ab, mehrere Minuten Rechenzeit verschenkt).
+        confirmed = bool(
             best_oos.get('trades_count', 0) >= MIN_OOS_TRADES
             and best_oos.get('total_pnl_pct', -1e9) > 0.0
             and (baseline_oos is None or best_oos.get('total_pnl_pct', -1e9) > baseline_oos.get('total_pnl_pct', -1e9))
