@@ -1,6 +1,7 @@
 # /root/stbot/src/stbot/analysis/optimizer.py
 import os
 import sys
+import time
 import json
 import optuna
 import numpy as np
@@ -330,17 +331,25 @@ def main():
         # Muster also nichts. Ein einziger zusammenhaengender Bulk-Fetch nutzt
         # Bitgets 200-Kerzen-Pagination viel effizienter (wenige grosse statt
         # viele kleine Requests) UND landet in einem wiederverwendbaren Cache.
+        # Diese Phase ist bewusst quiet=True beim Fetch (siehe oben), dauert
+        # aber laut Profiling mehrere Minuten (IS ~207s, OOS ~112s) -- ohne
+        # sichtbaren Fortschritt sah das im Live-Betrieb wie ein Haenger aus.
+        print(f"  Praezise Nachbewertung mit Feindaten laeuft (kann mehrere Minuten dauern)...")
+        _pnb_start = time.time()
         fine_data_precise = None
         if fine_tf:
             fine_data_precise = load_data(symbol, fine_tf, args.start_date, args.end_date, quiet=True)
             if fine_data_precise.empty:
                 fine_data_precise = None
+            print(f"    ... Feindaten geladen ({time.time()-_pnb_start:.0f}s)")
 
         best_strategy_params = best_trial.user_attrs.get('strategy_params')
         best_risk_params     = best_trial.user_attrs.get('risk_params')
         if best_strategy_params is not None and best_risk_params is not None:
             best_is  = run_backtest(IS_DATA.copy(), best_strategy_params, best_risk_params, START_CAPITAL, verbose=False, fine_data=fine_data_precise)
+            print(f"    ... IS-Nachbewertung fertig ({time.time()-_pnb_start:.0f}s)")
             best_oos = run_backtest(OOS_DATA.copy(), best_strategy_params, best_risk_params, START_CAPITAL, verbose=False, fine_data=fine_data_precise)
+            print(f"    ... OOS-Nachbewertung fertig ({time.time()-_pnb_start:.0f}s)")
             new_pnl  = best_is.get('total_pnl_pct', new_pnl)
         else:
             # Fallback (sollte nicht vorkommen): grobe Such-Werte verwenden
@@ -365,8 +374,10 @@ def main():
                 baseline_strategy = dict(existing_cfg['strategy'])
                 baseline_strategy.update({'symbol': symbol, 'timeframe': timeframe, 'htf': CURRENT_HTF})
                 baseline_risk = dict(existing_cfg['risk'])
+                print(f"  Bestehende Config als Baseline auf denselben Daten nachbewerten...")
                 baseline_is  = run_backtest(IS_DATA.copy(), baseline_strategy, baseline_risk, START_CAPITAL, verbose=False, fine_data=fine_data_precise)
                 baseline_oos = run_backtest(OOS_DATA.copy(), baseline_strategy, baseline_risk, START_CAPITAL, verbose=False, fine_data=fine_data_precise)
+                print(f"    ... Baseline-Nachbewertung fertig ({time.time()-_pnb_start:.0f}s)")
             except Exception as e:
                 print(f"  Warnung: Baseline-Bewertung fehlgeschlagen ({e}) -- werte ohne Baseline-Vergleich.")
                 baseline_is, baseline_oos = None, None
@@ -374,6 +385,10 @@ def main():
         # Bestaetigung (analog dnabot): genug OOS-Trades fuer eine belastbare
         # Aussage, OOS-PnL positiv, UND (falls Baseline vorhanden) besser als
         # die bestehende Config auf denselben OOS-Daten.
+        # (Kurz am 2026-08-21 versuchsweise auf nur die ersten beiden Bedingungen
+        # gelockert wegen eines Leakage-Bedenkens bei alten, ungeteilt gefitteten
+        # Baselines -- auf User-Entscheidung noch am selben Tag wieder auf die volle
+        # 3-Bedingungen-Regel zurückgesetzt, siehe [[project_statebot]].)
         # bool(...) UM DEN GESAMTAUSDRUCK: die einzelnen Vergleiche liefern bei
         # numpy.float64-Operanden (total_pnl_pct kommt aus run_backtest(), das
         # mit pandas/numpy rechnet) ein numpy.bool_ statt eines echten Python
