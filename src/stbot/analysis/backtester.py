@@ -170,6 +170,12 @@ class LazyFineData:
         self.symbol = symbol
         self.fine_tf = fine_tf
         self._days = {}
+        # Fuer Live-Status-Anzeigen von aussen (siehe _LiveTicker in
+        # portfolio_optimizer.py) -- zeigt, welcher Tag gerade nachgeladen
+        # wird bzw. zuletzt fertig war, damit eine lange Pause bei vielen
+        # offenen Positionen nicht wie ein Haenger aussieht.
+        self.current_day = None
+        self.days_loaded = 0
 
     def get_slice(self, start_ts, end_ts):
         if self.fine_tf is None:
@@ -177,12 +183,14 @@ class LazyFineData:
         day = pd.Timestamp(start_ts).floor('D')
         if day not in self._days:
             day_str = day.strftime('%Y-%m-%d')
+            self.current_day = day_str
             next_day_str = (day + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
             try:
                 df = load_data(self.symbol, self.fine_tf, day_str, next_day_str, quiet=True)
                 self._days[day] = df if df is not None and not df.empty else None
             except Exception:
                 self._days[day] = None
+            self.days_loaded = len(self._days)
         df = self._days[day]
         if df is None:
             return None
