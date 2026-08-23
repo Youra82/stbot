@@ -1,12 +1,12 @@
 {
     "market": {
-        "symbol": "ETH/USDT:USDT",
-        "timeframe": "6h",
-        "htf": "1d"
+        "symbol": "XRP/USDT:USDT",
+        "timeframe": "1h",
+        "htf": "4h"
     },
     "strategy": {
-        "pivot_period": 9,
-        "max_pivots": 57,
+        "pivot_period": 23,
+        "max_pivots": 54,
         "channel_width_pct": 7,
         "max_sr_levels": 5,
         "min_strength": 4,
@@ -16,17 +16,17 @@
         "use_avalanche_filter": false,
         "avalanche_percentile_threshold": 60,
         "use_energy_filter": true,
-        "min_energy_zscore": 0.9898050179128353,
+        "min_energy_zscore": 0.8622206651909023,
         "use_energy_streak_filter": true
     },
     "risk": {
         "margin_mode": "isolated",
-        "risk_per_trade_pct": 2.66,
-        "risk_reward_ratio": 1.91,
-        "leverage": 17,
-        "trailing_stop_activation_rr": 2.41,
-        "trailing_stop_callback_rate_pct": 1.33,
-        "atr_multiplier_sl": 3.14,
+        "risk_per_trade_pct": 2.81,
+        "risk_reward_ratio": 4.22,
+        "leverage": 6,
+        "trailing_stop_activation_rr": 1.15,
+        "trailing_stop_callback_rate_pct": 0.61,
+        "atr_multiplier_sl": 1.72,
         "min_sl_pct": 0.3
     },
     "behavior": {
@@ -34,11 +34,11 @@
         "use_shorts": true
     },
     "_meta": {
-        "pnl_pct": 6.89,
-        "oos_pnl_pct": 5.17,
-        "oos_trades": 6,
-        "is_oos_split_date": "2025-09-21",
+        "pnl_pct": 50.76,
+        "oos_pnl_pct": 0.24,
+        "oos_trades": 7,
+        "is_oos_split_date": "2026-03-04",
         "confirmed": false,
-        "optimized_at": "2026-08-23T00:14:16"
+        "optimized_at": "2026-08-23T11:15:34"
     }
 }

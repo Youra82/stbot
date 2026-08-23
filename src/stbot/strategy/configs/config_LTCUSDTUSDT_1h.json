@@ -1,0 +1,44 @@
+{
+    "market": {
+        "symbol": "LTC/USDT:USDT",
+        "timeframe": "1h",
+        "htf": "4h"
+    },
+    "strategy": {
+        "pivot_period": 9,
+        "max_pivots": 40,
+        "channel_width_pct": 6,
+        "max_sr_levels": 5,
+        "min_strength": 2,
+        "source": "Close/Open",
+        "use_weekly_trend_filter": true,
+        "weekly_trend_ema": 9,
+        "use_avalanche_filter": true,
+        "avalanche_percentile_threshold": 58,
+        "use_energy_filter": true,
+        "min_energy_zscore": 0.7921721193724878,
+        "use_energy_streak_filter": true
+    },
+    "risk": {
+        "margin_mode": "isolated",
+        "risk_per_trade_pct": 1.63,
+        "risk_reward_ratio": 2.15,
+        "leverage": 20,
+        "trailing_stop_activation_rr": 1.26,
+        "trailing_stop_callback_rate_pct": 0.58,
+        "atr_multiplier_sl": 2.01,
+        "min_sl_pct": 0.3
+    },
+    "behavior": {
+        "use_longs": true,
+        "use_shorts": true
+    },
+    "_meta": {
+        "pnl_pct": 4.54,
+        "oos_pnl_pct": 3.65,
+        "oos_trades": 4,
+        "is_oos_split_date": "2026-03-04",
+        "confirmed": false,
+        "optimized_at": "2026-08-23T14:58:33"
+    }
+}
