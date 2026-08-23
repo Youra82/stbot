@@ -19,16 +19,27 @@ class _LiveTicker:
     auch waehrend eines einzelnen, mehrere Minuten dauernden Simulations-
     aufrufs zwischen zwei Iterationen -- ohne das faellt die Leiste zwischen
     zwei Schritten in eine eingefrorene Anzeige. Schreibt auf dieselbe Zeile
-    (kein Zeilen-Spam), per set_postfix_str() zusaetzlich sichtbar, welche
-    Strategie gerade getestet wird."""
-    def __init__(self, pbar, interval=0.5):
+    (kein Zeilen-Spam). Optional laesst sich per status_fn() bei jedem Tick
+    ein echter Fortschritts-Status ins Postfix schreiben (z.B. welcher Tag
+    an Feindaten gerade bei LazyFineData nachgeladen wird) -- ohne das sieht
+    ein einzelner, minutenlanger Simulationsaufruf (z.B. bei Bitget-Rate-
+    Limiting) wie ein Haenger aus, obwohl er nur langsam vorankommt."""
+    def __init__(self, pbar, status_fn=None, interval=0.5):
         self._pbar = pbar
+        self._status_fn = status_fn
         self._interval = interval
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
 
     def _run(self):
         while not self._stop.wait(self._interval):
+            if self._status_fn is not None:
+                try:
+                    status = self._status_fn()
+                    if status:
+                        self._pbar.set_postfix_str(status)
+                except Exception:
+                    pass
             self._pbar.refresh()
 
     def __enter__(self):
@@ -58,9 +69,17 @@ def run_portfolio_optimizer(start_capital, strategies_data, start_date, end_date
     single_strategy_results = []
 
     pbar = tqdm(strategies_data.items(), desc="Bewerte Einzelstrategien")
-    with _LiveTicker(pbar):
+    _ctx = {}
+    def _status():
+        fd = _ctx.get('fine_data')
+        if fd is not None and getattr(fd, 'current_day', None):
+            return f"{_ctx.get('label', '')} | Feindaten {fd.current_day} ({fd.days_loaded} Tage geladen)"
+        return _ctx.get('label', '')
+    with _LiveTicker(pbar, status_fn=_status):
       for filename, strat_data in pbar:
-        pbar.set_postfix_str(f"{strat_data['symbol']} {strat_data['timeframe']}")
+        _ctx['label'] = f"{strat_data['symbol']} {strat_data['timeframe']}"
+        _ctx['fine_data'] = strat_data.get('fine_data')
+        pbar.set_postfix_str(_ctx['label'])
         strategy_key = f"{strat_data['symbol']}_{strat_data['timeframe']}"
         sim_data = {strategy_key: strat_data}
         if 'data' not in strat_data or strat_data['data'].empty:
@@ -124,7 +143,13 @@ def run_portfolio_optimizer(start_capital, strategies_data, start_date, end_date
         current_best_result_for_addition = best_portfolio_result # Merke dir das Ergebnis dieser Runde
 
         progress_bar = tqdm(candidate_pool, desc=f"Teste Team mit {len(best_portfolio_files)+1} Mitgliedern")
-        ticker = _LiveTicker(progress_bar)
+        _ctx = {}
+        def _status():
+            fd = _ctx.get('fine_data')
+            if fd is not None and getattr(fd, 'current_day', None):
+                return f"{_ctx.get('label', '')} | Feindaten {fd.current_day} ({fd.days_loaded} Tage geladen)"
+            return _ctx.get('label', '')
+        ticker = _LiveTicker(progress_bar, status_fn=_status)
         ticker.__enter__()
         for candidate_file in progress_bar:
 
@@ -133,7 +158,9 @@ def run_portfolio_optimizer(start_capital, strategies_data, start_date, end_date
             if not candidate_strat_data:
                 continue # Überspringe, falls Daten für Kandidat fehlen
 
-            progress_bar.set_postfix_str(f"{candidate_strat_data['symbol']} {candidate_strat_data['timeframe']}")
+            _ctx['label'] = f"{candidate_strat_data['symbol']} {candidate_strat_data['timeframe']}"
+            _ctx['fine_data'] = candidate_strat_data.get('fine_data')
+            progress_bar.set_postfix_str(_ctx['label'])
             candidate_coin = candidate_strat_data['symbol'].split('/')[0]
 
             # Prüfe, ob der Coin dieses Kandidaten bereits im Portfolio ist
