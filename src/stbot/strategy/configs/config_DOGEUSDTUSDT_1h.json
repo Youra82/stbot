@@ -1,0 +1,44 @@
+{
+    "market": {
+        "symbol": "DOGE/USDT:USDT",
+        "timeframe": "1h",
+        "htf": "4h"
+    },
+    "strategy": {
+        "pivot_period": 27,
+        "max_pivots": 47,
+        "channel_width_pct": 7,
+        "max_sr_levels": 5,
+        "min_strength": 2,
+        "source": "Close/Open",
+        "use_weekly_trend_filter": false,
+        "weekly_trend_ema": 4,
+        "use_avalanche_filter": true,
+        "avalanche_percentile_threshold": 50,
+        "use_energy_filter": false,
+        "min_energy_zscore": 0.0,
+        "use_energy_streak_filter": false
+    },
+    "risk": {
+        "margin_mode": "isolated",
+        "risk_per_trade_pct": 2.48,
+        "risk_reward_ratio": 1.73,
+        "leverage": 10,
+        "trailing_stop_activation_rr": 2.93,
+        "trailing_stop_callback_rate_pct": 0.89,
+        "atr_multiplier_sl": 1.83,
+        "min_sl_pct": 0.3
+    },
+    "behavior": {
+        "use_longs": true,
+        "use_shorts": true
+    },
+    "_meta": {
+        "pnl_pct": 62.96,
+        "oos_pnl_pct": -32.87,
+        "oos_trades": 26,
+        "is_oos_split_date": "2026-03-04",
+        "confirmed": false,
+        "optimized_at": "2026-08-23T19:44:33"
+    }
+}

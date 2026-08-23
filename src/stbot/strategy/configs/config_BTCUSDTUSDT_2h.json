@@ -1,18 +1,18 @@
 {
     "market": {
-        "symbol": "LTC/USDT:USDT",
-        "timeframe": "6h",
+        "symbol": "BTC/USDT:USDT",
+        "timeframe": "2h",
         "htf": "1d"
     },
     "strategy": {
-        "pivot_period": 13,
+        "pivot_period": 17,
         "max_pivots": 22,
-        "channel_width_pct": 8,
+        "channel_width_pct": 11,
         "max_sr_levels": 5,
-        "min_strength": 1,
+        "min_strength": 3,
         "source": "Close/Open",
         "use_weekly_trend_filter": true,
-        "weekly_trend_ema": 5,
+        "weekly_trend_ema": 6,
         "use_avalanche_filter": false,
         "avalanche_percentile_threshold": 60,
         "use_energy_filter": false,
@@ -21,12 +21,12 @@
     },
     "risk": {
         "margin_mode": "isolated",
-        "risk_per_trade_pct": 1.8,
-        "risk_reward_ratio": 2.56,
-        "leverage": 20,
-        "trailing_stop_activation_rr": 1.56,
-        "trailing_stop_callback_rate_pct": 0.81,
-        "atr_multiplier_sl": 1.64,
+        "risk_per_trade_pct": 1.53,
+        "risk_reward_ratio": 4.97,
+        "leverage": 7,
+        "trailing_stop_activation_rr": 2.4,
+        "trailing_stop_callback_rate_pct": 0.37,
+        "atr_multiplier_sl": 2.0,
         "min_sl_pct": 0.3
     },
     "behavior": {
@@ -34,11 +34,11 @@
         "use_shorts": true
     },
     "_meta": {
-        "pnl_pct": 7.4,
-        "oos_pnl_pct": -10.46,
-        "oos_trades": 16,
-        "is_oos_split_date": "2025-09-21",
+        "pnl_pct": 19.92,
+        "oos_pnl_pct": -6.24,
+        "oos_trades": 10,
+        "is_oos_split_date": "2026-01-09",
         "confirmed": false,
-        "optimized_at": "2026-08-23T03:13:15"
+        "optimized_at": "2026-08-23T00:07:01"
     }
 }

@@ -1,0 +1,44 @@
+{
+    "market": {
+        "symbol": "XRP/USDT:USDT",
+        "timeframe": "30m",
+        "htf": "2h"
+    },
+    "strategy": {
+        "pivot_period": 12,
+        "max_pivots": 23,
+        "channel_width_pct": 15,
+        "max_sr_levels": 5,
+        "min_strength": 4,
+        "source": "High/Low",
+        "use_weekly_trend_filter": false,
+        "weekly_trend_ema": 4,
+        "use_avalanche_filter": true,
+        "avalanche_percentile_threshold": 85,
+        "use_energy_filter": true,
+        "min_energy_zscore": 0.38687993661300785,
+        "use_energy_streak_filter": true
+    },
+    "risk": {
+        "margin_mode": "isolated",
+        "risk_per_trade_pct": 2.26,
+        "risk_reward_ratio": 1.61,
+        "leverage": 12,
+        "trailing_stop_activation_rr": 2.24,
+        "trailing_stop_callback_rate_pct": 1.69,
+        "atr_multiplier_sl": 3.36,
+        "min_sl_pct": 0.3
+    },
+    "behavior": {
+        "use_longs": true,
+        "use_shorts": true
+    },
+    "_meta": {
+        "pnl_pct": 22.48,
+        "oos_pnl_pct": 0.31,
+        "oos_trades": 15,
+        "is_oos_split_date": "2026-03-24",
+        "confirmed": true,
+        "optimized_at": "2026-08-23T11:45:28"
+    }
+}

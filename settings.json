@@ -4,19 +4,13 @@
         "use_auto_optimizer_results": false,
         "active_strategies": [
             {
-                "symbol": "BTC/USDT:USDT",
-                "timeframe": "6h",
+                "symbol": "ARB/USDT:USDT",
+                "timeframe": "2h",
                 "active": true
             },
             {
-                "symbol": "XRP/USDT:USDT",
-                "timeframe": "6h",
-                "use_macd_filter": false,
-                "active": true
-            },
-            {
-                "symbol": "ETH/USDT:USDT",
-                "timeframe": "6h",
+                "symbol": "SOL/USDT:USDT",
+                "timeframe": "2h",
                 "active": true
             }
         ]

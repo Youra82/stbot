@@ -1,0 +1,44 @@
+{
+    "market": {
+        "symbol": "BNB/USDT:USDT",
+        "timeframe": "4h",
+        "htf": "1d"
+    },
+    "strategy": {
+        "pivot_period": 6,
+        "max_pivots": 17,
+        "channel_width_pct": 23,
+        "max_sr_levels": 5,
+        "min_strength": 1,
+        "source": "High/Low",
+        "use_weekly_trend_filter": true,
+        "weekly_trend_ema": 5,
+        "use_avalanche_filter": true,
+        "avalanche_percentile_threshold": 53,
+        "use_energy_filter": false,
+        "min_energy_zscore": 0.0,
+        "use_energy_streak_filter": false
+    },
+    "risk": {
+        "margin_mode": "isolated",
+        "risk_per_trade_pct": 1.34,
+        "risk_reward_ratio": 4.57,
+        "leverage": 8,
+        "trailing_stop_activation_rr": 2.0,
+        "trailing_stop_callback_rate_pct": 1.07,
+        "atr_multiplier_sl": 1.96,
+        "min_sl_pct": 0.3
+    },
+    "behavior": {
+        "use_longs": true,
+        "use_shorts": true
+    },
+    "_meta": {
+        "pnl_pct": 23.11,
+        "oos_pnl_pct": 6.47,
+        "oos_trades": 15,
+        "is_oos_split_date": "2026-01-09",
+        "confirmed": true,
+        "optimized_at": "2026-08-23T01:53:37"
+    }
+}

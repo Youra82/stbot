@@ -1,0 +1,44 @@
+{
+    "market": {
+        "symbol": "LINK/USDT:USDT",
+        "timeframe": "30m",
+        "htf": "2h"
+    },
+    "strategy": {
+        "pivot_period": 15,
+        "max_pivots": 40,
+        "channel_width_pct": 9,
+        "max_sr_levels": 5,
+        "min_strength": 2,
+        "source": "High/Low",
+        "use_weekly_trend_filter": false,
+        "weekly_trend_ema": 4,
+        "use_avalanche_filter": true,
+        "avalanche_percentile_threshold": 73,
+        "use_energy_filter": true,
+        "min_energy_zscore": 0.9911983499272562,
+        "use_energy_streak_filter": true
+    },
+    "risk": {
+        "margin_mode": "isolated",
+        "risk_per_trade_pct": 1.93,
+        "risk_reward_ratio": 4.95,
+        "leverage": 10,
+        "trailing_stop_activation_rr": 2.49,
+        "trailing_stop_callback_rate_pct": 1.16,
+        "atr_multiplier_sl": 2.35,
+        "min_sl_pct": 0.3
+    },
+    "behavior": {
+        "use_longs": true,
+        "use_shorts": true
+    },
+    "_meta": {
+        "pnl_pct": 50.19,
+        "oos_pnl_pct": -21.68,
+        "oos_trades": 33,
+        "is_oos_split_date": "2026-03-24",
+        "confirmed": false,
+        "optimized_at": "2026-08-23T16:28:43"
+    }
+}
