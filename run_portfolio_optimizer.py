@@ -529,6 +529,11 @@ def main() -> int:
     from stbot.analysis.portfolio_optimizer import run_portfolio_optimizer
     result = run_portfolio_optimizer(capital, strategies_data, start_date, end_date, max_dd)
 
+    if result and result.get('skipped_low_memory'):
+        # Bewusster, sauberer Abbruch (siehe portfolio_optimizer.py::_check_memory_available) --
+        # settings.json bleibt unangetastet, naechster planmaessiger Lauf versucht es erneut.
+        return 0
+
     if not result or not result.get('optimal_portfolio'):
         print(f"{R}  Kein Portfolio erfuellt die Bedingungen (MaxDD ≤ {max_dd:.0f}%).{NC}\n")
         return 0

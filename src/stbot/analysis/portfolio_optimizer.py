@@ -2,6 +2,7 @@
 import pandas as pd
 import itertools
 import threading
+import time
 from tqdm import tqdm
 import sys
 import os
@@ -12,6 +13,57 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
 from stbot.analysis.portfolio_simulator import run_portfolio_simulation
+
+try:
+    import resource  # POSIX-only (Linux/WSL) -- auf dem produktiven VPS immer verfuegbar
+    def _current_rss_mb():
+        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+except ImportError:
+    def _current_rss_mb():  # z.B. bei lokalen Tests unter Windows
+        return 0.0
+
+# Sicherheitsgrenze fuer den eigenen Speicherverbrauch. Live beobachtet
+# (2026-08-24, Mini-PC/VPS mit 6.3GB RAM): dieser Optimierer lief auf ~5.7GB
+# RSS ein, WAEHREND parallel per Cron alle 5 Minuten ein Fleet aus 9 weiteren
+# Live-Bots (master_runner.py je Bot) anspringt -- der kombinierte Speicher-
+# druck loeste den Kernel-OOM-Killer aus, der den kompletten VPS inkl. aller
+# offenen Terminalfenster mitgerissen hat. Da dieser Optimierer zwingend
+# automatisiert/unbeaufsichtigt (woechentlich per Cron) auf genau diesem VPS
+# laufen soll, MUSS er sich selbst begrenzen, statt auf einen harten Kernel-
+# Abbruch zu vertrauen: ueberschreitet der eigene Prozess dieses Limit,
+# bricht die Suche kontrolliert mit dem bisher besten Ergebnis ab, statt den
+# ganzen VPS mitzureissen. 3500MB laesst auf 6.3GB Gesamt-RAM ausreichend
+# Puffer fuer OS + das parallele Bot-Fleet (das selbst nur ca. 150-200MB
+# braucht, siehe ps-aux-Messung vom selben Tag).
+MAX_RSS_MB = 3500
+
+
+def _check_memory_available(min_available_mb=1500, max_wait_s=180, poll_interval_s=15):
+    """Vorflug-Check: liest MemAvailable aus /proc/meminfo (Linux/WSL) und
+    wartet kurz, falls das parallele Bot-Fleet gerade selbst einen Lastpeak
+    hat. Gibt True zurueck, wenn genug Speicher frei ist (oder der Check auf
+    einem Nicht-Linux-System schlicht nicht moeglich ist -- dann optimistisch
+    weiterlaufen), sonst False nach Ablauf von max_wait_s."""
+    meminfo_path = '/proc/meminfo'
+    if not os.path.exists(meminfo_path):
+        return True
+    waited = 0
+    while waited <= max_wait_s:
+        try:
+            with open(meminfo_path) as f:
+                for line in f:
+                    if line.startswith('MemAvailable:'):
+                        available_mb = int(line.split()[1]) / 1024
+                        if available_mb >= min_available_mb:
+                            return True
+                        break
+        except Exception:
+            return True  # Check selbst fehlgeschlagen -- nicht blockieren
+        if waited >= max_wait_s:
+            break
+        time.sleep(poll_interval_s)
+        waited += poll_interval_s
+    return False
 
 
 class _LiveTicker:
@@ -64,6 +116,15 @@ def run_portfolio_optimizer(start_capital, strategies_data, start_date, end_date
         print("Keine Strategien zum Optimieren gefunden.")
         return None
 
+    # Vorflug-Check: laeuft das parallele Bot-Fleet (Cron, alle 5 Min) gerade
+    # selbst in einem Lastpeak, warte kurz statt direkt in eine bereits knappe
+    # Speichersituation hineinzustarten (siehe MAX_RSS_MB-Kommentar oben).
+    if not _check_memory_available():
+        print("  Zu wenig freier Speicher (< 1.5GB) nach Wartezeit -- "
+              "Portfolio-Optimierung diese Woche uebersprungen, bestehendes "
+              "Portfolio bleibt unveraendert.")
+        return {"optimal_portfolio": [], "final_result": None, "skipped_low_memory": True}
+
     # --- 1. Analysiere Einzel-Performance & filtere nach Max DD ---
     print("1/3: Analysiere Einzel-Performance & filtere nach Max DD...")
     single_strategy_results = []
@@ -77,6 +138,10 @@ def run_portfolio_optimizer(start_capital, strategies_data, start_date, end_date
         return _ctx.get('label', '')
     with _LiveTicker(pbar, status_fn=_status):
       for filename, strat_data in pbar:
+        if _current_rss_mb() > MAX_RSS_MB:
+            print(f"\n  Speicherlimit ({MAX_RSS_MB}MB) erreicht -- breche Einzelanalyse "
+                  f"vorzeitig ab (bisherige {len(single_strategy_results)} Ergebnisse bleiben erhalten).")
+            break
         _ctx['label'] = f"{strat_data['symbol']} {strat_data['timeframe']}"
         _ctx['fine_data'] = strat_data.get('fine_data')
         pbar.set_postfix_str(_ctx['label'])
@@ -138,6 +203,11 @@ def run_portfolio_optimizer(start_capital, strategies_data, start_date, end_date
             selected_coins.add(initial_coin) # NEU
 
     while True:
+        if _current_rss_mb() > MAX_RSS_MB:
+            print(f"\n  Speicherlimit ({MAX_RSS_MB}MB) erreicht -- breche Team-Suche vorzeitig ab "
+                  f"(bisheriges Team bleibt: {best_portfolio_files}).")
+            break
+
         best_next_addition = None
         best_capital_with_addition = best_end_capital # Starte mit dem Kapital des aktuellen besten Portfolios
         current_best_result_for_addition = best_portfolio_result # Merke dir das Ergebnis dieser Runde
@@ -152,6 +222,9 @@ def run_portfolio_optimizer(start_capital, strategies_data, start_date, end_date
         ticker = _LiveTicker(progress_bar, status_fn=_status)
         ticker.__enter__()
         for candidate_file in progress_bar:
+            if _current_rss_mb() > MAX_RSS_MB:
+                print(f"\n  Speicherlimit ({MAX_RSS_MB}MB) erreicht -- breche diese Runde vorzeitig ab.")
+                break
 
             # --- START: NEUER CODE ZUR KOLLISIONSPRÜFUNG ---
             candidate_strat_data = strategies_data.get(candidate_file)
