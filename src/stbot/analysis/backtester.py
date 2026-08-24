@@ -29,7 +29,7 @@ class Bias:
 # (oraclebot-Muster). Verhaeltnis ~8-30:1, an verfuegbare Exchange-Granularitaeten
 # angepasst.
 FINE_TF_MAP = {
-    '5m': '1m', '15m': '1m', '30m': '1m',
+    '5m': '1m', '15m': '5m', '30m': '5m',
     '1h': '5m', '2h': '5m',
     '4h': '15m', '6h': '15m',
     '1d': '1h',
