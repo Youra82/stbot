@@ -166,8 +166,25 @@ class Exchange:
                     # Timeframes (1m/5m/15m) zu systematischen ~8-Tage-Luecken.
                     ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe, since=start_ts, limit=200)
                     if not ohlcv: break
+                    new_start_ts = ohlcv[-1][0] + 1
+                    if new_start_ts <= start_ts:
+                        # Live beobachtet (2026-08-24, ARB/USDT:USDT 30m -> Feindaten
+                        # 1m fuer 2026-05-02): Bitget liefert am Ende der tatsaechlich
+                        # verfuegbaren Historie wiederholt dieselbe/eine nicht
+                        # fortschreitende Kerzen-Seite zurueck, OHNE einen Fehler zu
+                        # werfen. start_ts blieb dadurch stehen, retries wurde bei
+                        # jedem "Erfolg" auf 0 zurueckgesetzt -- die Schleife lief
+                        # endlos (weder Retry-Limit noch end_ts wurden je erreicht).
+                        # Echter Haenger, kein Rate-Limit -- daher unconditional
+                        # geloggt statt hinter quiet versteckt.
+                        logger.warning(
+                            f"  ⚠ {symbol} ({timeframe}): Pagination haengt bei "
+                            f"{pd.Timestamp(start_ts, unit='ms', tz='UTC')} fest "
+                            f"(keine neuen Kerzen trotz Erfolg) -- breche ab."
+                        )
+                        break
                     all_ohlcv.extend(ohlcv)
-                    start_ts = ohlcv[-1][0] + 1
+                    start_ts = new_start_ts
                     retries = 0
                     chunk_count += 1
                     if not quiet and chunk_count % 10 == 0:
