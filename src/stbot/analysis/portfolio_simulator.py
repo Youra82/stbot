@@ -35,24 +35,41 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
     _iter = tqdm(strategies_data.items(), desc="Verarbeite Strategien") if verbose else strategies_data.items()
     for key, strat in _iter:
         try:
-            df = strat['data'].copy()
-            if df.empty or len(df) < 100: continue
+            raw = strat['data']
+            if raw.empty or len(raw) < 100: continue
 
             params = strat.get('smc_params', {}) # Im Simulator heissen sie evtl. noch smc_params
             if not params: params = strat.get('strategy', {})
 
-            # 1a. ATR berechnen
-            atr_indicator = ta.volatility.AverageTrueRange(high=df['high'], low=df['low'], close=df['close'], window=14)
-            df['atr'] = atr_indicator.average_true_range()
+            if 'sr_signal' in raw.columns:
+                # Bereits in einem frueheren Aufruf mit denselben strategies_data
+                # vorverarbeitet (ATR + SREngine) -- direkt wiederverwenden statt
+                # bei jedem Aufruf neu zu kopieren/berechnen. run_portfolio_optimizer.py
+                # ruft diese Funktion in "Bewerte Einzelstrategien"/"Teste Team mit N
+                # Mitgliedern" dutzende bis 100+ Mal MIT DENSELBEN strategies_data auf
+                # (z.B. dieselben bereits akzeptierten Team-Mitglieder werden in jeder
+                # Kandidaten-Runde erneut mitverarbeitet) -- ohne Cache fuehrte das
+                # wiederholte Kopieren+SREngine-Neuberechnen zu massivem Allokations-
+                # Churn (live beobachtet: OOM-Kill bei 5.1GB RSS auf einem 6.3GB-
+                # Mini-PC, 2026-08-24, bei nur ~19 gleichzeitigen Strategien).
+                df = raw
+            else:
+                df = raw.copy()
 
-            # 1b. SR Engine
-            engine = SREngine(settings=params)
-            df = engine.process_dataframe(df)
+                # 1a. ATR berechnen
+                atr_indicator = ta.volatility.AverageTrueRange(high=df['high'], low=df['low'], close=df['close'], window=14)
+                df['atr'] = atr_indicator.average_true_range()
 
-            # NaN Werte am Anfang entfernen
-            df.dropna(subset=['atr', 'sr_signal'], inplace=True)
+                # 1b. SR Engine
+                engine = SREngine(settings=params)
+                df = engine.process_dataframe(df)
 
-            if df.empty: continue
+                # NaN Werte am Anfang entfernen
+                df.dropna(subset=['atr', 'sr_signal'], inplace=True)
+
+                if df.empty: continue
+
+                strat['data'] = df  # fuer kuenftige Aufrufe mit denselben strategies_data cachen
 
             processed_strategies[key] = {
                 'data': df,

@@ -5,6 +5,7 @@ import numpy as np
 import json
 import sys
 import bisect
+import collections
 from tqdm import tqdm
 import ta
 import math
@@ -166,10 +167,23 @@ class LazyFineData:
     Trials eines Optimizer-Laufs hinweg, damit einmal geladene Tage nicht
     mehrfach abgerufen werden.
     """
+    # Obergrenze fuer gleichzeitig im Speicher gehaltene Tage (LRU-Eviction).
+    # Live beobachtet (2026-08-24, Mini-PC/WSL, 6.3GB RAM): run_portfolio_optimizer.py
+    # haelt pro bestaetigter Config eine eigene LazyFineData-Instanz offen, deren
+    # _days-Cache unbegrenzt wuchs -- bei ~19 gleichzeitigen Instanzen (viele davon
+    # 30m-Paare mit 1m-Feinaufloesung, der speicherhungrigsten Stufe in FINE_TF_MAP)
+    # stieg der Python-Prozess auf 5.1GB RSS und wurde vom Kernel-OOM-Killer
+    # abgeschossen (kompletter Absturz inkl. aller offenen Terminalfenster).
+    # Ein Cache-Limit pro Instanz deckelt den Speicher unabhaengig von der Anzahl
+    # der Trades/Tage; kostet im Extremfall einen erneuten Netzwerk-Fetch, falls
+    # ein verdraengter Tag spaeter nochmal gebraucht wird (z.B. Schritt 3,
+    # Team-Kombinationstests) -- klar der bessere Trade-off als ein Voll-Absturz.
+    MAX_CACHED_DAYS = 90
+
     def __init__(self, symbol, fine_tf):
         self.symbol = symbol
         self.fine_tf = fine_tf
-        self._days = {}
+        self._days = collections.OrderedDict()
         # Fuer Live-Status-Anzeigen von aussen (siehe _LiveTicker in
         # portfolio_optimizer.py) -- zeigt, welcher Tag gerade nachgeladen
         # wird bzw. zuletzt fertig war, damit eine lange Pause bei vielen
@@ -181,7 +195,9 @@ class LazyFineData:
         if self.fine_tf is None:
             return None
         day = pd.Timestamp(start_ts).floor('D')
-        if day not in self._days:
+        if day in self._days:
+            self._days.move_to_end(day)
+        else:
             day_str = day.strftime('%Y-%m-%d')
             self.current_day = day_str
             next_day_str = (day + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
@@ -190,7 +206,9 @@ class LazyFineData:
                 self._days[day] = df if df is not None and not df.empty else None
             except Exception:
                 self._days[day] = None
-            self.days_loaded = len(self._days)
+            self.days_loaded += 1
+            if len(self._days) > self.MAX_CACHED_DAYS:
+                self._days.popitem(last=False)
         df = self._days[day]
         if df is None:
             return None
