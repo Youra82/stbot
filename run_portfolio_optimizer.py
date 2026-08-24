@@ -50,9 +50,17 @@ def _scan_configs() -> list:
 
 
 def _build_strategies_data(config_files: list, start_date: str, end_date: str) -> dict:
-    from stbot.analysis.backtester import load_data, FINE_TF_MAP, LazyFineData
+    from stbot.analysis.backtester import load_data, FINE_TF_MAP
+    from stbot.analysis.portfolio_optimizer import _LiveTicker, _current_rss_mb, MAX_RSS_MB
     strategies_data = {}
-    for path in tqdm(config_files, desc='Lade Configs & Daten'):
+    pbar = tqdm(config_files, desc='Lade Configs & Daten')
+    _ctx = {'label': ''}
+    with _LiveTicker(pbar, status_fn=lambda: _ctx.get('label', '')):
+      for path in pbar:
+        if _current_rss_mb() > MAX_RSS_MB:
+            print(f"  {Y}Speicherlimit ({MAX_RSS_MB}MB) erreicht -- lade keine weiteren "
+                  f"Configs nach ({len(strategies_data)} bereits geladen).{NC}")
+            break
         fname = os.path.basename(path)
         try:
             with open(path) as f:
@@ -86,11 +94,32 @@ def _build_strategies_data(config_files: list, start_date: str, end_date: str) -
                 continue
 
             # Feinere Kerzen fuer Intrabar-Pfad-Aufloesung (oraclebot-Muster) --
-            # on-demand (LazyFineData): laedt nur die Tage, an denen im
-            # Portfolio-Backtest tatsaechlich eine offene Position liegt,
-            # statt den ganzen Zeitraum vorab herunterzuladen.
+            # EIN durchgehender Bulk-Fetch statt Tag-fuer-Tag (LazyFineData).
+            # Umgestellt am 2026-08-24, Grund: anders als beim einmaligen
+            # Praezisions-Recheck in optimizer.py (wo Bulk primaer die 4-fach-
+            # Redundanz ueber IS/OOS/Baseline behob) wird die LazyFineData-
+            # Instanz hier zwar korrekt EINMAL pro Symbol wiederverwendet (kein
+            # Redundanz-Problem) -- aber live beobachtet trug ein einzelnes
+            # aktiv handelndes 30m-Symbol (AAVE) an ~84 von ~213 Tagen offene
+            # Positionen, also musste ohnehin fuer >40% des Zeitraums Feindaten
+            # einzeln nachgeladen werden. Bei so hoher Trefferquote ueberwiegt
+            # der Overhead vieler kleiner Tages-Anfragen (eigener Verbindungs-/
+            # Anfrage-Overhead je Tag) den Vorteil des Wenigerladens -- ein
+            # einziger durchgehender Abruf nutzt Bitgets Pagination effizienter
+            # UND macht den kompletten Netzwerk-Anteil in der ohnehin schon
+            # sichtbaren "Lade Configs & Daten"-Phase sichtbar, statt spaeter
+            # als scheinbar haengender 0%-Balken bei "Bewerte Einzelstrategien"
+            # aufzutauchen. Kostet mehr RAM (ganzer Zeitraum statt nur
+            # benoetigter Tage), bleibt aber weit unter dem MAX_RSS_MB-Limit.
             fine_tf = FINE_TF_MAP.get(timeframe)
-            fine_data = LazyFineData(symbol, fine_tf) if fine_tf else None
+            fine_data = None
+            if fine_tf:
+                _ctx['label'] = f"{symbol} {timeframe} -> Feindaten ({fine_tf}) laden..."
+                pbar.set_postfix_str(_ctx['label'])
+                fine_data = load_data(symbol, fine_tf, start_date, end_date, quiet=True)
+                if fine_data is None or fine_data.empty:
+                    fine_data = None
+                _ctx['label'] = ''
 
             strategies_data[fname] = {
                 'symbol':     symbol,
