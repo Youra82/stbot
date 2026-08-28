@@ -2,7 +2,7 @@
 
 Ein vollautomatischer Trading-Bot für Krypto-Futures auf der Bitget-Börse, basierend auf der **Support & Resistance Dynamic v2 (SRv2)** Strategie.
 
-Dieses System wurde für den Betrieb auf einem Ubuntu-Server entwickelt und umfasst neben dem Live-Trading-Modul eine hochentwickelte, automatisierte Pipeline zur Parameter-Optimierung (Optuna) und Portfolio-Zusammenstellung.
+Dieses System wurde für den Betrieb auf einem Ubuntu-Server entwickelt und umfasst neben dem Live-Trading-Modul eine hochentwickelte, automatisierte Pipeline zur Parameter-Optimierung (Optuna, mit echter In-Sample/Out-of-Sample-Validierung gegen Overfitting) und Portfolio-Zusammenstellung.
 
 ## Kernstrategie 🧱
 
@@ -23,6 +23,22 @@ Der Bot implementiert eine Breakout-Strategie, die dynamische Unterstützungs- u
 ## Architektur & Arbeitsablauf
 
 Der Bot arbeitet mit einem präzisen, automatisierten und ressourcenschonenden System.
+
+```mermaid
+flowchart TD
+    A["Cronjob\n(z.B. alle 15 Min)"] --> B["master_runner.py"]
+    B --> C{"Neuer Zeit-Block\nfür Strategie erreicht?"}
+    C -- Nein --> Z["Warten bis\nnächster Cronjob"]
+    C -- Ja --> D["run.py\n(spezifische Strategie)"]
+    D --> E["Guardian-Decorator:\nSicherheits-Checks"]
+    E --> F["trade_manager.py"]
+    F --> G["Historische Daten abrufen"]
+    G --> H["SREngine:\nPivots + S/R-Zonen"]
+    H --> I{"Breakout-Signal?"}
+    I -- Ja --> J["Order bei Bitget\ninkl. SL/TP"]
+    I -- Nein --> Z
+    B -. "wöchentlich fällig" .-> K["Auto-Optimizer\nScheduler"]
+```
 
 1.  **Der Cronjob (Der Wecker):** Ein einziger, simpler Cronjob läuft in einem kurzen Intervall (z.B. alle 15 Minuten). Er hat nur eine Aufgabe: den intelligenten Master-Runner zu starten.
 
@@ -105,6 +121,38 @@ Pipeline starten:
 ```bash
 ./run_pipeline.sh
 ```
+
+```mermaid
+flowchart TD
+    A["Optuna-Suche auf\nIn-Sample-Daten (70%)\nZiel: Minimum über K_FOLDS-Teilfenster"] --> B["Bester Trial"]
+    B --> C["Präzise Nachbewertung\nmit Feindaten: IS + OOS"]
+    C --> D{"OOS: genug Trades,\nPnL positiv,\nbesser als Baseline?"}
+    D -- Ja --> E["confirmed: true"]
+    D -- Nein --> F["confirmed: false\n(trotzdem gespeichert)"]
+    E --> G["run_portfolio_optimizer.py\n(Greedy-Auswahl unter MaxDD)"]
+    F -. "wird ignoriert" .-> G
+    G --> H["settings.json\naktualisiert"]
+    H --> I["Live-Trading via\nmaster_runner.py"]
+```
+
+**Overfitting-Schutz (70/30 In-Sample/Out-of-Sample-Split):** Optuna optimiert nur
+auf den ersten 70% der Daten (In-Sample). Die bestehende Config (falls vorhanden)
+dient als Baseline-Vergleich auf denselben Daten. Eine neue Config wird nur als
+`confirmed: true` markiert, wenn sie auf den letzten 30% (Out-of-Sample, nie von
+Optuna gesehen) genug Trades hat, positives PnL zeigt UND besser als die Baseline
+abschneidet — sonst wird sie trotzdem gespeichert (`confirmed: false`, klar als
+ungeprüft markiert) statt verworfen, damit nichts verloren geht. Zusätzlich splittet
+sich der In-Sample-Zeitraum in `K_FOLDS` (Standard 3) Teilfenster; Optuna optimiert
+auf dem **Minimum** über alle Teilfenster statt der Gesamt-Performance — das bestraft
+Parameter, die nur in einer einzelnen Marktphase funktionieren, schon während der
+Suche. `run_portfolio_optimizer.py` (automatische Portfolio-Zusammenstellung)
+ignoriert `confirmed: false`-Configs automatisch bei der Live-Auswahl.
+
+**Automatische Trial-Skalierung je Zeitfenster:** Ein Trial auf einem niedrigeren
+Zeitfenster (mehr Kerzen im selben Rückblick-Zeitraum) kostet ein Vielfaches der
+Rechenzeit eines 1d-Trials. Damit eine Pipeline mit vielen Paaren/Zeitfenstern nicht
+unrealistisch lange läuft, wird die eingegebene Trial-Zahl automatisch pro Zeitfenster
+prozentual reduziert (1d=100%, 6h/4h=25%, 15m=20%, 30m/1h/2h/5m=15%, Minimum 30 Trials).
 
 #### 2\. Ergebnisse analysieren
 
@@ -236,6 +284,16 @@ Optional mit eigenem Startdatum oder Export-Pfad:
 ## 🔄 Auto-Optimizer Verwaltung
 
 Der Bot verfügt über einen automatischen Optimizer, der wöchentlich die besten Parameter für alle aktiven Strategien sucht (Support/Resistance SRv2). Die folgenden Befehle helfen beim manuellen Triggern, Debugging und Monitoring des Optimizers.
+
+**Speicher-Selbstschutz (wichtig auf kleinen VPS):** `run_portfolio_optimizer.py`
+läuft als unbeaufsichtigter, wöchentlicher Cronjob — oft parallel zum laufenden
+Live-Trading-Fleet auf demselben Server. Er prüft vor dem Start `MemAvailable`
+(`/proc/meminfo`) und wartet bis zu 3 Minuten, falls gerade wenig frei ist; bleibt
+es zu knapp, wird die Optimierung diese Woche sauber übersprungen (`settings.json`
+bleibt unverändert). Während der Suche wird der eigene Speicherverbrauch laufend
+geprüft (`MAX_RSS_MB`, Standard 3500MB) — bei Überschreitung bricht er kontrolliert
+mit dem bisher besten gefundenen Portfolio ab, statt durch einen Kernel-OOM-Kill den
+ganzen Server (inkl. aller anderen Bots) mitzureißen.
 
 ### Optimizer manuell triggern
 
@@ -376,75 +434,32 @@ Auf 15m entstehen zu viele Fake-Pivots. Ab 2h haben S/R-Zonen ausreichend Testhi
 
 > **Hinweis:** Das Volumen-Filter (120% des 20-Kerzen-Durchschnitts) ist auf niedrig-liquiden Coins unzuverlässig. BTC und ETH liefern die konstanteste Signalqualität.
 
-
----
-
-## Coin & Timeframe Empfehlungen
-
-StBot ist eine **S/R-Breakout-Strategie** — er sucht dynamische Unterstützungs- und Widerstandszonen aus Pivot-Hochs/-Tiefs und tradet den Ausbruch. Benötigt: klare Pivot-Struktur, ausreichend Volumen für Bestätigung und erkennbaren Trend für den MTF-EMA-Bias-Filter (EMA20 vs EMA50).
-
-### Effektive Zeitspannen je Timeframe
-
-| TF | Pivot(20) — S/R Zonen | ATR(14) — SL | Vol-MA(20) | EMA20/50 — Bias | Geeignet |
-|---|---|---|---|---|---|
-| 15m | 5h | 3.5h | 5h | 5h / 12.5h | ❌ |
-| 30m | 10h | 7h | 10h | 10h / 25h | ⚠️ |
-| 1h | 20h | 14h | 20h | 20h / 50h | ✅ |
-| **2h** | **40h** | **28h** | **40h** | **40h / 100h** | **✅✅** |
-| **4h** | **80h** | **56h** | **80h** | **80h / 200h** | **✅✅** |
-| 6h | 120h | 84h | 120h | 120h / 300h | ✅ |
-| 1d | 20d | 14d | 20d | 20d / 50d | ✅ |
-
-Auf 15m entstehen zu viele Fake-Pivots. Ab 2h haben S/R-Zonen ausreichend Testhistorie und Volumen-Bestätigung ist aussagekräftig. Die EMA20/50-Bias-Werte auf 4h (80h / 200h) haben industrielle Relevanz.
-
-### Coin-Eignung
-
-| Coin | S/R Struktur | Breakout-Qualität | Vol.-Zuverlässigkeit | Bewertung |
-|---|---|---|---|---|
-| **BTC** | Exzellent — institutionelle S/R Levels | Klare, bestätigte Breakouts | Sehr hohe Liquidität | ✅✅ Beste Wahl |
-| **ETH** | Exzellent — ähnlich BTC | Saubere Ausbrüche | Sehr hohe Liquidität | ✅✅ Sehr gut |
-| **SOL** | Sehr gut — klare Swing-Hochs/-Tiefs | Starke Breakouts mit Volumen | Gute Liquidität | ✅ Gut |
-| **XRP** | Gut — klare historische Levels | Solide Breakouts | Hohe Liquidität | ✅ Gut |
-| **BNB** | Gut — stabile Zonen | Moderate Breakout-Stärke | Gute Liquidität | ✅ Gut |
-| **AVAX** | Gut — klare Swing-Struktur | Gute Breakouts in Bullphasen | Ausreichend | ✅ Gut |
-| **ARB** | Gut — ETH-korreliert | Solide Ausbrüche | Ausreichend | ✅ Gut |
-| **LTC** | Mittel — folgt BTC | Ausbrüche weniger dynamisch | Gut | ⚠️ Mittel |
-| **LINK** | Mittel — S/R-Zonen vorhanden | Breakouts oft kurzlebig | Mittel | ⚠️ Mittel |
-| **ADA** | Mittel — viele False Breakouts | Niedriges Volumen bei Ausbrüchen | Mittel | ⚠️ Mittel |
-| **DOT** | Mittel — in Bullphasen klar | Phasenabhängig | Mittel | ⚠️ Mittel |
-| **AAVE** | Schwach — kleine S/R-Zonen | Breakouts oft Noise | Niedrig | ⚠️ Schwach |
-| **DOGE** | Schlecht — sentiment-getrieben | Zufällige Ausbrüche | Unzuverlässig | ❌ Schlecht |
-| **SHIB/PEPE** | Nicht vorhanden | Keine echten S/R Zonen | Nicht verwendbar | ❌❌ Nicht geeignet |
-
-### Empfohlene Kombinationen (Ranking)
-
-| Rang | Kombination | Begründung |
-|---|---|---|
-| 🥇 1 | **BTC 4h** | Klarste institutionelle S/R-Levels, starke Breakouts mit Volumen |
-| 🥇 1 | **ETH 4h** | Ähnlich BTC, gute MTF-EMA-Bias |
-| 🥈 2 | **BTC 2h** | Mehr Trades als 4h, S/R noch ausreichend strukturiert |
-| 🥈 2 | **SOL 2h / 4h** | Explosive Breakouts, klare Pivot-Struktur |
-| 🥉 3 | **XRP 4h** | Klare historische S/R Levels |
-| 4 | **AVAX 4h** | Gute Breakout-Qualität in Trending-Phasen |
-| 4 | **ARB 4h** | ETH-korreliert, solide Ausbrüche |
-| 4 | **BTC 1d** | Wenige aber sehr zuverlässige Breakouts |
-| ❌ | **Alles auf 15m / 30m** | Zu viele Fake-Pivots, Volumen-Bestätigung bedeutungslos |
-| ❌ | **DOGE / SHIB** | Keine validen S/R-Zonen vorhanden |
-
-> **Hinweis:** Das Volumen-Filter (120% des 20-Kerzen-Durchschnitts) ist auf niedrig-liquiden Coins unzuverlässig. BTC und ETH liefern die konstanteste Signalqualität.
-
-
 -----
 
 ## Git Management
 
-Projekt hochladen (Backup):
+Neue Configs/Ergebnisse pushen (nach einem Pipeline- oder Optimizer-Lauf):
 
 ```bash
-git add .
-git commit -m "Update StBot Konfiguration"
-git push --force origin main
+./push_configs.sh
 ```
+
+Staged gezielt nur `config_*.json` + `settings.json`, committet, und pusht mit
+automatischem Rebase-Fallback, falls der Remote inzwischen neuere Commits hat.
+
+Manuell (z.B. für andere Dateien):
+
+```bash
+git add <geänderte Dateien>
+git commit -m "..."
+git pull origin main --rebase
+git push origin main
+```
+
+**Wichtig:** `git push --force` NICHT für den normalen Workflow verwenden — das
+überschreibt fremde Commits auf dem Remote kommentarlos (z.B. von einer anderen
+Maschine gepushte Configs). Bei einem Push-Konflikt (`! [rejected] ... fetch first`)
+immer erst `git pull --rebase`, dann normal `git push`.
 
 Projektstatus prüfen:
 
@@ -457,6 +472,3 @@ Projektstatus prüfen:
 ### ⚠️ Disclaimer
 
 Dieses Material dient ausschließlich zu Bildungs- und Unterhaltungszwecken. Es handelt sich nicht um eine Finanzberatung. Der Nutzer trägt die alleinige Verantwortung für alle Handlungen. Der Autor haftet nicht für etwaige Verluste. Trading mit Krypto-Futures beinhaltet ein hohes Risiko.
-
-```
-```
