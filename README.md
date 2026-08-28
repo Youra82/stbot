@@ -20,6 +20,8 @@ Der Bot implementiert eine Breakout-Strategie, die dynamische Unterstützungs- u
     * **Dynamischer Stop Loss:** Der Stop Loss basiert auf der Volatilität (**ATR**) oder einem prozentualen Mindestabstand zum Entry.
     * **Trailing Stop:** Sobald der Trade in den Gewinn läuft, wird ein Trailing-Stop aktiviert, um Gewinne bei Trendumkehr zu sichern.
 
+![Ein Trade: SR-Breakout-Entry + ATR-Trailing-Exit](docs/images/trade_example.png)
+
 ## Architektur & Arbeitsablauf
 
 Der Bot arbeitet mit einem präzisen, automatisierten und ressourcenschonenden System.
