@@ -65,7 +65,7 @@ def run_test():
         # WICHTIG: Korrekter Patch-Pfad, der direkt auf die Funktion im trade_manager zielt.
         # Dies ist der robusteste Weg, wenn der Aufrufer und die zu mockende Funktion
         # in verschiedenen Modulen liegen.
-        with patch('stbot.utils.trade_manager.get_titan_signal', return_value=('buy', None)):
+        with patch('stbot.utils.trade_manager.entry_side', return_value='buy'):
             # Die Funktion benötigt Dummy-Model/Scaler für Kompatibilität mit dem Funktionsaufruf
             check_and_open_new_position(exchange, None, None, params, telegram_config, logger)
 

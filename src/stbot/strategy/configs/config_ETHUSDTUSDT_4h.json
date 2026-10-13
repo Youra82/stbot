@@ -5,28 +5,27 @@
         "htf": "1d"
     },
     "strategy": {
-        "pivot_period": 24,
-        "max_pivots": 22,
-        "channel_width_pct": 8,
+        "pivot_period": 11,
+        "max_pivots": 46,
+        "channel_width_pct": 10,
         "max_sr_levels": 5,
         "min_strength": 2,
         "source": "Close/Open",
-        "use_weekly_trend_filter": true,
-        "weekly_trend_ema": 8,
-        "use_avalanche_filter": false,
-        "avalanche_percentile_threshold": 60,
+        "use_weekly_trend_filter": false,
+        "weekly_trend_ema": 4,
+        "use_avalanche_filter": true,
+        "avalanche_percentile_threshold": 81,
         "use_energy_filter": false,
         "min_energy_zscore": 0.0,
-        "use_energy_streak_filter": false
+        "use_energy_streak_filter": true
     },
     "risk": {
         "margin_mode": "isolated",
-        "risk_per_trade_pct": 2.94,
-        "risk_reward_ratio": 4.87,
-        "leverage": 5,
-        "trailing_stop_activation_rr": 2.68,
-        "trailing_stop_callback_rate_pct": 0.64,
-        "atr_multiplier_sl": 1.71,
+        "risk_per_trade_pct": 2.27,
+        "leverage": 19,
+        "trailing_stop_activation_rr": 1.38,
+        "trailing_stop_callback_rate_pct": 1.69,
+        "atr_multiplier_sl": 3.49,
         "min_sl_pct": 0.3
     },
     "behavior": {
@@ -34,11 +33,11 @@
         "use_shorts": true
     },
     "_meta": {
-        "pnl_pct": 89.67,
-        "oos_pnl_pct": 4.29,
-        "oos_trades": 4,
-        "is_oos_split_date": "2026-01-09",
-        "confirmed": false,
-        "optimized_at": "2026-08-23T00:21:41"
+        "pnl_pct": 33.71,
+        "oos_pnl_pct": 3.4,
+        "oos_trades": 18,
+        "is_oos_split_date": "2026-01-17",
+        "confirmed": true,
+        "optimized_at": "2026-10-13T09:56:19"
     }
 }

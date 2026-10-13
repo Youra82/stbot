@@ -7,6 +7,18 @@ import warnings
 # Unterdrücke spezifische Pandas FutureWarnings für sauberen Output
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
+# Pivots werden nur aus den letzten PIVOT_WINDOW Kerzen beruecksichtigt (zusaetzlich zu
+# max_pivots). Ohne diese Grenze hing das Signal davon ab, WIE VIEL Historie man der
+# Engine gibt: live sieht sie 1000 Kerzen, der Optimizer Jahre, die Portfolio-Auswahl
+# 26 Wochen -- bei grosser pivot_period/max_pivots reichten die gespeicherten Pivots
+# weiter zurueck als 1000 Kerzen und Live/Backtest bekamen andere Zonen (Paritaetstest
+# 2026-10-12: LTC/2h, Backtest-Short am 22.08. live nicht moeglich). Mit festem Fenster
+# ist das Ergebnis unabhaengig von der Datenlaenge, sobald mindestens
+# PIVOT_WINDOW + 2*pivot_period + ATR-Vorlauf Kerzen vorliegen (Live: 1000).
+PIVOT_WINDOW = 800
+MIN_HISTORY_CANDLES = 1000
+
+
 class SREngine:
     """
     Python Implementierung von 'Support Resistance - Dynamic v2'.
@@ -75,6 +87,7 @@ class SREngine:
         
         signals = np.zeros(len(df), dtype=int)
         pivotvals = []
+        pivot_idx = []   # Bar-Index der Pivot-Bestaetigung, parallel zu pivotvals
         
         for i in range(len(df)):
             # A. Pivots aktualisieren
@@ -86,9 +99,14 @@ class SREngine:
             
             if new_val is not None and not np.isnan(new_val):
                 pivotvals.insert(0, new_val)
+                pivot_idx.insert(0, i)
                 if len(pivotvals) > self.maxnumpp:
                     pivotvals.pop()
-            
+                    pivot_idx.pop()
+            while pivot_idx and i - pivot_idx[-1] > PIVOT_WINDOW:
+                pivotvals.pop()
+                pivot_idx.pop()
+
             if not pivotvals: continue
                 
             current_cwidth = arr_cwidth[i]

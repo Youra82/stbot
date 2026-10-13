@@ -165,7 +165,15 @@ class Exchange:
                     # Fensters statt am angefragten "since" -- fuehrte bei schnellen
                     # Timeframes (1m/5m/15m) zu systematischen ~8-Tage-Luecken.
                     ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe, since=start_ts, limit=200)
-                    if not ohlcv: break
+                    if not ohlcv:
+                        if not all_ohlcv:
+                            # Zeitraum VOR dem Listing (z.B. 1000-Kerzen-Vorlauf auf 1d reicht
+                            # bei ARB bis 2022): Bitget liefert leer -> Fenster ueberspringen
+                            # statt abzubrechen (vorher: komplett leerer Download, Paritaetstest
+                            # 2026-10-12 ARB/15m ohne Tageskerzen fuer den Wochenfilter).
+                            start_ts += 200 * self.exchange.parse_timeframe(timeframe) * 1000
+                            continue
+                        break
                     new_start_ts = ohlcv[-1][0] + 1
                     if new_start_ts <= start_ts:
                         # Live beobachtet (2026-08-24, ARB/USDT:USDT 30m -> Feindaten
@@ -368,6 +376,28 @@ class Exchange:
             return 0
         except Exception as e:
             logger.error(f"Fehler bei Balance: {e}")
+            return 0
+
+    def fetch_realized_equity_usdt(self):
+        """
+        Realisiertes Kapital = Kontowert - unrealisierte PnL offener Positionen.
+        Basis fuer die Positionsgroesse -- exakt die Groesse, mit der Backtester und
+        Portfolio-Simulator rechnen (dort: Startkapital + geschlossene Trades).
+        Vorher nutzte Live das FREIE Guthaben (ohne gebundene Margin) und eroeffnete
+        bei bereits offenen Positionen systematisch kleinere Trades als der Backtest
+        (2026-10-11 gemessen: 21.15 frei vs. 26.86 realisiert).
+        """
+        if not self.markets: return 0
+        try:
+            balance = self.exchange.fetch_balance(params={'productType': 'USDT-FUTURES'})
+            for asset in balance.get('info') or []:
+                if asset.get('marginCoin') == 'USDT':
+                    equity = float(asset.get('accountEquity') or 0)
+                    upl = float(asset.get('unrealizedPL') or 0)
+                    return equity - upl
+            return float((balance.get('total') or {}).get('USDT') or 0)
+        except Exception as e:
+            logger.error(f"Fehler bei Equity-Abfrage: {e}")
             return 0
 
     def cancel_all_orders_for_symbol(self, symbol):

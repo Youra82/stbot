@@ -225,15 +225,17 @@ def _send_end_telegram(elapsed_seconds: float):
 # ---------------------------------------------------------------------------
 
 def _run_portfolio_optimizer(opt_settings: dict) -> int:
-    capital    = str(opt_settings.get('start_capital', 100))
+    capital    = str(opt_settings.get('portfolio_capital') or opt_settings.get('start_capital', 100))
     max_dd     = str(opt_settings.get('constraints', {}).get('max_drawdown_pct', 30))
     # backtest_lookback_weeks (rollend) hat Vorrang -- dann ueberlassen wir die
     # Datumsberechnung run_portfolio_optimizer.py selbst (kein --start-date hier).
     lookback_weeks = opt_settings.get('backtest_lookback_weeks')
     start_date = None if lookback_weeks else opt_settings.get('start_date', 'auto')
     end_date   = opt_settings.get('end_date',   'auto')
-    cmd = [sys.executable, PORTFOLIO_SCRIPT,
-           '--capital', capital, '--max-dd', max_dd, '--auto-write']
+    cmd = [sys.executable, PORTFOLIO_SCRIPT, '--max-dd', max_dd, '--auto-write']
+    # portfolio_capital = "live": run_portfolio_optimizer.py liest den echten Kontostand selbst
+    if capital.lower() != 'live':
+        cmd += ['--capital', capital]
     if start_date not in ('auto', '', None):
         cmd += ['--start-date', start_date]
     if end_date not in ('auto', '', None):

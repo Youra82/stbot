@@ -192,113 +192,24 @@ def compute_last_sr_zones(df: pd.DataFrame, config: dict) -> list:
 # Trades aus Backtest extrahieren (fuer Chart-Markierungen)
 # ---------------------------------------------------------------------------
 
-def extract_trades(df: pd.DataFrame, config: dict, start_capital: float = 1000) -> list:
+def extract_trades(df: pd.DataFrame, config: dict, start_capital: float = 1000, fine_data=None) -> list:
     """
-    Fuehrt einen simulierten Backtest durch und gibt die Trades als Liste zurueck.
+    Trades fuer die Chart-Markierungen -- direkt aus run_backtest(), also mit
+    exakt derselben Einstiegs-/Ausstiegslogik wie Optimizer, Portfolio-Simulator
+    und Live (strategy/trade_rules.py). Vorher eigene Simulation mit fiktivem
+    Fix-TP und ohne Momentum-/Volumenfilter.
     Jeder Trade: {side, entry_time, entry_price, exit_time, exit_price, pnl_usd}
     """
-    trades = []
+    market = config.get('market', {})
+    strategy_params = {**config.get('strategy', {}), 'symbol': market.get('symbol', ''),
+                       'timeframe': market.get('timeframe', ''), 'htf': market.get('htf')}
     try:
-        import ta as ta_lib
-
-        df = df.copy()
-        atr_ind = ta_lib.volatility.AverageTrueRange(
-            high=df['high'], low=df['low'], close=df['close'], window=14)
-        df['atr'] = atr_ind.average_true_range()
-        df.dropna(subset=['atr'], inplace=True)
-
-        engine = SREngine(settings=config.get('strategy', {}))
-        df = engine.process_dataframe(df)
-
-        risk_params = config.get('risk', {})
-        rrr = risk_params.get('risk_reward_ratio', 2.0)
-        rpt = risk_params.get('risk_per_trade_pct', 1.0) / 100
-        act_rr = risk_params.get('trailing_stop_activation_rr', 2.0)
-        cb = risk_params.get('trailing_stop_callback_rate_pct', 1.0) / 100
-        lev = risk_params.get('leverage', 10)
-        fee = 0.06 / 100
-        atr_sl = risk_params.get('atr_multiplier_sl', 2.0)
-        min_sl = risk_params.get('min_sl_pct', 0.3) / 100
-
-        capital = start_capital
-        pos = None
-
-        for ts, row in df.iterrows():
-            if capital <= 0:
-                break
-
-            if pos:
-                exit_price = None
-                if pos['side'] == 'long':
-                    if not pos['trailing'] and row['high'] >= pos['act']:
-                        pos['trailing'] = True
-                    if pos['trailing']:
-                        pos['peak'] = max(pos['peak'], row['high'])
-                        pos['sl'] = max(pos['sl'], pos['peak'] * (1 - cb))
-                    if row['low'] <= pos['sl']:
-                        exit_price = pos['sl']
-                    elif not pos['trailing'] and row['high'] >= pos['tp']:
-                        exit_price = pos['tp']
-                else:
-                    if not pos['trailing'] and row['low'] <= pos['act']:
-                        pos['trailing'] = True
-                    if pos['trailing']:
-                        pos['peak'] = min(pos['peak'], row['low'])
-                        pos['sl'] = min(pos['sl'], pos['peak'] * (1 + cb))
-                    if row['high'] >= pos['sl']:
-                        exit_price = pos['sl']
-                    elif not pos['trailing'] and row['low'] <= pos['tp']:
-                        exit_price = pos['tp']
-
-                if exit_price:
-                    pnl_pct = (exit_price / pos['ep'] - 1) if pos['side'] == 'long' \
-                        else (1 - exit_price / pos['ep'])
-                    pnl_usd = pos['notional'] * pnl_pct - pos['notional'] * fee * 2
-                    capital += pnl_usd
-                    trades.append({
-                        'side': pos['side'],
-                        'entry_time': pos['entry_time'],
-                        'entry_price': pos['ep'],
-                        'exit_time': ts,
-                        'exit_price': exit_price,
-                        'pnl_usd': pnl_usd,
-                    })
-                    pos = None
-
-            signal = row.get('sr_signal', 0)
-            if not pos and signal != 0 and capital > 0:
-                ep = row['close']
-                atr_val = row.get('atr', 0)
-                if atr_val <= 0:
-                    continue
-                sl_dist = max(atr_val * atr_sl, ep * min_sl)
-                risk_usd = capital * rpt
-                sl_pct = sl_dist / ep
-                if sl_pct <= 0:
-                    continue
-                notional = min(risk_usd / sl_pct, capital * 10, 1_000_000)
-                margin = notional / lev
-                if margin > capital:
-                    continue
-
-                side = 'long' if signal == 1 else 'short'
-                sl = (ep - sl_dist) if side == 'long' else (ep + sl_dist)
-                tp = (ep + sl_dist * rrr) if side == 'long' else (ep - sl_dist * rrr)
-                act = (ep + sl_dist * act_rr) if side == 'long' else (ep - sl_dist * act_rr)
-
-                pos = {
-                    'side': side, 'ep': ep, 'sl': sl, 'tp': tp,
-                    'act': act, 'notional': notional,
-                    'trailing': False, 'peak': ep,
-                    'entry_time': ts,
-                }
-
+        res = run_backtest(df.copy(), strategy_params, config.get('risk', {}), start_capital,
+                           fine_data=fine_data, return_trades=True)
+        return res.get('trades', [])
     except Exception as e:
         logger.warning(f"Fehler bei Trade-Extraktion: {e}")
-        import traceback
-        traceback.print_exc()
-
-    return trades
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -552,19 +463,17 @@ def main():
             sr_zones = compute_last_sr_zones(df, config)
             logger.info(f"  {len(sr_zones)} Zonen gefunden")
 
-            # Trades extrahieren
+            # Trades + Kennzahlen aus EINEM Backtest-Lauf (gleiche Logik wie Live)
             logger.info("Extrahiere Trades fuer Chart-Markierungen...")
-            trades = extract_trades(df, config, start_capital)
-            logger.info(f"  {len(trades)} Trades gefunden")
-
-            # Equity Curve
             strategy_params = {**config.get('strategy', {}),
                                'symbol': symbol, 'timeframe': timeframe,
                                'htf': config['market'].get('htf')}
             fine_tf = FINE_TF_MAP.get(timeframe)
             fine_data = LazyFineData(symbol, fine_tf) if fine_tf else None
             stats = run_backtest(df.copy(), strategy_params, config.get('risk', {}),
-                                 start_capital, verbose=False, fine_data=fine_data)
+                                 start_capital, verbose=False, fine_data=fine_data, return_trades=True)
+            trades = stats.get('trades', [])
+            logger.info(f"  {len(trades)} Trades gefunden")
             equity_df = build_equity_curve(df, trades, start_capital)
 
             # Chart erstellen

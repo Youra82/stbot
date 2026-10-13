@@ -27,7 +27,8 @@ from stbot.utils.exchange import Exchange
 from stbot.utils.trade_manager import _generate_stbot_chart_png
 from stbot.utils.telegram import send_photo, send_message
 from stbot.strategy.sr_engine import SREngine
-from stbot.strategy.trade_logic import get_titan_signal
+from stbot.strategy.trade_rules import (prepare_signal_frame, build_bias_context, entry_side,
+                                        sl_distance, WEEKLY_HISTORY_DAYS)
 
 logging.basicConfig(level=logging.WARNING, format='[%(levelname)s] %(message)s')
 
@@ -55,7 +56,7 @@ def _make_dummy_signal(processed_df: pd.DataFrame, side: str, params: dict) -> d
 
     risk  = params.get('risk', {})
     sl_mult = risk.get('atr_multiplier_sl', 2.0)
-    rr      = risk.get('risk_reward_ratio', 2.0)
+    rr      = risk.get('trailing_stop_activation_rr', 2.0)  # TSL-Aktivierung (keine TP-Order live)
 
     sl = entry - sl_mult * atr if side == 'buy' else entry + sl_mult * atr
     tp = entry + rr * abs(entry - sl) if side == 'buy' else entry - rr * abs(entry - sl)
@@ -91,30 +92,24 @@ def generate_and_send(exchange: Exchange, symbol: str, timeframe: str,
     if df is None or df.empty or len(df) < 50:
         print(f"  WARNUNG: Nicht genug Daten.")
         return False
-    df = df.iloc[:-1]
+    # fetch_recent_ohlcv verwirft die laufende Kerze bereits -- hier NICHT noch eine
+    # (geschlossene) Kerze abschneiden, sonst zeigt der Chart ein anderes Signal als Live.
 
-    # ATR berechnen
-    atr_ind = ta.volatility.AverageTrueRange(
-        high=df['high'], low=df['low'], close=df['close'], window=14
-    )
-    df['atr'] = atr_ind.average_true_range()
-
-    # SR Engine
-    engine = SREngine(settings=strat_params)
-    processed_df = engine.process_dataframe(df)
+    # Signal ueber die GEMEINSAME Logik (strategy/trade_rules.py) -- identisch zu Live
+    weekly_source = (exchange.fetch_recent_ohlcv(symbol, '1d', limit=WEEKLY_HISTORY_DAYS)
+                     if strat_params.get('use_weekly_trend_filter') else None)
+    processed_df = prepare_signal_frame(df, strat_params)
+    bias_ctx = build_bias_context(df, timeframe, strat_params, params['market'].get('htf'),
+                                  weekly_source=weekly_source)
     current_candle = processed_df.iloc[-1]
-
-    # Echtes Signal suchen
-    signal_side, signal_price = get_titan_signal(processed_df, current_candle, params, 'NEUTRAL')
+    signal_side = entry_side(current_candle, processed_df.index[-1], strat_params, bias_ctx)
 
     risk = params.get('risk', {})
-    rr   = float(risk.get('risk_reward_ratio', 2.0))
+    rr   = float(risk.get('trailing_stop_activation_rr', 2.0))  # Anzeige: TSL-Aktivierung (live gibt es keine TP-Order)
 
     if signal_side and not force_side:
-        entry = float(signal_price or current_candle['close'])
-        atr_v = float(current_candle.get('atr', entry * 0.01))
-        sl_mult = float(risk.get('atr_multiplier_sl', 2.0))
-        sl_dist = max(atr_v * sl_mult, entry * float(risk.get('min_sl_pct', 0.3)) / 100)
+        entry = float(current_candle['close'])
+        sl_dist = sl_distance(current_candle, risk)
         if signal_side == 'buy':
             sl = entry - sl_dist
             tp = entry + sl_dist * rr

@@ -117,7 +117,7 @@ def test_full_stbot_workflow_on_bitget(test_setup):
 
     with patch('stbot.utils.trade_manager.set_trade_lock'), \
          patch('stbot.utils.trade_manager.is_trade_locked', return_value=False), \
-         patch('stbot.utils.trade_manager.get_titan_signal', return_value=('buy', None)): # Simuliere Buy-Signal
+         patch('stbot.utils.trade_manager.entry_side', return_value='buy'): # Simuliere Buy-Signal
 
         print("\n[Schritt 1/3] Mocke Signal und prüfe Trade-Eröffnung...")
         check_and_open_new_position(exchange, None, None, params, telegram_config, logger)

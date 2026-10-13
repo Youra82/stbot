@@ -38,7 +38,9 @@
         "oos_pnl_pct": 4.4,
         "oos_trades": 11,
         "is_oos_split_date": "2025-09-21",
-        "confirmed": true,
-        "optimized_at": "2026-08-23T05:28:19"
+        "confirmed": false,
+        "optimized_at": "2026-08-23T05:28:19",
+        "unconfirmed_reason": "no_valid_trials (Neu-Lauf 2026-10-13)",
+        "unconfirmed_at": "2026-10-13T11:14:32"
     }
 }

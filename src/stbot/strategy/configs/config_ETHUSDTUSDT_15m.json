@@ -39,6 +39,8 @@
         "oos_trades": 9,
         "is_oos_split_date": "2026-06-24",
         "confirmed": false,
-        "optimized_at": "2026-08-23T09:59:44"
+        "optimized_at": "2026-08-23T09:59:44",
+        "unconfirmed_reason": "no_valid_trials",
+        "unconfirmed_at": "2026-10-13T09:40:19"
     }
 }

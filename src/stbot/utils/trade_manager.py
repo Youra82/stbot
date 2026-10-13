@@ -12,8 +12,9 @@ import ta
 import math
 
 # Imports angepasst auf stbot
-from stbot.strategy.sr_engine import SREngine
-from stbot.strategy.trade_logic import get_titan_signal
+from stbot.strategy.trade_rules import (prepare_signal_frame, build_bias_context, entry_side,
+                                        sl_distance, position_notional, safe_leverage,
+                                        order_allowed, WEEKLY_HISTORY_DAYS)
 from stbot.utils.exchange import Exchange
 from stbot.utils.telegram import send_message, send_photo
 from stbot.utils.timeframe_utils import determine_htf
@@ -27,34 +28,6 @@ class Bias:
     BULLISH = "BULLISH"
     BEARISH = "BEARISH"
     NEUTRAL = "NEUTRAL"
-
-def determine_market_bias(htf_df):
-    """
-    Bestimmt den Markt-Bias basierend auf HTF EMA-Crossover.
-    Returns: Bias.BULLISH, Bias.BEARISH oder Bias.NEUTRAL
-    """
-    if htf_df is None or htf_df.empty or len(htf_df) < 50:
-        return Bias.NEUTRAL
-    
-    try:
-        # EMA 20 und 50 für Trend-Bestimmung
-        ema_fast = htf_df['close'].ewm(span=20, adjust=False).mean()
-        ema_slow = htf_df['close'].ewm(span=50, adjust=False).mean()
-        
-        current_fast = ema_fast.iloc[-1]
-        current_slow = ema_slow.iloc[-1]
-        
-        # Zusätzlich: Prüfe ob Trend stark genug ist (min. 0.5% Abstand)
-        distance_pct = abs(current_fast - current_slow) / current_slow
-        
-        if current_fast > current_slow and distance_pct > 0.005:
-            return Bias.BULLISH
-        elif current_fast < current_slow and distance_pct > 0.005:
-            return Bias.BEARISH
-        else:
-            return Bias.NEUTRAL
-    except Exception as e:
-        return Bias.NEUTRAL
 
 def load_or_create_trade_lock():
     os.makedirs(DB_PATH, exist_ok=True)
@@ -214,7 +187,7 @@ def _generate_stbot_chart_png(processed_df: pd.DataFrame, signal_side: str,
                 bbox=dict(facecolor=color, edgecolor='none', alpha=0.92,
                           boxstyle='square,pad=0.25'))
 
-    _price_tag(tp_price,    'TP',    '#00c853')
+    _price_tag(tp_price,    'TSL',   '#00c853')
     _price_tag(entry_price, 'Entry', '#ffd700')
     _price_tag(sl_price,    'SL',    '#ff1744')
 
@@ -289,7 +262,7 @@ def _send_stbot_chart(processed_df: pd.DataFrame, signal_side: str,
             side_label = 'LONG' if signal_side == 'buy' else 'SHORT'
             caption = (
                 f"STBOT | {symbol} ({timeframe})\n"
-                f"{side_label} @ {entry_price:.6g}  |  SL: {sl_price:.6g}  |  TP: {tp_price:.6g}\n"
+                f"{side_label} @ {entry_price:.6g}  |  SL: {sl_price:.6g}  |  TSL-Akt.: {tp_price:.6g}\n"
                 f"R:R 1:{rr:.1f}  |  Bias: {market_bias}"
             )
             send_photo(telegram_config.get('bot_token'), telegram_config.get('chat_id'),
@@ -299,14 +272,40 @@ def _send_stbot_chart(processed_df: pd.DataFrame, signal_side: str,
         logger.warning(f"stbot-Chart senden fehlgeschlagen: {e}")
 
 
+def _candle_key(symbol_timeframe):
+    return f"{symbol_timeframe}_last_evaluated_candle"
+
+
+def is_candle_evaluated(symbol_timeframe, candle_ts) -> bool:
+    return load_or_create_trade_lock().get(_candle_key(symbol_timeframe)) == pd.Timestamp(candle_ts).isoformat()
+
+
+def mark_candle_evaluated(symbol_timeframe, candle_ts):
+    trade_lock = load_or_create_trade_lock()
+    trade_lock[_candle_key(symbol_timeframe)] = pd.Timestamp(candle_ts).isoformat()
+    save_trade_lock(trade_lock)
+
+
+def last_closed_candle_ts(exchange, timeframe):
+    """Open-Zeit der zuletzt geschlossenen Kerze (UTC), rein aus der Uhrzeit."""
+    tf_sec = exchange.exchange.parse_timeframe(timeframe)
+    now = pd.Timestamp.now(tz='UTC')
+    return now.floor(f"{tf_sec}s") - pd.Timedelta(seconds=tf_sec)
+
+
 def check_and_open_new_position(exchange, model, scaler, params, telegram_config, logger):
+    """
+    Live-Einstieg -- gleiche Regeln wie Optimizer-Backtester und Portfolio-Simulator
+    (strategy/trade_rules.py). Jede geschlossene Kerze wird genau EINMAL bewertet,
+    so wie im Backtest: ein Signal, das waehrend einer offenen Position kam, verfaellt
+    (vorher stieg Live nach dem Exit verspaetet auf das alte Signal ein, z.B. SOL
+    18.09.2026 05:15). Die frueheren Live-only-Sperren (1.5 %-Re-Entry-Abstand,
+    60-Min-Trade-Lock) und der Live-only HTF-EMA20/50-Filter sind entfernt -- kein
+    Backtest kannte sie (Live-Validierung 2026-10-11).
+    """
     symbol = params['market']['symbol']
     timeframe = params['market']['timeframe']
     symbol_timeframe = f"{symbol.replace('/', '-')}_{timeframe}"
-
-    if is_trade_locked(symbol_timeframe):
-        logger.info(f"Trade für {symbol_timeframe} gesperrt – überspringe.")
-        return
 
     try:
         logger.info(f"Prüfe StBot (SRv2) Signal für {symbol} ({timeframe})...")
@@ -316,167 +315,94 @@ def check_and_open_new_position(exchange, model, scaler, params, telegram_config
             logger.warning(f"Nicht genügend OHLCV-Daten (gefunden: {len(recent_data)}) – überspringe.")
             return
 
-        # Indikatoren berechnen
         strat_params = params.get('strategy', {})
-        atr_indicator = ta.volatility.AverageTrueRange(high=recent_data['high'], low=recent_data['low'], close=recent_data['close'], window=14)
-        recent_data['atr'] = atr_indicator.average_true_range()
+        risk_params = params.get('risk', {})
 
-        # --- MTF BIAS BERECHNUNG ---
-        htf = params['market'].get('htf')
-        market_bias = Bias.NEUTRAL
-        if htf:
-            try:
-                htf_data = exchange.fetch_recent_ohlcv(symbol, htf, limit=100)
-                if not htf_data.empty:
-                    market_bias = determine_market_bias(htf_data)
-                    logger.info(f"HTF ({htf}) Bias: {market_bias}")
-            except Exception as e:
-                logger.warning(f"HTF-Daten konnten nicht abgerufen werden: {e}")
-        
-        # --- SR ENGINE AUFRUF ---
-        engine = SREngine(settings=strat_params)
-        processed_data = engine.process_dataframe(recent_data)
+        signal_ts = recent_data.index[-1]
+        if is_candle_evaluated(symbol_timeframe, signal_ts):
+            logger.info(f"Kerze {signal_ts} bereits ausgewertet – warte auf die nächste.")
+            return
+
+        processed_data = prepare_signal_frame(recent_data, strat_params)
+        if processed_data is None or processed_data.empty or processed_data.index[-1] != signal_ts:
+            logger.warning("Signal-Frame leer/unvollständig – überspringe.")
+            return
         current_candle = processed_data.iloc[-1]
 
-        signal_side, signal_price = get_titan_signal(processed_data, current_candle, params, market_bias)
+        weekly_source = None
+        if strat_params.get('use_weekly_trend_filter', False):
+            weekly_source = exchange.fetch_recent_ohlcv(symbol, '1d', limit=WEEKLY_HISTORY_DAYS)
+        bias_ctx = build_bias_context(recent_data, timeframe, strat_params,
+                                      params['market'].get('htf'), weekly_source=weekly_source)
 
+        signal_side = entry_side(current_candle, signal_ts, strat_params, bias_ctx)
         if not signal_side:
             logger.info("Kein Signal – überspringe.")
+            mark_candle_evaluated(symbol_timeframe, signal_ts)
             return
-
-        # Re-Entry-Schutz: Prüfe Abstand zur letzten Entry
-        last_entry_key = f"{symbol_timeframe}_last_entry_price"
-        trade_lock = load_or_create_trade_lock()
-        last_entry_price = trade_lock.get(last_entry_key)
-        
-        if last_entry_price:
-            try:
-                last_price = float(last_entry_price)
-                current_price = signal_price or exchange.fetch_ticker(symbol)['last']
-                distance_pct = abs(current_price - last_price) / last_price
-                min_distance = 0.015  # 1.5% Mindestabstand
-                
-                if distance_pct < min_distance:
-                    logger.info(f"Re-Entry-Schutz: Preis zu nah an letzter Entry ({distance_pct*100:.2f}% < {min_distance*100:.1f}%) – überspringe.")
-                    return
-            except (ValueError, TypeError):
-                pass
 
         if exchange.fetch_open_positions(symbol):
-            logger.info("Position bereits offen – überspringe.")
+            logger.info("Position bereits offen – Signal verfällt.")
+            mark_candle_evaluated(symbol_timeframe, signal_ts)
             return
 
-        # Risk Management
-        risk_params = params.get('risk', {})
-        leverage = risk_params.get('leverage', 10)
-        margin_mode = risk_params.get('margin_mode', 'isolated')
-
-        # Versuche Einstellungen zu setzen (return jetzt True auch bei Fehler, damit wir weitermachen)
-        exchange.set_margin_mode(symbol, margin_mode)
-        exchange.set_leverage(symbol, leverage)
-
-        balance = exchange.fetch_balance_usdt()
+        # Positionsgroesse auf Basis des realisierten Kapitals -- wie Backtester/Simulator
+        balance = exchange.fetch_realized_equity_usdt()
         if balance <= 0:
             logger.error("Kein USDT-Guthaben.")
             return
 
-        ticker = exchange.fetch_ticker(symbol)
-        entry_price = signal_price or ticker['last']
+        entry_price = current_candle['close']
+        sl_dist = sl_distance(current_candle, risk_params)
+        if sl_dist <= 0:
+            mark_candle_evaluated(symbol_timeframe, signal_ts)
+            return
+        sl_pct = sl_dist / entry_price
 
-        # Adaptive RR basierend auf Volatilität
-        base_rr = risk_params.get('risk_reward_ratio', 2.0)
-        risk_pct = risk_params.get('risk_per_trade_pct', 1.0) / 100.0
-        risk_usdt = balance * risk_pct
-
-        atr_multiplier_sl = risk_params.get('atr_multiplier_sl', 2.0)
-        min_sl_pct = risk_params.get('min_sl_pct', 0.3) / 100.0
-
-        current_atr = current_candle.get('atr')
-        
-        # Adaptive RR: Bei hoher Volatilität höheres RR
-        if not pd.isna(current_atr) and current_atr > 0:
-            atr_avg = processed_data['atr'].tail(50).mean()
-            if current_atr > atr_avg * 1.5:  # High Volatility
-                rr = min(base_rr * 1.3, 5.0)  # Max 5.0 RR
-                logger.info(f"High Vol detektiert – RR erhöht auf {rr:.2f}")
-            elif current_atr < atr_avg * 0.7:  # Low Volatility
-                rr = max(base_rr * 0.8, 1.5)  # Min 1.5 RR
-                logger.info(f"Low Vol detektiert – RR gesenkt auf {rr:.2f}")
-            else:
-                rr = base_rr
-        else:
-            rr = base_rr
-        if pd.isna(current_atr) or current_atr <= 0:
-            sl_distance = entry_price * min_sl_pct
-        else:
-            sl_distance_atr = current_atr * atr_multiplier_sl
-            sl_distance_min = entry_price * min_sl_pct
-            sl_distance = max(sl_distance_atr, sl_distance_min)
-
-        if sl_distance <= 0: return
-
-        if signal_side == 'buy':
-            sl_price = entry_price - sl_distance
-            tp_price = entry_price + sl_distance * rr
-            pos_side = 'buy'
-            tsl_side = 'sell'
-        else:
-            sl_price = entry_price + sl_distance
-            tp_price = entry_price - sl_distance * rr
-            pos_side = 'sell'
-            tsl_side = 'buy'
-
-        sl_distance_pct_equivalent = sl_distance / entry_price
-        calculated_notional_value = risk_usdt / sl_distance_pct_equivalent
-        amount = calculated_notional_value / entry_price
-
+        notional = position_notional(balance, risk_params, sl_pct)
+        amount = notional / entry_price
         min_amount = exchange.markets[symbol].get('limits', {}).get('amount', {}).get('min', 0.0)
-        if amount < min_amount:
-            logger.error(f"Ordergröße {amount} < Mindestbetrag {min_amount}.")
+        if not order_allowed(notional, entry_price, min_amount):
+            logger.error(f"Ordergröße {amount:.6f} ({notional:.2f} USDT) < Mindestmenge {min_amount} – überspringe.")
+            mark_candle_evaluated(symbol_timeframe, signal_ts)
             return
 
-        # Orders - HIER IST DIE WICHTIGE ÄNDERUNG (Params übergeben!)
-        logger.info(f"Eröffne {pos_side.upper()}-Position: {amount:.6f} @ ${entry_price:.6f} | Risk: {risk_usdt:.2f} USDT")
-        
+        leverage = safe_leverage(risk_params.get('leverage', 10), sl_pct)
+        if leverage < int(risk_params.get('leverage', 10)):
+            logger.info(f"Hebel {risk_params.get('leverage')} -> {leverage} begrenzt "
+                        f"(SL {sl_pct * 100:.2f} % muss vor der Liquidation liegen).")
+        margin_mode = risk_params.get('margin_mode', 'isolated')
+        exchange.set_margin_mode(symbol, margin_mode)
+        exchange.set_leverage(symbol, leverage)
+
+        act_rr = risk_params.get('trailing_stop_activation_rr', 1.5)
+        callback_pct = risk_params.get('trailing_stop_callback_rate_pct', 0.5) / 100.0
+        if signal_side == 'buy':
+            sl_price = entry_price - sl_dist
+            act_price = entry_price + sl_dist * act_rr
+            pos_side, tsl_side = 'buy', 'sell'
+        else:
+            sl_price = entry_price + sl_dist
+            act_price = entry_price - sl_dist * act_rr
+            pos_side, tsl_side = 'sell', 'buy'
+
+        logger.info(f"Eröffne {pos_side.upper()}-Position: {amount:.6f} @ ${entry_price:.6f} | "
+                    f"Risk: {balance * risk_params.get('risk_per_trade_pct', 1.0) / 100:.2f} USDT | Hebel {leverage}")
+
         entry_order = exchange.create_market_order(
-            symbol, 
-            pos_side, 
-            amount, 
-            {
-                'leverage': leverage, 
-                'marginMode': margin_mode
-            }
-        )
-        
+            symbol, pos_side, amount, {'leverage': leverage, 'marginMode': margin_mode})
+        mark_candle_evaluated(symbol_timeframe, signal_ts)
         if not entry_order: return
 
         time.sleep(2)
         position = exchange.fetch_open_positions(symbol)
         if not position: return
 
-        pos_info = position[0]
-        contracts = float(pos_info['contracts'])
-
+        contracts = float(position[0]['contracts'])
         sl_rounded = float(exchange.exchange.price_to_precision(symbol, sl_price))
-        tp_rounded = float(exchange.exchange.price_to_precision(symbol, tp_price))
+        act_rounded = float(exchange.exchange.price_to_precision(symbol, act_price))
         exchange.place_trigger_market_order(symbol, tsl_side, contracts, sl_rounded, {'reduceOnly': True})
-
-        act_rr = risk_params.get('trailing_stop_activation_rr', 1.5)
-        callback_pct = risk_params.get('trailing_stop_callback_rate_pct', 0.5) / 100.0
-
-        if pos_side == 'buy':
-            act_price = entry_price + sl_distance * act_rr
-        else:
-            act_price = entry_price - sl_distance * act_rr
-
         exchange.place_trailing_stop_order(symbol, tsl_side, contracts, act_price, callback_pct, {'reduceOnly': True})
-
-        set_trade_lock(symbol_timeframe)
-        
-        # Speichere Entry-Preis für Re-Entry-Schutz
-        trade_lock = load_or_create_trade_lock()
-        trade_lock[f"{symbol_timeframe}_last_entry_price"] = entry_price
-        save_trade_lock(trade_lock)
 
         if telegram_config and telegram_config.get('bot_token') and telegram_config.get('chat_id'):
             msg = (
@@ -484,12 +410,12 @@ def check_and_open_new_position(exchange, model, scaler, params, telegram_config
                 f"- Richtung: {pos_side.upper()}\n"
                 f"- Entry: ${entry_price:.6f}\n"
                 f"- SL: ${sl_rounded:.6f}\n"
-                f"- TP: ${tp_rounded:.6f}"
+                f"- TSL-Aktivierung: ${act_rounded:.6f} (Callback {callback_pct * 100:.2f} %)"
             )
             send_message(telegram_config['bot_token'], telegram_config['chat_id'], msg)
             _send_stbot_chart(processed_data, signal_side, entry_price,
-                              float(sl_rounded), float(tp_rounded),
-                              symbol, timeframe, rr, market_bias, telegram_config, logger)
+                              float(sl_rounded), float(act_rounded),
+                              symbol, timeframe, act_rr, "NEUTRAL", telegram_config, logger)
 
         logger.info("Trade-Eröffnung erfolgreich abgeschlossen.")
 
@@ -501,10 +427,14 @@ def check_and_open_new_position(exchange, model, scaler, params, telegram_config
 
 def full_trade_cycle(exchange, model, scaler, params, telegram_config, logger):
     symbol = params['market']['symbol']
+    timeframe = params['market']['timeframe']
+    symbol_timeframe = f"{symbol.replace('/', '-')}_{timeframe}"
     try:
         pos = exchange.fetch_open_positions(symbol)
         if pos:
-            logger.info(f"Position offen – Management via SL/TP/TSL.")
+            logger.info(f"Position offen – Management via SL/TSL.")
+            # Wie im Backtest: Signale waehrend einer offenen Position verfallen.
+            mark_candle_evaluated(symbol_timeframe, last_closed_candle_ts(exchange, timeframe))
         else:
             housekeeper_routine(exchange, symbol, logger)
             check_and_open_new_position(exchange, model, scaler, params, telegram_config, logger)

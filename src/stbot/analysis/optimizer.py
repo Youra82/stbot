@@ -94,8 +94,10 @@ def objective(trial):
         'timeframe': CURRENT_TIMEFRAME,
         'htf':       CURRENT_HTF,
     }
+    # Kein risk_reward_ratio mehr im Suchraum: live gibt es keine feste TP-Order
+    # (nur SL + Trailing), der Parameter hatte seit 653b602 nirgends eine Wirkung
+    # und war fuer Optuna eine reine Rausch-Dimension.
     risk_params = {
-        'risk_reward_ratio':              trial.suggest_float('risk_reward_ratio', 1.5, 5.0),
         'risk_per_trade_pct':             trial.suggest_float('risk_per_trade_pct', 0.5, 3.0),
         'leverage':                       trial.suggest_int('leverage', 5, 20),
         'trailing_stop_activation_rr':    trial.suggest_float('trailing_stop_activation_rr', 1.0, 3.0),
@@ -165,6 +167,22 @@ def objective(trial):
     robust_score = min(fold_pnls)
 
     return robust_score
+
+
+def _mark_unconfirmed(symbol, timeframe, reason):
+    """Setzt _meta.confirmed=false in der bestehenden Config (falls vorhanden)."""
+    safe = f"{symbol.replace('/', '').replace(':', '')}_{timeframe}"
+    path = os.path.join(PROJECT_ROOT, 'src', 'stbot', 'strategy', 'configs', f"config_{safe}{CONFIG_SUFFIX}.json")
+    if not os.path.exists(path):
+        return
+    with open(path) as f:
+        cfg = json.load(f)
+    meta = cfg.setdefault('_meta', {})
+    meta['confirmed'] = False
+    meta['unconfirmed_reason'] = reason
+    meta['unconfirmed_at'] = _dt.now().isoformat(timespec='seconds')
+    with open(path, 'w') as f:
+        json.dump(cfg, f, indent=4)
 
 
 def main():
@@ -310,6 +328,12 @@ def main():
         if not valid_trials:
             run_results['failed'].append(
                 {'symbol': symbol, 'timeframe': timeframe, 'reason': 'no_valid_trials'})
+            # Bestehende Config NICHT mit altem confirmed-Status stehen lassen: kein
+            # einziger Trial hat die IS-Kriterien erfuellt -> Paar fuer die Portfolio-
+            # Auswahl sperren (vorher blieb z.B. AAVE/6h nach dem Neu-Lauf vom
+            # 2026-10-13 mit confirmed=true aus der alten Logik im Pool).
+            _mark_unconfirmed(symbol, timeframe, 'no_valid_trials')
+            print(f"  [nicht bestaetigt] Kein Trial erfuellt die Kriterien -- bestehende Config fuer die Portfolio-Auswahl gesperrt.")
             continue
 
         best_trial  = max(valid_trials, key=lambda t: t.value)
@@ -404,7 +428,7 @@ def main():
             and (baseline_oos is None or best_oos.get('total_pnl_pct', -1e9) > baseline_oos.get('total_pnl_pct', -1e9))
         )
 
-        mark = '[BESTAETIGT]' if confirmed else '[nicht bestaetigt -- Ist-Zustand behalten]'
+        mark = '[BESTAETIGT]' if confirmed else '[nicht bestaetigt -- wird gespeichert, aber NICHT fuer die Portfolio-Auswahl zugelassen]'
         print(f"\n  --- {symbol} ({timeframe}) --- {mark}")
         fold_pnls = best_trial.user_attrs.get('fold_pnls')
         if fold_pnls:
@@ -451,7 +475,6 @@ def main():
         risk_config = {
             'margin_mode':                    "isolated",
             'risk_per_trade_pct':             round(best_params['risk_per_trade_pct'], 2),
-            'risk_reward_ratio':              round(best_params['risk_reward_ratio'], 2),
             'leverage':                       best_params['leverage'],
             'trailing_stop_activation_rr':    round(best_params['trailing_stop_activation_rr'], 2),
             'trailing_stop_callback_rate_pct':round(best_params['trailing_stop_callback_rate_pct'], 2),

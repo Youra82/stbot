@@ -12,14 +12,17 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
 # Imports auf StBot angepasst
-from stbot.strategy.sr_engine import SREngine
-from stbot.strategy.trade_logic import get_titan_signal
-from stbot.analysis.backtester import load_data, _build_fine_path, _get_fine_slice
+from stbot.strategy.trade_rules import (prepare_signal_frame, build_bias_context, entry_side,
+                                        sl_distance, position_notional, safe_leverage,
+                                        new_position, candle_path, simulate_exit, trade_net_pnl,
+                                        bitget_min_amounts, order_allowed)
+from stbot.analysis.backtester import load_data, _get_fine_slice, load_weekly_source
 
 class Bias:
     BULLISH = "BULLISH"
     BEARISH = "BEARISH"
     NEUTRAL = "NEUTRAL"
+
 
 def run_portfolio_simulation(start_capital, strategies_data, start_date, end_date, verbose=True):
     """
@@ -41,35 +44,29 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
             params = strat.get('smc_params', {}) # Im Simulator heissen sie evtl. noch smc_params
             if not params: params = strat.get('strategy', {})
 
-            if 'sr_signal' in raw.columns:
+            if 'sr_signal' in raw.columns and 'vol_avg' in raw.columns:
                 # Bereits in einem frueheren Aufruf mit denselben strategies_data
-                # vorverarbeitet (ATR + SREngine) -- direkt wiederverwenden statt
-                # bei jedem Aufruf neu zu kopieren/berechnen. run_portfolio_optimizer.py
-                # ruft diese Funktion in "Bewerte Einzelstrategien"/"Teste Team mit N
-                # Mitgliedern" dutzende bis 100+ Mal MIT DENSELBEN strategies_data auf
-                # (z.B. dieselben bereits akzeptierten Team-Mitglieder werden in jeder
-                # Kandidaten-Runde erneut mitverarbeitet) -- ohne Cache fuehrte das
-                # wiederholte Kopieren+SREngine-Neuberechnen zu massivem Allokations-
-                # Churn (live beobachtet: OOM-Kill bei 5.1GB RSS auf einem 6.3GB-
-                # Mini-PC, 2026-08-24, bei nur ~19 gleichzeitigen Strategien).
+                # vorverarbeitet -- direkt wiederverwenden statt bei jedem Aufruf neu
+                # zu berechnen. run_portfolio_optimizer.py ruft diese Funktion dutzende
+                # bis 100+ Mal MIT DENSELBEN strategies_data auf -- ohne Cache fuehrte das
+                # zu massivem Allokations-Churn (live beobachtet: OOM-Kill bei 5.1GB RSS
+                # auf einem 6.3GB-Mini-PC, 2026-08-24).
                 df = raw
             else:
-                df = raw.copy()
-
-                # 1a. ATR berechnen
-                atr_indicator = ta.volatility.AverageTrueRange(high=df['high'], low=df['low'], close=df['close'], window=14)
-                df['atr'] = atr_indicator.average_true_range()
-
-                # 1b. SR Engine
-                engine = SREngine(settings=params)
-                df = engine.process_dataframe(df)
-
-                # NaN Werte am Anfang entfernen
+                # GEMEINSAME Signal-Vorbereitung mit Optimizer-Backtester und Live
+                # (strategy/trade_rules.py): ATR, Volumen-Schnitt, Energie/Avalanche/
+                # Streak, SR-Signal.
+                df = prepare_signal_frame(raw, params)
                 df.dropna(subset=['atr', 'sr_signal'], inplace=True)
-
                 if df.empty: continue
-
                 strat['data'] = df  # fuer kuenftige Aufrufe mit denselben strategies_data cachen
+
+            if strat.get('bias_ctx') is None:
+                weekly_source = None
+                if params.get('use_weekly_trend_filter', False):
+                    weekly_source = load_weekly_source(strat.get('symbol', key), df.index[0], df.index[-1])
+                strat['bias_ctx'] = build_bias_context(df, strat.get('timeframe', ''), params, strat.get('htf'),
+                                                       weekly_source=weekly_source)
 
             processed_strategies[key] = {
                 'data': df,
@@ -78,6 +75,8 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
                 'symbol': strat.get('symbol', key),
                 'timeframe': strat.get('timeframe', ''),
                 'fine_data': strat.get('fine_data'),
+                'bias_ctx': strat.get('bias_ctx'),
+                'min_amount': strat.get('min_amount') or bitget_min_amounts().get(strat.get('symbol', key)),
                 'coarse_duration': df.index[1] - df.index[0] if len(df.index) >= 2 else None,
             }
 
@@ -105,10 +104,7 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
     trade_history = []
     equity_curve = []
 
-    fee_pct = 0.06 / 100
-    max_allowed_effective_leverage = 10
     absolute_max_notional_value = 1000000
-    min_notional = 5.0
 
     _ts_iter = tqdm(sorted_timestamps, desc="Simuliere") if verbose else sorted_timestamps
     for ts in _ts_iter:
@@ -130,58 +126,19 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
             current_candle = strat['data'].loc[ts]
             pos['last_known_price'] = current_candle['close']
 
-            # Live platziert KEINE feste TP-Order (siehe trade_manager.py) - nur ein harter
-            # SL-Trigger und ein Trailing-Stop (Aktivierung bei activation_rr, Rueckzug bei
-            # callback_rate). Die zuvor hier simulierte statische TP-Order existiert live nicht
-            # und ueberzeichnete die Portfolio-Auswahl (Live-vs-Backtest-Analyse 2026-07-30).
-            callback_rate = pos['callback_rate']
-            o, h, l, c = current_candle['open'], current_candle['high'], current_candle['low'], current_candle['close']
-            # Intracandle-Pfad: bevorzugt aus echten feineren Kerzen aufgebaut
-            # (oraclebot-Muster), sonst Fallback auf die alte 4-Punkte-Annaeherung.
-            path = None
+            # Ausstieg ueber die GEMEINSAME Logik (trade_rules.simulate_exit): SL-Trigger +
+            # Trailing-Stop wie die beiden Live-Orders, keine feste TP-Order.
             fine_data = strat.get('fine_data')
             coarse_duration = strat.get('coarse_duration')
+            fine_slice = None
             if fine_data is not None and coarse_duration is not None:
                 fine_slice = _get_fine_slice(fine_data, ts, ts + coarse_duration)
-                if fine_slice is not None and not fine_slice.empty:
-                    path = _build_fine_path(fine_slice)
-            if not path:
-                path = [o, l, h, c] if c >= o else [o, h, l, c]
-
-            exit_price = None
-            for p in path:
-                if pos['side'] == 'long':
-                    if p <= pos['stop_loss']:
-                        exit_price = pos['stop_loss']
-                        break
-                    if not pos['trailing_active'] and p >= pos['activation_price']:
-                        pos['trailing_active'] = True
-                        pos['peak_price'] = p
-                    if pos['trailing_active']:
-                        pos['peak_price'] = max(pos['peak_price'], p)
-                        trail_level = pos['peak_price'] * (1 - callback_rate)
-                        if p <= trail_level:
-                            exit_price = trail_level
-                            break
-                else:
-                    if p >= pos['stop_loss']:
-                        exit_price = pos['stop_loss']
-                        break
-                    if not pos['trailing_active'] and p <= pos['activation_price']:
-                        pos['trailing_active'] = True
-                        pos['peak_price'] = p
-                    if pos['trailing_active']:
-                        pos['peak_price'] = min(pos['peak_price'], p)
-                        trail_level = pos['peak_price'] * (1 + callback_rate)
-                        if p >= trail_level:
-                            exit_price = trail_level
-                            break
+            path = candle_path(current_candle['open'], current_candle['high'], current_candle['low'],
+                               current_candle['close'], fine_slice)
+            exit_price = simulate_exit(pos, path)
 
             if exit_price:
-                pnl_pct = (exit_price / pos['entry_price'] - 1) if pos['side'] == 'long' else (1 - exit_price / pos['entry_price'])
-                pnl_usd = pos['notional_value'] * pnl_pct
-                total_fees = pos['notional_value'] * fee_pct * 2
-                net_pnl = pnl_usd - total_fees
+                net_pnl = trade_net_pnl(pos, exit_price, pos['notional_value'])
                 equity += net_pnl
                 trade_history.append({
                     'strategy_key': key,
@@ -204,75 +161,45 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
         for key in positions_to_close:
             del open_positions[key]
 
-        # B) Neue Positionen öffnen
+        # B) Neue Positionen öffnen -- gleiche Regeln wie Live (trade_manager.py):
+        #    trade_rules.entry_side, max. eine Position je Symbol, Bitget-Mindestmenge,
+        #    liquidationssicherer Hebel.
         if equity > 0:
             for key, strat in processed_strategies.items():
                 if key in open_positions: continue
                 if ts not in strat['data'].index: continue
+                if any(p.get('symbol_key') == strat.get('symbol') for p in open_positions.values()):
+                    continue
 
                 current_candle = strat['data'].loc[ts]
-                
-                # Kein MTF Bias Check im Simulator nötig, SRv2 ist standalone stark
-                market_bias = Bias.NEUTRAL
-                
-                # Statt Slice übergeben wir nur aktuelle Candle, da sr_signal schon da ist
-                # trade_logic ignoriert data_slice wenn 'sr_signal' in current_candle ist.
-                params_for_logic = {"strategy": strat['params'], "risk": strat['risk_params']}
-                side, price = get_titan_signal(strat['data'], current_candle, params_for_logic, market_bias)
+                side = entry_side(current_candle, ts, strat['params'], strat.get('bias_ctx'))
 
                 if side:
                     risk_params = strat['risk_params']
                     entry_price = current_candle['close']
-                    current_atr = current_candle['atr']
-
-                    atr_mult = risk_params.get('atr_multiplier_sl', 2.0)
-                    min_sl = risk_params.get('min_sl_pct', 0.5) / 100.0
-                    sl_dist = max(current_atr * atr_mult, entry_price * min_sl)
-
+                    sl_dist = sl_distance(current_candle, risk_params)
                     if sl_dist <= 0: continue
-
-                    risk_per_trade = risk_params.get('risk_per_trade_pct', 1.0) / 100.0
-                    risk_usd = equity * risk_per_trade
-
                     sl_pct = sl_dist / entry_price
-                    if sl_pct <= 0: continue
 
-                    calc_notional = risk_usd / sl_pct
-                    leverage = risk_params.get('leverage', 10)
+                    final_notional = min(position_notional(equity, risk_params, sl_pct), absolute_max_notional_value)
+                    if not order_allowed(final_notional, entry_price, strat.get('min_amount')): continue
 
-                    max_notional = equity * max_allowed_effective_leverage
-                    final_notional = min(calc_notional, max_notional, absolute_max_notional_value)
-                    if final_notional < min_notional: continue
-
+                    leverage = safe_leverage(risk_params.get('leverage', 10), sl_pct)
                     margin_used = math.ceil((final_notional / leverage) * 100) / 100
                     current_used_margin = sum(p['margin_used'] for p in open_positions.values())
 
                     if current_used_margin + margin_used > equity: continue
 
-                    rr = risk_params.get('risk_reward_ratio', 2.0)
-                    act_rr = risk_params.get('trailing_stop_activation_rr', 2.0)
-
-                    if side == 'buy':
-                        sl = entry_price - sl_dist
-                        tp = entry_price + sl_dist * rr
-                        act = entry_price + sl_dist * act_rr
-                    else:
-                        sl = entry_price + sl_dist
-                        tp = entry_price - sl_dist * rr
-                        act = entry_price - sl_dist * act_rr
-
-                    open_positions[key] = {
-                        'side': 'long' if side == 'buy' else 'short',
-                        'entry_price': entry_price, 'stop_loss': sl, 'take_profit': tp,
-                        'activation_price': act, 'trailing_active': False,
-                        'peak_price': entry_price, 'callback_rate': risk_params.get('trailing_stop_callback_rate_pct', 1.0)/100,
+                    pos = new_position(side, entry_price, sl_dist, risk_params)
+                    pos.update({
                         'notional_value': final_notional, 'margin_used': margin_used,
                         'last_known_price': entry_price,
                         'entry_time': ts,
                         'symbol_key': strat.get('symbol', key),
                         'timeframe':  strat.get('timeframe', ''),
                         'leverage':   leverage,
-                    }
+                    })
+                    open_positions[key] = pos
 
         # C) Tracking
         current_total_equity = equity + unrealized_pnl
@@ -314,5 +241,7 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
         "min_equity": min_equity_ever,
         "liquidation_date": liquidation_date,
         "trade_history": trade_history,
+        "open_positions": [{'strategy_key': k, 'entry_time': p.get('entry_time'), 'direction': p['side'],
+                            'entry': p['entry_price']} for k, p in open_positions.items()],
         "equity_curve": equity_df
     }

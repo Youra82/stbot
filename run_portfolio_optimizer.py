@@ -39,6 +39,36 @@ NC = '\033[0m'
 DEFAULT_LOOKBACK_DAYS = 1095  # ~3 Jahre als Standard
 
 
+def _fetch_live_equity() -> float | None:
+    """Gesamt-USDT-Equity des stbot-Kontos (Futures) -- fuer start_capital = "live"."""
+    try:
+        from stbot.utils.exchange import Exchange
+        with open(os.path.join(PROJECT_ROOT, 'secret.json')) as f:
+            account = json.load(f)['stbot'][0]
+        ex = Exchange(account)
+        bal = ex.exchange.fetch_balance(params={'productType': 'USDT-FUTURES'})
+        total = (bal.get('total') or {}).get('USDT')
+        return float(total) if total else None
+    except Exception as e:
+        print(f"{R}  Kontostand nicht abrufbar: {e}{NC}")
+        return None
+
+
+def _resolve_capital(arg_capital, opt: dict) -> float | None:
+    """
+    --capital > optimization_settings.portfolio_capital ("live" = echter Kontostand)
+    > optimization_settings.start_capital.
+    Grund (Live-Validierung 2026-10-11): mit fixen 100 USDT simuliert, war AAVE/6h
+    handelbar und wurde jede Woche gewaehlt -- beim echten Kontostand (~27 USDT) lag
+    die Ordergroesse aber unter der Bitget-Mindestmenge, live kam nie ein Trade.
+    """
+    if arg_capital:
+        return float(arg_capital)
+    if str(opt.get('portfolio_capital', '')).lower() == 'live':
+        return _fetch_live_equity()
+    return float(opt.get('portfolio_capital') or opt.get('start_capital', 100))
+
+
 def _scan_configs() -> list:
     if not os.path.isdir(CONFIGS_DIR):
         return []
@@ -516,7 +546,12 @@ def main() -> int:
     with open(SETTINGS_PATH) as f:
         settings = json.load(f)
     opt           = settings.get('optimization_settings', {})
-    capital       = args.capital or float(opt.get('start_capital', 100))
+    capital       = _resolve_capital(args.capital, opt)
+    if not capital or capital <= 0:
+        print(f"{R}  Kein gueltiges Startkapital (portfolio_capital='{opt.get('portfolio_capital')}') -- Abbruch, "
+              f"settings.json bleibt unveraendert.{NC}\n")
+        _send_telegram("stbot Portfolio-Optimizer ABGEBROCHEN: Kontostand nicht abrufbar (portfolio_capital=live).")
+        return 1
     max_dd        = args.max_dd
     end_date      = args.end_date   or date.today().strftime('%Y-%m-%d')
     # Startdatum-Fallback: backtest_lookback_weeks (rollend, hat Vorrang) ->
