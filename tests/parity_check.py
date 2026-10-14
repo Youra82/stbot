@@ -103,7 +103,8 @@ def check_config(name, start, end, capital, log):
 
     # 1) Backtester
     sp = dict(cfg['strategy']); sp.update(symbol=sym, timeframe=tf, htf=htf)
-    bt = run_backtest(data.copy(), sp, cfg['risk'], start_capital=capital, fine_data=fine, return_trades=True)
+    bt = run_backtest(data.copy(), sp, cfg['risk'], start_capital=capital, fine_data=fine, return_trades=True,
+                      trade_start=pd.Timestamp(warm, tz='UTC'))
     bt_trades = [(pd.Timestamp(t['entry_time']), t['side'], t['entry_price'], pd.Timestamp(t['exit_time']),
                   t['exit_price'], t['pnl_usd']) for t in bt['trades']]
 

@@ -24,6 +24,19 @@ class Bias:
     NEUTRAL = "NEUTRAL"
 
 
+def _effective_start(strat_start, start_date):
+    """
+    Erster Handelszeitpunkt: start_date der Simulation (bzw. ein spaeterer
+    strategie-eigener trade_start). Die Daten davor sind nur Vorlauf fuer SR-Zonen und
+    Indikatoren -- seit load_data() >= 1000 Kerzen Vorlauf liefert, handelte der
+    Simulator sonst schon im Vorlauf (Wochenauswahl "26 Wochen" bewertete bei 6h ab
+    Juli 2025, gefunden 2026-10-14).
+    """
+    starts = [pd.Timestamp(x) for x in (strat_start, start_date) if x is not None]
+    starts = [x.tz_localize('UTC') if x.tzinfo is None else x for x in starts]
+    return max(starts) if starts else None
+
+
 def run_portfolio_simulation(start_capital, strategies_data, start_date, end_date, verbose=True):
     """
     Führt eine chronologische Portfolio-Simulation mit mehreren StBot-Strategien durch.
@@ -79,7 +92,7 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
                 'min_amount': strat.get('min_amount') or bitget_min_amounts().get(strat.get('symbol', key)),
                 # Optional: erst ab diesem Zeitpunkt einsteigen (Daten davor nur Vorlauf),
                 # z.B. fuer OOS-Portfolio-Backtests -- wie run_backtest(trade_start=...).
-                'trade_start': pd.Timestamp(strat['trade_start']) if strat.get('trade_start') is not None else None,
+                'trade_start': _effective_start(strat.get('trade_start'), start_date),
                 'coarse_duration': df.index[1] - df.index[0] if len(df.index) >= 2 else None,
             }
 

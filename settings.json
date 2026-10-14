@@ -9,22 +9,12 @@
                 "active": true
             },
             {
-                "symbol": "XRP/USDT:USDT",
-                "timeframe": "6h",
+                "symbol": "MAGIC/USDT:USDT",
+                "timeframe": "2h",
                 "active": true
             },
             {
-                "symbol": "AVAX/USDT:USDT",
-                "timeframe": "30m",
-                "active": true
-            },
-            {
-                "symbol": "BNB/USDT:USDT",
-                "timeframe": "30m",
-                "active": true
-            },
-            {
-                "symbol": "WLD/USDT:USDT",
+                "symbol": "RSR/USDT:USDT",
                 "timeframe": "2h",
                 "active": true
             },
@@ -34,7 +24,17 @@
                 "active": true
             },
             {
-                "symbol": "MAGIC/USDT:USDT",
+                "symbol": "ETH/USDT:USDT",
+                "timeframe": "1h",
+                "active": true
+            },
+            {
+                "symbol": "BNB/USDT:USDT",
+                "timeframe": "30m",
+                "active": true
+            },
+            {
+                "symbol": "BCH/USDT:USDT",
                 "timeframe": "2h",
                 "active": true
             }
