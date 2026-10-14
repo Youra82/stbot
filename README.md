@@ -2,62 +2,84 @@
 
 Ein vollautomatischer Trading-Bot für Krypto-Futures auf der Bitget-Börse, basierend auf der **Support & Resistance Dynamic v2 (SRv2)** Strategie.
 
-Dieses System wurde für den Betrieb auf einem Ubuntu-Server entwickelt und umfasst neben dem Live-Trading-Modul eine hochentwickelte, automatisierte Pipeline zur Parameter-Optimierung (Optuna, mit echter In-Sample/Out-of-Sample-Validierung gegen Overfitting) und Portfolio-Zusammenstellung.
+Dieses System wurde für den Betrieb auf einem Ubuntu-Server entwickelt und umfasst neben dem Live-Trading-Modul eine automatisierte Pipeline zur Parameter-Optimierung (Optuna, mit echter In-Sample/Out-of-Sample-Validierung gegen Overfitting), eine wöchentliche Portfolio-Zusammenstellung und Prüfwerkzeuge, die belegen, dass **Backtest und Live-Bot identisch handeln**.
+
+---
 
 ## Kernstrategie 🧱
 
-Der Bot implementiert eine Breakout-Strategie, die dynamische Unterstützungs- und Widerstandszonen identifiziert und handelt, wenn der Preis diese durchbricht.
+Der Bot handelt Ausbrüche aus dynamischen Unterstützungs- und Widerstandszonen.
 
-* **Dynamische Pivot-Punkte:** Der Algorithmus scannt kontinuierlich nach lokalen Hochs und Tiefs über einen definierten Zeitraum (`pivot_period`).
-* **S/R-Cluster Bildung:**
-    * Die gefundenen Pivot-Punkte werden gruppiert. Wenn mehrere Pivots in einem engen Preisbereich (`channel_width`) liegen, bildet sich eine Zone.
-    * **Stärke-Filter:** Nur Zonen, die eine Mindestanzahl an Berührungen (`min_strength`) aufweisen, werden als valide angesehen.
-* **Breakout-Signale:**
-    * **Long (Buy):** Ein Trade wird eröffnet, wenn eine **Widerstandszone (Resistance)** nach oben durchbrochen wird.
-    * **Short (Sell):** Ein Trade wird eröffnet, wenn eine **Unterstützungszone (Support)** nach unten durchbrochen wird.
-* **Ausstieg & Risikomanagement:**
-    * **Positionsgröße:** Dynamisch berechnet basierend auf einem festen Prozentsatz (`risk_per_trade_pct`) des aktuellen Kontostandes.
-    * **Dynamischer Stop Loss:** Der Stop Loss basiert auf der Volatilität (**ATR**) oder einem prozentualen Mindestabstand zum Entry.
-    * **Trailing Stop:** Sobald der Trade in den Gewinn läuft, wird ein Trailing-Stop aktiviert, um Gewinne bei Trendumkehr zu sichern.
+* **Dynamische Pivot-Punkte:** Lokale Hochs und Tiefs über `pivot_period` Kerzen. Berücksichtigt werden höchstens `max_pivots` Pivots aus den **letzten 800 Kerzen** — dadurch hängt das Signal nicht davon ab, wie viel Historie geladen wurde (Live sieht 1000 Kerzen, Backtest ebenfalls mindestens 1000 Kerzen Vorlauf).
+* **S/R-Zonen:** Pivots in einem engen, ATR-basierten Preisbereich (`channel_width_pct`) bilden eine Zone; nur Zonen mit mindestens `min_strength` Berührungen zählen.
+* **Einstieg (bei Kerzenschluss):**
+    * **Long:** Schluss > Zonenmitte + 0,2 %, vorherige Kerze darunter. **Short:** spiegelbildlich.
+    * **Volumen-Bestätigung:** Volumen der Signal-Kerze ≥ 120 % des Schnitts der letzten 20 Kerzen.
+    * **Optionale Filter (vom Optimizer je Paar gewählt):** Energie-Z-Score, Avalanche-Perzentil, steigende Energie (3 Kerzen), Wochentrend (EMA auf Wochenkerzen, Wochen Mo–Mo, gültig ab Wochenschluss), HTF-Trend.
+* **Ausstieg — genau zwei Orders bei Bitget, keine feste Take-Profit-Order:**
+    * **Stop-Loss** (Trigger-Market) im Abstand `max(ATR × atr_multiplier_sl, min_sl_pct)`.
+    * **Trailing-Stop** (Bitget `track_plan`), aktiv ab `trailing_stop_activation_rr` × SL-Abstand im Gewinn, zieht mit `trailing_stop_callback_rate_pct` nach.
+* **Positionsgröße & Hebel:**
+    * Risiko = `risk_per_trade_pct` vom **realisierten Kapital** (Kontowert − unrealisierte PnL); Notional höchstens 10 × Kapital.
+    * Hebel = `min(Config-Hebel, ⌊0,8 / SL-Abstand⌋)` — der Stop-Loss liegt so immer vor der Liquidation (isolierte Margin).
+    * Orders unter der Bitget-Mindestmenge bzw. unter 5 USDT werden nicht platziert.
 
-![Ein Trade: SR-Breakout-Entry + ATR-Trailing-Exit](docs/images/trade_example.png)
+![Echter OOS-Trade: Breakout-Entry, Stop-Loss, Trailing-Aktivierung und nachgezogener Trailing-Stop](docs/images/trade_example.png)
+
+*Erzeugt aus echten Daten mit `python docs/make_illustrations.py trade` — Einstieg, Stop-Loss, Aktivierung und Trailing-Verlauf werden mit denselben Funktionen berechnet wie im Live-Bot.*
+
+---
+
+## Backtest = Live-Bot 🔁
+
+Alle Handelsregeln (Signal, Filter, Volumen, Positionsgröße, Hebel, Mindestmenge, Stop-Loss, Trailing-Exit, Gebühren) liegen in **einem** Modul: `src/stbot/strategy/trade_rules.py`. Es wird von allen Pfaden aufgerufen:
+
+```mermaid
+flowchart LR
+    R["strategy/trade_rules.py<br/>Einstieg · Filter · Sizing · Hebel<br/>Mindestmenge · SL/Trailing-Exit · Gebühren"]
+    R --> O["analysis/backtester.py<br/>(Optuna-Optimizer,<br/>Einzelanalyse)"]
+    R --> P["analysis/portfolio_simulator.py<br/>(Wochenauswahl,<br/>Portfolio-Analyse)"]
+    R --> L["utils/trade_manager.py<br/>(Live-Bot)"]
+    R --> C["interactive_status.py · show_chart.py<br/>(Charts)"]
+```
+
+Zusätzliche Regeln, damit Live sich exakt wie der Backtest verhält:
+
+* **Jede geschlossene Kerze wird genau einmal bewertet.** Ein Signal, das während einer offenen Position kommt, verfällt (wie im Backtest).
+* **Nur frische Signale:** Live steigt nur ein, wenn die Signal-Kerze vor höchstens 20 Minuten geschlossen hat (Cron alle 15 Min). Ältere Signale — z. B. wenn eine Strategie gerade neu ins Team gekommen ist — verfallen.
+* **Eine Position je Coin**, auch wenn mehrere Timeframes desselben Coins aktiv sind.
+* **Nur geschlossene Kerzen:** die laufende Kerze wird beim Abruf verworfen.
+
+**Nachweis:** `tests/parity_check.py` lässt für jede Config den echten Live-Code gegen eine Mock-Börse laufen (15-Minuten-Takt, nur zu diesem Zeitpunkt bekannte Kerzen) und vergleicht mit Backtester und Portfolio-Simulator — jeder Trade (Einstieg, Exit, Preis, PnL) bzw. jeder Live-Einstieg muss identisch sein. Stand Oktober 2026: **28/28 bestätigte Configs identisch.**
+
+```bash
+.venv/bin/python3 tests/parity_check.py                                   # alle Configs
+.venv/bin/python3 tests/parity_check.py --configs ARBUSDTUSDT_2h --start 2026-08-01
+```
+
+---
 
 ## Architektur & Arbeitsablauf
 
-Der Bot arbeitet mit einem präzisen, automatisierten und ressourcenschonenden System.
-
 ```mermaid
 flowchart TD
-    A["Cronjob\n(z.B. alle 15 Min)"] --> B["master_runner.py"]
-    B --> C{"Neuer Zeit-Block\nfür Strategie erreicht?"}
-    C -- Nein --> Z["Warten bis\nnächster Cronjob"]
-    C -- Ja --> D["run.py\n(spezifische Strategie)"]
-    D --> E["Guardian-Decorator:\nSicherheits-Checks"]
-    E --> F["trade_manager.py"]
-    F --> G["Historische Daten abrufen"]
-    G --> H["SREngine:\nPivots + S/R-Zonen"]
-    H --> I{"Breakout-Signal?"}
-    I -- Ja --> J["Order bei Bitget\ninkl. SL/TP"]
-    I -- Nein --> Z
-    B -. "wöchentlich fällig" .-> K["Auto-Optimizer\nScheduler"]
+    A["Cronjob<br/>(alle 15 Min)"] --> B["master_runner.py"]
+    B --> D["run.py je aktiver Strategie<br/>(settings.json → active_strategies)"]
+    D --> F["trade_manager.py"]
+    F --> P{"Position auf<br/>dem Coin offen?"}
+    P -- Ja --> X["Kerze als ausgewertet markieren<br/>(Exit über Bitget-Orders)"]
+    P -- Nein --> G["1000 geschlossene Kerzen holen"]
+    G --> Q{"Kerze neu &<br/>jünger als 20 Min?"}
+    Q -- Nein --> Z["Warten"]
+    Q -- Ja --> H["trade_rules: SR-Zonen,<br/>Volumen, Filter → Signal?"]
+    H -- Nein --> Z
+    H -- Ja --> J["Market-Order + SL-Trigger<br/>+ Trailing-Stop bei Bitget"]
+    B -. "Sonntag 15:00" .-> K["auto_optimizer_scheduler.py<br/>→ Wochenauswahl"]
 ```
 
-1.  **Der Cronjob (Der Wecker):** Ein einziger, simpler Cronjob läuft in einem kurzen Intervall (z.B. alle 15 Minuten). Er hat nur eine Aufgabe: den intelligenten Master-Runner zu starten.
-
-2.  **Der Master-Runner (Der Dirigent):** Das `master_runner.py`-Skript ist das Herz der Automatisierung. Bei jedem Aufruf:
-    * Liest es alle aktiven Strategien aus der `settings.json` (oder dem optimierten Portfolio).
-    * Prüft es für jede Strategie, ob ein **neuer, exakter Zeit-Block** begonnen hat.
-    * Nur wenn eine Strategie an der Reihe ist, startet es den eigentlichen Handelsprozess für diese eine Strategie.
-    * Es **sammelt die komplette Log-Ausgabe** und schreibt sie in die zentrale `cron.log`.
-
-3.  **Der Handelsprozess (Der Agent):**
-    * Die `run.py` wird für eine spezifische Strategie gestartet.
-    * Der **Guardian-Decorator** führt zuerst Sicherheits-Checks durch.
-    * Die Kernlogik in `trade_manager.py` wird ausgeführt:
-        1.  Abruf historischer Daten.
-        2.  Berechnung der Pivots und S/R-Zonen (**SREngine**).
-        3.  Prüfung auf Breakout-Signale (Durchbruch durch valide Zone).
-        4.  Ausführung der Order bei Bitget inkl. SL/TP.
+1. **Cronjob:** startet alle 15 Minuten den Master-Runner.
+2. **Master-Runner:** startet für jede aktive Strategie aus `settings.json` einen Durchlauf und prüft wöchentlich, ob die Portfolio-Auswahl fällig ist.
+3. **trade_manager.py:** wertet die zuletzt geschlossene Kerze mit `trade_rules` aus und platziert Einstieg, Stop-Loss und Trailing-Stop. Der Ausstieg passiert danach vollständig über die Bitget-Orders.
 
 ---
 
@@ -69,186 +91,214 @@ Führe die folgenden Schritte auf einem frischen Ubuntu-Server (oder lokal) aus.
 
 ```bash
 git clone https://github.com/Youra82/stbot.git
-````
-
-*(Hinweis: Passe die URL an, falls das Repo noch anders heißt)*
-
-#### 2\. Installations-Skript ausführen
-
-```bash
 cd stbot
 ```
 
-Installation aktivieren (einmalig):
+#### 2. Installations-Skript ausführen
 
 ```bash
 chmod +x install.sh
-```
-
-Installation ausführen:
-
-```bash
 bash ./install.sh
 ```
 
-#### 3\. API-Schlüssel eintragen
-
-Erstelle eine Kopie der Vorlage und trage deine Schlüssel ein.
+#### 3. API-Schlüssel eintragen
 
 ```bash
 cp secret.json.example secret.json
 nano secret.json
 ```
 
-*(Achte darauf, dass der Hauptschlüssel in der JSON-Datei `"stbot"` heißt).*
+*(Der Hauptschlüssel in der JSON-Datei heißt `"stbot"`.)* Speichern mit `Strg + X`, `Y`, `Enter`.
 
-Speichere mit `Strg + X`, dann `Y`, dann `Enter`.
+> **Wichtig:** Alle Python-Befehle mit `.venv/bin/python3` ausführen — das System-`python3` hat die Pakete (z. B. `tqdm`) nicht.
 
------
+---
 
-## Konfiguration & Automatisierung
+## Strategien finden & bestätigen 🔬
 
-#### 1\. Strategien finden (Pipeline)
-
-Führe die interaktive Pipeline aus, um die besten SRv2-Parameter (Pivot-Perioden, Cluster-Breite) für bestimmte Coins zu finden.
-
-Skripte aktivieren (einmalig):
+#### 1. Pipeline (Optuna-Optimierung)
 
 ```bash
 chmod +x *.sh
-```
-
-Pipeline starten:
-
-```bash
 ./run_pipeline.sh
 ```
 
+Standard-Antworten: Startdatum `a` (automatisch), Startkapital 1000, 200 Trials, Strenger Modus, Max-DD 30 %, Min-Win-Rate 35 %, Min-PnL 0.
+
 ```mermaid
 flowchart TD
-    A["Optuna-Suche auf\nIn-Sample-Daten (70%)\nZiel: Minimum über K_FOLDS-Teilfenster"] --> B["Bester Trial"]
-    B --> C["Präzise Nachbewertung\nmit Feindaten: IS + OOS"]
-    C --> D{"OOS: genug Trades,\nPnL positiv,\nbesser als Baseline?"}
-    D -- Ja --> E["confirmed: true"]
-    D -- Nein --> F["confirmed: false\n(trotzdem gespeichert)"]
-    E --> G["run_portfolio_optimizer.py\n(Greedy-Auswahl unter MaxDD)"]
-    F -. "wird ignoriert" .-> G
-    G --> H["settings.json\naktualisiert"]
-    H --> I["Live-Trading via\nmaster_runner.py"]
+    A["Daten: Handelszeitraum + ≥1000 Kerzen Vorlauf<br/>15m: 180 T · 30m/1h: 1 J · 2h/4h/6h/1d: 5 J"] --> B["Split am Handelszeitraum:<br/>70 % In-Sample · 30 % Out-of-Sample"]
+    B --> C["Optuna auf IS<br/>Vorprüfung: IS-DD ≤ 30 %, Win-Rate ≥ 35 %, ≥ 20 Trades<br/>Ziel: schwächstes von 3 IS-Teilfenstern"]
+    C --> D["Bester Trial: präzise Nachbewertung<br/>mit Feinkerzen, IS und OOS mit vollem Vorlauf"]
+    D --> E{"Bestätigung:<br/>IS-PnL > 0<br/>OOS ≥ 30 Trades<br/>OOS-PnL ≥ +10 %<br/>OOS-DD < 30 %"}
+    E -- "ja, und besser als bestehende Config" --> F["confirmed: true"]
+    E -- "nein, bestehende Config erfüllt die Kriterien" --> G["bestehende Config bleibt<br/>(confirmed: true)"]
+    E -- nein --> H["confirmed: false<br/>(gespeichert, aber gesperrt)"]
+    F --> I["Wochenauswahl"]
+    G --> I
+    H -. "ignoriert" .-> I
 ```
 
-**Overfitting-Schutz (70/30 In-Sample/Out-of-Sample-Split):** Optuna optimiert nur
-auf den ersten 70% der Daten (In-Sample). Die bestehende Config (falls vorhanden)
-dient als Baseline-Vergleich auf denselben Daten. Eine neue Config wird nur als
-`confirmed: true` markiert, wenn sie auf den letzten 30% (Out-of-Sample, nie von
-Optuna gesehen) genug Trades hat, positives PnL zeigt UND besser als die Baseline
-abschneidet — sonst wird sie trotzdem gespeichert (`confirmed: false`, klar als
-ungeprüft markiert) statt verworfen, damit nichts verloren geht. Zusätzlich splittet
-sich der In-Sample-Zeitraum in `K_FOLDS` (Standard 3) Teilfenster; Optuna optimiert
-auf dem **Minimum** über alle Teilfenster statt der Gesamt-Performance — das bestraft
-Parameter, die nur in einer einzelnen Marktphase funktionieren, schon während der
-Suche. `run_portfolio_optimizer.py` (automatische Portfolio-Zusammenstellung)
-ignoriert `confirmed: false`-Configs automatisch bei der Live-Auswahl.
+* **Kein Kaltstart:** IS, OOS und die drei IS-Teilfenster werden mit der vollen Historie davor als Vorlauf bewertet (`run_backtest(trade_start=…)`) — wie ein Live-Bot, der an dem Tag startet.
+* **Lange Historie für langsame Timeframes:** damit der OOS-Teil überhaupt 30 Trades enthalten kann (bei 4h/6h sonst nur ~15).
+* **Trial-Skalierung je Timeframe:** 1d = 100 %, 6h/4h = 25 %, 15m = 20 %, 30m/1h/2h = 15 % der eingegebenen Trials, mindestens 30.
+* **Bestehende Configs bewerten ohne neu zu optimieren:**
+  ```bash
+  .venv/bin/python3 src/stbot/analysis/optimizer.py --symbols ETH --timeframes 1h \
+      --start_date 2025-10-13 --end_date 2026-10-13 --jobs 1 --max_drawdown 30 \
+      --start_capital 1000 --min_win_rate 35 --trials 30 --min_pnl 0 --mode strict --evaluate_only
+  ```
 
-**Automatische Trial-Skalierung je Zeitfenster:** Ein Trial auf einem niedrigeren
-Zeitfenster (mehr Kerzen im selben Rückblick-Zeitraum) kostet ein Vielfaches der
-Rechenzeit eines 1d-Trials. Damit eine Pipeline mit vielen Paaren/Zeitfenstern nicht
-unrealistisch lange läuft, wird die eingegebene Trial-Zahl automatisch pro Zeitfenster
-prozentual reduziert (1d=100%, 6h/4h=25%, 15m=20%, 30m/1h/2h/5m=15%, Minimum 30 Trials).
+#### 2. Kontrollgruppe: wie viel ist Zufall?
 
-#### 2\. Ergebnisse analysieren
+`tests/random_baseline_check.py` ersetzt die Einstiege jeder Config durch **zufällige Einstiege** (zufällige Richtung, gleiche Häufigkeit) — Exit, Stop-Loss, Positionsgröße, Gebühren und IS/OOS-Aufteilung bleiben identisch — und zählt, wie oft das die Bestätigung trotzdem besteht.
 
-Nach der Optimierung kannst du die Ergebnisse auswerten und Portfolios simulieren.
+```bash
+.venv/bin/python3 tests/random_baseline_check.py alle kontrollgruppe.csv
+```
+
+![Kontrollgruppe: Zufalls-Einstiege vs. echte Strategie je Timeframe](docs/images/random_baseline.png)
+
+**Ergebnis (Oktober 2026, 202 Configs):** Ohne jede Kante wären ~14 Treffer zu erwarten, gefunden wurden 28. Die Strategie hat also insgesamt eine echte Kante — aber **etwa die Hälfte der bestätigten Configs wäre auch zufällig durchgekommen.** Ursache ist der Trailing-Exit: Er lässt Gewinner laufen und begrenzt Verluste, und das verdient in den starken Trends 2025/26 auch mit zufälligen Einstiegen, besonders auf 2h und 4h. Auf 15m–1h ist der Zufallsanteil gering (1–4 %).
+
+#### 3. Ergebnisse analysieren
 
 ```bash
 ./show_results.sh
 ```
 
-  * **Modus 1:** Einzelstrategien prüfen.
-  * **Modus 2:** Manuelles Portfolio zusammenstellen.
-  * **Modus 3:** Automatische Portfolio-Optimierung (findet die beste Kombi für z.B. max. 30% Drawdown).
+* **Modus 1:** Einzelstrategien prüfen.
+* **Modus 2:** Manuelles Portfolio zusammenstellen.
+* **Modus 3:** Automatische Portfolio-Optimierung.
 
-Ergebnisse an Telegram senden:
+---
+
+## Bestätigte Strategien (Stand 14.10.2026) 📊
+
+28 von 202 Configs (35 Coins × 6 Timeframes, BTC zusätzlich 1d) erfüllen alle Kriterien. „Zufall“ = Anteil der Zufalls-Einstiege derselben Config, die die Bestätigung ebenfalls bestehen (niedriger = belastbarer).
+
+| Strategie | IS-PnL | OOS ab | OOS-Trades | OOS-PnL | OOS-DD | OOS-WR | Zufall |
+|---|---|---|---|---|---|---|---|
+| MAGIC/2h | +1505 % | 2025-09-04 | 107 | +174,8 % | 23,6 % | 52 % | 40 % |
+| ARB/2h | +57 % | 2025-09-18 | 39 | +67,7 % | 10,7 % | 62 % | 20 % |
+| HBAR/2h | +294 % | 2025-09-16 | 81 | +57,8 % | 23,2 % | 30 % | 10 % |
+| TAO/2h | +953 % | 2026-01-11 | 48 | +54,7 % | 28,5 % | 33 % | 20 % |
+| ETH/4h | +404 % | 2025-04-13 | 64 | +52,1 % | 16,4 % | 55 % | 20 % |
+| ENA/15m | +92 % | 2026-08-20 | 48 | +45,9 % | 6,9 % | 60 % | 0 % |
+| ADA/2h | +195 % | 2025-04-13 | 93 | +41,9 % | 19,0 % | 34 % | 10 % |
+| SOL/4h | +52 % | 2025-04-13 | 32 | +40,4 % | 12,0 % | 59 % | 0 % |
+| XRP/4h | +30 % | 2025-04-13 | 52 | +38,2 % | 14,8 % | 56 % | 10 % |
+| AAVE/6h | +39 % | 2025-04-13 | 33 | +32,6 % | 8,2 % | 54 % | 10 % |
+| WLD/2h | +138 % | 2025-10-25 | 56 | +32,5 % | 12,3 % | 55 % | 10 % |
+| LINK/6h | +75 % | 2025-04-13 | 33 | +31,4 % | 4,7 % | 64 % | 30 % |
+| TIA/2h | +258 % | 2025-11-24 | 74 | +29,9 % | 24,6 % | 50 % | 30 % |
+| ETH/1h | +26 % | 2026-06-25 | 31 | +28,6 % | 6,9 % | 48 % | 0 % |
+| RSR/2h | +210 % | 2025-06-25 | 78 | +27,4 % | 25,2 % | 30 % | 30 % |
+| BNB/4h | +20 % | 2025-04-13 | 45 | +25,6 % | 6,8 % | 49 % | 10 % |
+| XLM/6h | +86 % | 2025-04-13 | 35 | +24,8 % | 22,8 % | 37 % | 10 % |
+| AVAX/30m | +84 % | 2026-06-25 | 36 | +24,6 % | 7,7 % | 56 % | 30 % |
+| ENA/2h | +51 % | 2026-01-09 | 37 | +24,4 % | 8,8 % | 43 % | 10 % |
+| ADA/4h | +25 % | 2025-04-13 | 32 | +23,8 % | 7,5 % | 50 % | 0 % |
+| XRP/6h | +23 % | 2025-04-13 | 31 | +23,8 % | 5,2 % | 61 % | 20 % |
+| STRK/2h | +45 % | 2025-12-27 | 38 | +20,4 % | 7,6 % | 55 % | 40 % |
+| DOGE/2h | +33 % | 2025-04-13 | 92 | +16,4 % | 12,1 % | 51 % | 30 % |
+| BCH/2h | +149 % | 2025-04-13 | 60 | +15,2 % | 26,4 % | 43 % | 20 % |
+| BTC/4h | +64 % | 2025-04-13 | 34 | +14,5 % | 11,5 % | 41 % | 10 % |
+| AAVE/2h | +14 % | 2025-04-13 | 40 | +13,6 % | 11,2 % | 50 % | 0 % |
+| BTC/6h | +71 % | 2025-04-13 | 40 | +10,5 % | 10,9 % | 48 % | 20 % |
+| BNB/30m | +21 % | 2026-06-25 | 52 | +10,1 % | 16,8 % | 38 % | 30 % |
+
+**Alle bestätigten Strategien gleichzeitig** — nur Out-of-Sample-Trades, gemeinsames Fenster ab 25.06.2026, 1000 USDT Start:
+
+![OOS-Portfolio aller bestätigten Strategien](docs/images/oos_portfolio_equity.png)
+
+1000 → 2182 USDT (+118 %) in 3,5 Monaten, aber **51 % Drawdown**. Alle Strategien gleichzeitig zu handeln ist deutlich riskanter als jede einzelne — deshalb wählt die Wochenauswahl ein Team von höchstens `max_open_positions` Strategien unter einer Drawdown-Grenze.
+
+---
+
+## Wochenauswahl (Portfolio) 🗓️
+
+`auto_optimizer_scheduler.py` startet sonntags um 15:00 `run_portfolio_optimizer.py`:
+
+* **Kapital:** `portfolio_capital: "live"` → echter Bitget-Kontostand (Mindestmengen hängen davon ab). Ist er nicht abrufbar, bricht der Lauf ab und meldet das per Telegram.
+* **Zeitraum:** die letzten `backtest_lookback_weeks` (26) Wochen; gehandelt wird erst ab diesem Startdatum, die Kerzen davor sind nur Vorlauf.
+* **Kandidaten:** nur `confirmed: true`.
+* **Greedy-Suche:** beste Einzelstrategie, dann jeweils die Ergänzung mit dem höchsten Endkapital, solange der Portfolio-DD ≤ 30 % bleibt, höchstens ein Timeframe je Coin und höchstens `max_open_positions` (7) Strategien.
+* Das neue Team wird nur übernommen, wenn es im selben Zeitraum besser ist als das aktuelle.
+
+> **Hinweis zur Einordnung:** Das 26-Wochen-Fenster überschneidet sich bei Strategien mit kurzem OOS-Zeitraum (z. B. ENA/15m, AVAX/30m) mit ihrem Optimierungszeitraum. Die gemeldete 26-Wochen-Rendite ist deshalb optimistischer als eine echte Erwartung; realistischer ist der reine OOS-Backtest oben.
+
+Manuell auslösen:
 
 ```bash
-./send_report.sh optimal_portfolio_equity.csv
-./show_chart.sh optimal_portfolio_equity.csv
+cd ~/stbot && .venv/bin/python3 auto_optimizer_scheduler.py --force
 ```
 
-Aufräumen (Alte Configs löschen für Neustart):
+Aktives Portfolio erneut simulieren (Chart + Trades-Excel per Telegram, ohne Neuauswahl):
 
 ```bash
-rm -f src/stbot/strategy/configs/config_*.json
-rm artifacts/db/*.db
+cd ~/stbot && .venv/bin/python3 run_portfolio_optimizer.py --replot
 ```
 
-#### 3\. Strategien für den Handel aktivieren
+**Speicher-Selbstschutz:** Vor dem Start wird `MemAvailable` geprüft (bis zu 3 Minuten Wartezeit), während der Suche der eigene Speicherverbrauch (`MAX_RSS_MB`, Standard 3500 MB). Bei Knappheit bricht der Lauf kontrolliert ab, `settings.json` bleibt unverändert.
 
-Bearbeite die `settings.json`. Du kannst entweder Strategien manuell eintragen oder den Bot anweisen, automatisch das optimierte Portfolio zu nutzen.
+---
 
-```bash
-nano settings.json
-```
+## Konfiguration & Automatisierung ⚙️
 
-**Empfohlene Einstellung (Autopilot):**
+#### settings.json
 
 ```json
 {
     "live_trading_settings": {
-        "use_auto_optimizer_results": true,
-        "active_strategies": []
+        "max_open_positions": 7,
+        "use_auto_optimizer_results": false,
+        "active_strategies": [
+            {"symbol": "ENA/USDT:USDT", "timeframe": "15m", "active": true}
+        ]
     },
     "optimization_settings": {
-        "enabled": false
+        "enabled": true,
+        "schedule": {"day_of_week": 6, "hour": 15, "minute": 0},
+        "start_capital": 100,
+        "portfolio_capital": "live",
+        "backtest_lookback_weeks": 26,
+        "constraints": {"max_drawdown_pct": 30}
     }
 }
 ```
 
-#### 4\. Automatisierung per Cronjob einrichten
+`active_strategies` schreibt die Wochenauswahl automatisch. `use_auto_optimizer_results` bleibt `false`.
 
-Richte den automatischen Prozess für den Live-Handel ein.
+#### Cronjob
 
 ```bash
 crontab -e
 ```
-
-Füge die folgende Zeile am Ende ein (Pfad anpassen, z.B. `/root/stbot`):
 
 ```bash
 # Starte den StBot Master-Runner alle 15 Minuten
 */15 * * * * /usr/bin/flock -n /root/stbot/stbot.lock /bin/sh -c "cd /root/stbot && .venv/bin/python3 master_runner.py >> /root/stbot/logs/cron.log 2>&1"
 ```
 
-Logverzeichnis anlegen:
-
 ```bash
 mkdir -p /root/stbot/logs
 ```
 
------
+---
 
-## Tägliche Verwaltung & Wichtige Befehle ⚙️
+## Tägliche Verwaltung 🛠️
 
-#### Logs ansehen
+#### Logs
 
-Die zentrale `cron.log` enthält alle Aktivitäten.
-
-  * **Logs live mitverfolgen:**
-    ```bash
-    tail -f logs/cron.log
-    ```
-  * **Nach Fehlern suchen:**
-    ```bash
-    grep -i "ERROR" logs/cron.log
-    ```
-  * **Individuelle Strategie-Logs:**
-    ```bash
-    tail -n 100 logs/stbot_BTCUSDTUSDT_4h.log
-    ```
+```bash
+tail -f logs/cron.log                          # alles live
+grep -i "ERROR" logs/cron.log                  # Fehler
+tail -n 100 logs/stbot_ENAUSDTUSDT_15m.log     # einzelne Strategie
+tail -f logs/auto_optimizer_trigger.log        # Wochenauswahl
+```
 
 #### Manueller Start (Test)
-
-Um den `master_runner` sofort auszuführen, ohne auf den Cronjob zu warten:
 
 ```bash
 cd /root/stbot && .venv/bin/python3 master_runner.py
@@ -256,200 +306,49 @@ cd /root/stbot && .venv/bin/python3 master_runner.py
 
 #### Bot aktualisieren
 
-Um den neuesten Code von GitHub zu laden und die Umgebung sauber zu halten:
-
 ```bash
 ./update.sh
 ```
 
-#### Live-Trades gegen Backtest-Erwartung prüfen
+`update.sh` setzt den Code auf den GitHub-Stand zurück, stellt `secret.json` wieder her und **behält das aktive Team** (`active_strategies`) des Servers.
 
-Vergleicht reale Bitget-Trades gegen die Backtest-Erwartung der jeweiligen Config —
-über den gesamten Config-Pool (`src/stbot/strategy/configs/`), nicht nur die
-aktuell in `settings.json` aktiven Strategien, damit auch Trades von zwischenzeitlich
-rotierten Symbolen/Timeframes erfasst werden. Benötigt einen aktuellen Bitget-Export
-("Exported USDT-M Futures position history ...xls") im `daten/`-Ordner — der direkte
-API-Abruf der Trade-Historie ist bei diesem Account IP-beschränkt und schlägt von
-manchen Rechnern aus fehl (`bitget requires "apiKey" credential`), daher der manuelle
-Export als zuverlässiger Weg.
+#### Live-Trades gegen den Backtest prüfen
+
+Die Positionshistorie lässt sich mit dem stbot-Key direkt per API abrufen (Bitget v2 `position/history-position`) und gegen die Backtest-Signale der jeweiligen Config abgleichen. Alternativ mit einem Bitget-Export im Ordner `daten/`:
 
 ```bash
-cd ~/stbot && .venv/bin/python3 daten/track_live_team.py
+.venv/bin/python3 daten/track_live_team.py --since 2026-10-14
 ```
 
-Optional mit eigenem Startdatum oder Export-Pfad:
+#### Optimizer stoppen
 
 ```bash
-.venv/bin/python3 daten/track_live_team.py --since 2026-07-31 --xls "daten/Exported ....xls"
-```
-
-## 🔄 Auto-Optimizer Verwaltung
-
-Der Bot verfügt über einen automatischen Optimizer, der wöchentlich die besten Parameter für alle aktiven Strategien sucht (Support/Resistance SRv2). Die folgenden Befehle helfen beim manuellen Triggern, Debugging und Monitoring des Optimizers.
-
-**Speicher-Selbstschutz (wichtig auf kleinen VPS):** `run_portfolio_optimizer.py`
-läuft als unbeaufsichtigter, wöchentlicher Cronjob — oft parallel zum laufenden
-Live-Trading-Fleet auf demselben Server. Er prüft vor dem Start `MemAvailable`
-(`/proc/meminfo`) und wartet bis zu 3 Minuten, falls gerade wenig frei ist; bleibt
-es zu knapp, wird die Optimierung diese Woche sauber übersprungen (`settings.json`
-bleibt unverändert). Während der Suche wird der eigene Speicherverbrauch laufend
-geprüft (`MAX_RSS_MB`, Standard 3500MB) — bei Überschreitung bricht er kontrolliert
-mit dem bisher besten gefundenen Portfolio ab, statt durch einen Kernel-OOM-Kill den
-ganzen Server (inkl. aller anderen Bots) mitzureißen.
-
-### Optimizer manuell triggern
-
-Um eine sofortige Optimierung zu starten (ignoriert das Zeitintervall):
-
-```bash
-# Letzten Optimierungszeitpunkt löschen (erzwingt Neustart)
-rm ~/stbot/data/cache/.last_optimization_run
-
-# Master Runner starten (prüft ob Optimierung fällig ist)
-cd ~/stbot && .venv/bin/python3 master_runner.py
-```
-
-Oder direkt per `--force`:
-
-```bash
-cd ~/stbot && .venv/bin/python3 auto_optimizer_scheduler.py --force
-```
-
-### Replot — Charts neu generieren (ohne Re-Optimierung)
-
-Das aktive Portfolio erneut simulieren und Equity-Chart + Trades-Excel via Telegram senden — ohne die komplette Optimierung neu durchzuführen:
-
-```bash
-cd ~/stbot && .venv/bin/python3 run_portfolio_optimizer.py --replot
-```
-
-Optionale Parameter (werden sonst aus `settings.json` gelesen):
-```bash
-.venv/bin/python3 run_portfolio_optimizer.py --replot --capital 200 --start-date 2024-01-01 --end-date 2025-01-01
-```
-
-### Optimizer-Logs überwachen
-
-```bash
-# Optimizer-Log live mitverfolgen
-tail -f ~/stbot/logs/auto_optimizer_trigger.log
-
-# Letzte 50 Zeilen des Optimizer-Logs anzeigen
-tail -50 ~/stbot/logs/auto_optimizer_trigger.log
-```
-
-### Optimierungsergebnisse ansehen
-
-```bash
-# Beste gefundene Parameter anzeigen (erste 50 Zeilen)
-cat ~/stbot/artifacts/results/optimization_results.json | head -50
-```
-
-### Optimizer-Prozess überwachen
-
-```bash
-# Prüfen ob Optimizer gerade läuft (aktualisiert jede Sekunde)
-watch -n 1 "ps aux | grep optimizer"
-```
-
-### Optimizer stoppen
-
-```bash
-# Alle Optimizer-Prozesse auf einmal stoppen
 pkill -f "auto_optimizer_scheduler" ; pkill -f "run_pipeline_automated" ; pkill -f "optimizer.py"
-
-# Prüfen ob alles gestoppt ist
 pgrep -fa "optimizer" && echo "Noch aktiv!" || echo "Alle gestoppt."
-
-# In-Progress-Marker aufräumen (sauberer Neustart danach)
-rm -f ~/stbot/data/cache/.optimization_in_progress
 ```
-
------
-
-## Qualitätssicherung & Tests 🛡️
-
-Um sicherzustellen, dass die SR-Logik und die API-Verbindung korrekt funktionieren, nutze das Test-System.
-
-**Wann ausführen?** Nach jedem Update oder Code-Änderungen.
-
-```bash
-./run_tests.sh
-```
-
-  * **Erfolgreich:** Alle Tests `PASSED` (Grün).
-  * **Fehler:** Tests `FAILED` (Rot). Der Bot sollte nicht live gehen.
 
 ---
 
-## Coin & Timeframe Empfehlungen
+## Qualitätssicherung & Tests 🛡️
 
-StBot ist eine **S/R-Breakout-Strategie** — er sucht dynamische Unterstützungs- und Widerstandszonen aus Pivot-Hochs/-Tiefs und tradet den Ausbruch. Benötigt: klare Pivot-Struktur, ausreichend Volumen für Bestätigung und erkennbaren Trend für den MTF-EMA-Bias-Filter (EMA20 vs EMA50).
-
-### Effektive Zeitspannen je Timeframe
-
-| TF | Pivot(20) — S/R Zonen | ATR(14) — SL | Vol-MA(20) | EMA20/50 — Bias | Geeignet |
-|---|---|---|---|---|---|
-| 15m | 5h | 3.5h | 5h | 5h / 12.5h | ❌ |
-| 30m | 10h | 7h | 10h | 10h / 25h | ⚠️ |
-| 1h | 20h | 14h | 20h | 20h / 50h | ✅ |
-| **2h** | **40h** | **28h** | **40h** | **40h / 100h** | **✅✅** |
-| **4h** | **80h** | **56h** | **80h** | **80h / 200h** | **✅✅** |
-| 6h | 120h | 84h | 120h | 120h / 300h | ✅ |
-| 1d | 20d | 14d | 20d | 20d / 50d | ✅ |
-
-Auf 15m entstehen zu viele Fake-Pivots. Ab 2h haben S/R-Zonen ausreichend Testhistorie und Volumen-Bestätigung ist aussagekräftig. Die EMA20/50-Bias-Werte auf 4h (80h / 200h) haben industrielle Relevanz.
-
-### Coin-Eignung
-
-| Coin | S/R Struktur | Breakout-Qualität | Vol.-Zuverlässigkeit | Bewertung |
-|---|---|---|---|---|
-| **BTC** | Exzellent — institutionelle S/R Levels | Klare, bestätigte Breakouts | Sehr hohe Liquidität | ✅✅ Beste Wahl |
-| **ETH** | Exzellent — ähnlich BTC | Saubere Ausbrüche | Sehr hohe Liquidität | ✅✅ Sehr gut |
-| **SOL** | Sehr gut — klare Swing-Hochs/-Tiefs | Starke Breakouts mit Volumen | Gute Liquidität | ✅ Gut |
-| **XRP** | Gut — klare historische Levels | Solide Breakouts | Hohe Liquidität | ✅ Gut |
-| **BNB** | Gut — stabile Zonen | Moderate Breakout-Stärke | Gute Liquidität | ✅ Gut |
-| **AVAX** | Gut — klare Swing-Struktur | Gute Breakouts in Bullphasen | Ausreichend | ✅ Gut |
-| **ARB** | Gut — ETH-korreliert | Solide Ausbrüche | Ausreichend | ✅ Gut |
-| **LTC** | Mittel — folgt BTC | Ausbrüche weniger dynamisch | Gut | ⚠️ Mittel |
-| **LINK** | Mittel — S/R-Zonen vorhanden | Breakouts oft kurzlebig | Mittel | ⚠️ Mittel |
-| **ADA** | Mittel — viele False Breakouts | Niedriges Volumen bei Ausbrüchen | Mittel | ⚠️ Mittel |
-| **DOT** | Mittel — in Bullphasen klar | Phasenabhängig | Mittel | ⚠️ Mittel |
-| **AAVE** | Schwach — kleine S/R-Zonen | Breakouts oft Noise | Niedrig | ⚠️ Schwach |
-| **DOGE** | Schlecht — sentiment-getrieben | Zufällige Ausbrüche | Unzuverlässig | ❌ Schlecht |
-| **SHIB/PEPE** | Nicht vorhanden | Keine echten S/R Zonen | Nicht verwendbar | ❌❌ Nicht geeignet |
-
-### Empfohlene Kombinationen (Ranking)
-
-| Rang | Kombination | Begründung |
+| Prüfung | Befehl | Wann |
 |---|---|---|
-| 🥇 1 | **BTC 4h** | Klarste institutionelle S/R-Levels, starke Breakouts mit Volumen |
-| 🥇 1 | **ETH 4h** | Ähnlich BTC, gute MTF-EMA-Bias |
-| 🥈 2 | **BTC 2h** | Mehr Trades als 4h, S/R noch ausreichend strukturiert |
-| 🥈 2 | **SOL 2h / 4h** | Explosive Breakouts, klare Pivot-Struktur |
-| 🥉 3 | **XRP 4h** | Klare historische S/R Levels |
-| 4 | **AVAX 4h** | Gute Breakout-Qualität in Trending-Phasen |
-| 4 | **ARB 4h** | ETH-korreliert, solide Ausbrüche |
-| 4 | **BTC 1d** | Wenige aber sehr zuverlässige Breakouts |
-| ❌ | **Alles auf 15m / 30m** | Zu viele Fake-Pivots, Volumen-Bestätigung bedeutungslos |
-| ❌ | **DOGE / SHIB** | Keine validen S/R-Zonen vorhanden |
+| Struktur & Imports | `./run_tests.sh` | nach jedem Update |
+| Backtest = Live-Bot | `.venv/bin/python3 tests/parity_check.py` | nach jeder Änderung an Handelslogik oder Configs |
+| Zufalls-Kontrollgruppe | `.venv/bin/python3 tests/random_baseline_check.py alle out.csv` | nach einer Neu-Optimierung |
+| Illustrationen neu erzeugen | `.venv/bin/python3 docs/make_illustrations.py trade` | bei Bedarf |
 
-> **Hinweis:** Das Volumen-Filter (120% des 20-Kerzen-Durchschnitts) ist auf niedrig-liquiden Coins unzuverlässig. BTC und ETH liefern die konstanteste Signalqualität.
-
------
+---
 
 ## Git Management
 
-Neue Configs/Ergebnisse pushen (nach einem Pipeline- oder Optimizer-Lauf):
+Neue Configs/Ergebnisse pushen:
 
 ```bash
 ./push_configs.sh
 ```
 
-Staged gezielt nur `config_*.json` + `settings.json`, committet, und pusht mit
-automatischem Rebase-Fallback, falls der Remote inzwischen neuere Commits hat.
-
-Manuell (z.B. für andere Dateien):
+Manuell:
 
 ```bash
 git add <geänderte Dateien>
@@ -458,19 +357,10 @@ git pull origin main --rebase
 git push origin main
 ```
 
-**Wichtig:** `git push --force` NICHT für den normalen Workflow verwenden — das
-überschreibt fremde Commits auf dem Remote kommentarlos (z.B. von einer anderen
-Maschine gepushte Configs). Bei einem Push-Konflikt (`! [rejected] ... fetch first`)
-immer erst `git pull --rebase`, dann normal `git push`.
+**Wichtig:** `git push --force` nicht für den normalen Workflow verwenden. Bei einem Push-Konflikt erst `git pull --rebase`, dann normal `git push`.
 
-Projektstatus prüfen:
-
-```bash
-./show_status.sh
-```
-
------
+---
 
 ### ⚠️ Disclaimer
 
-Dieses Material dient ausschließlich zu Bildungs- und Unterhaltungszwecken. Es handelt sich nicht um eine Finanzberatung. Der Nutzer trägt die alleinige Verantwortung für alle Handlungen. Der Autor haftet nicht für etwaige Verluste. Trading mit Krypto-Futures beinhaltet ein hohes Risiko.
+Dieses Material dient ausschließlich zu Bildungs- und Unterhaltungszwecken. Es handelt sich nicht um eine Finanzberatung. Der Nutzer trägt die alleinige Verantwortung für alle Handlungen. Der Autor haftet nicht für etwaige Verluste. Trading mit Krypto-Futures beinhaltet ein hohes Risiko. Backtests und Out-of-Sample-Ergebnisse sind keine Garantie für zukünftige Gewinne.

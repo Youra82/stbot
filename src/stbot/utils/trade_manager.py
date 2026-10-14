@@ -209,10 +209,10 @@ def _generate_stbot_chart_png(processed_df: pd.DataFrame, signal_side: str,
     atr_pct = current_atr / entry_price * 100 if entry_price else 0
     bias_str = f'  [{market_bias}]' if market_bias and market_bias != 'NEUTRAL' else ''
     info_lines = [
-        f"{side_label}   R:R 1:{rr:.1f}{bias_str}",
+        f"{side_label}   TSL ab {rr:.2f}R{bias_str}",
         f"Signal:  SR-Breakout (Vol.-bestaetigt)",
         f"ATR:     {current_atr:.6g}  ({atr_pct:.2f}%)",
-        f"SL:      {sl_pct:.2f}%   TP: {tp_pct:.2f}%",
+        f"SL:      {sl_pct:.2f}%   TSL-Akt.: {tp_pct:.2f}%",
         "EMA20 (cyan)  EMA50 (orange)",
     ]
     ax.text(0.01, 0.98, '\n'.join(info_lines),
@@ -263,13 +263,16 @@ def _send_stbot_chart(processed_df: pd.DataFrame, signal_side: str,
             caption = (
                 f"STBOT | {symbol} ({timeframe})\n"
                 f"{side_label} @ {entry_price:.6g}  |  SL: {sl_price:.6g}  |  TSL-Akt.: {tp_price:.6g}\n"
-                f"R:R 1:{rr:.1f}  |  Bias: {market_bias}"
+                f"TSL-Aktivierung bei {rr:.2f}R (keine TP-Order)"
             )
             send_photo(telegram_config.get('bot_token'), telegram_config.get('chat_id'),
                        path, caption)
             os.remove(path)
     except Exception as e:
         logger.warning(f"stbot-Chart senden fehlgeschlagen: {e}")
+
+
+MAX_SIGNAL_AGE = pd.Timedelta(minutes=20)   # Cron alle 15 Min + Puffer
 
 
 def _candle_key(symbol_timeframe):
@@ -321,6 +324,17 @@ def check_and_open_new_position(exchange, model, scaler, params, telegram_config
         signal_ts = recent_data.index[-1]
         if is_candle_evaluated(symbol_timeframe, signal_ts):
             logger.info(f"Kerze {signal_ts} bereits ausgewertet – warte auf die nächste.")
+            return
+
+        # Nur frische Signale handeln: der Backtest steigt immer direkt bei Kerzenschluss
+        # ein. Ist die Kerze schon laenger zu (Strategie gerade neu ins Team gekommen,
+        # verpasster Cron-Lauf), verfaellt das Signal -- sonst Einstieg zu spaeterem Preis
+        # (live gesehen 2026-10-14: XRP/4h nach Team-Wechsel 2h45 nach Kerzenschluss).
+        candle_close = signal_ts + pd.Timedelta(seconds=exchange.exchange.parse_timeframe(timeframe))
+        signal_age = pd.Timestamp.now(tz='UTC') - candle_close
+        if signal_age > MAX_SIGNAL_AGE:
+            logger.info(f"Kerze {signal_ts} schloss vor {signal_age} (> {MAX_SIGNAL_AGE}) -- Signal verfaellt.")
+            mark_candle_evaluated(symbol_timeframe, signal_ts)
             return
 
         processed_data = prepare_signal_frame(recent_data, strat_params)

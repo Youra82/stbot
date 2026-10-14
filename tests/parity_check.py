@@ -80,6 +80,22 @@ class MockExchange:
         return {'id': len(self.orders)}
 
 
+class _ClockPandas:
+    """pandas-Stellvertreter fuer trade_manager: Timestamp.now() liefert die Mock-Uhrzeit."""
+    def __init__(self, now_fn):
+        self._now_fn = now_fn
+        outer = self
+
+        class _TS(pd.Timestamp):
+            @classmethod
+            def now(cls, tz=None):
+                return outer._now_fn()
+        self.Timestamp = _TS
+
+    def __getattr__(self, name):
+        return getattr(pd, name)
+
+
 def _silence_live_side_effects(tmpdir):
     tm.DB_PATH = tmpdir
     tm.TRADE_LOCK_FILE = os.path.join(tmpdir, 'trade_lock.json')
@@ -130,6 +146,8 @@ def check_config(name, start, end, capital, log):
     ex = MockExchange(sym, frames, positions, capital, min_amount)
     params = {'market': {'symbol': sym, 'timeframe': tf, 'htf': htf}, 'strategy': cfg['strategy'], 'risk': cfg['risk']}
     tm.last_closed_candle_ts = lambda exch, timeframe: ex.now.floor(f"{int(dur.total_seconds())}s") - dur
+    # Signal-Alter gegen die simulierte Uhr pruefen (nicht die echte)
+    tm.pd = _ClockPandas(lambda: ex.now)
     if os.path.exists(tm.TRADE_LOCK_FILE):
         os.remove(tm.TRADE_LOCK_FILE)
     t = pd.Timestamp(start, tz='UTC')
