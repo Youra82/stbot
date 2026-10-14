@@ -1,0 +1,46 @@
+{
+    "market": {
+        "symbol": "BCH/USDT:USDT",
+        "timeframe": "1h",
+        "htf": "4h"
+    },
+    "strategy": {
+        "pivot_period": 9,
+        "max_pivots": 30,
+        "channel_width_pct": 14,
+        "max_sr_levels": 5,
+        "min_strength": 2,
+        "source": "Close/Open",
+        "use_weekly_trend_filter": true,
+        "weekly_trend_ema": 7,
+        "use_avalanche_filter": true,
+        "avalanche_percentile_threshold": 70,
+        "use_energy_filter": true,
+        "min_energy_zscore": -0.06097745946803573,
+        "use_energy_streak_filter": false
+    },
+    "risk": {
+        "margin_mode": "isolated",
+        "risk_per_trade_pct": 1.08,
+        "leverage": 11,
+        "trailing_stop_activation_rr": 1.5,
+        "trailing_stop_callback_rate_pct": 0.87,
+        "atr_multiplier_sl": 4.99,
+        "min_sl_pct": 0.3
+    },
+    "behavior": {
+        "use_longs": true,
+        "use_shorts": true
+    },
+    "_meta": {
+        "pnl_pct": 16.5,
+        "oos_pnl_pct": -11.34,
+        "oos_trades": 18,
+        "oos_max_dd_pct": 11.34,
+        "oos_win_rate": 16.7,
+        "criteria": "IS: PnL > 0 % | OOS: >= 30 Trades, PnL >= 10 %, MaxDD < 30 %",
+        "is_oos_split_date": "2026-06-25",
+        "confirmed": false,
+        "optimized_at": "2026-10-14T07:33:10"
+    }
+}

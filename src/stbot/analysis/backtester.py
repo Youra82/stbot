@@ -220,13 +220,20 @@ def load_weekly_source(symbol, first_ts, last_ts):
 
 
 def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose=False, fine_data=None,
-                 return_trades=False):
+                 return_trades=False, trade_start=None):
     """
     Einzel-Strategie-Backtest (Optuna-Optimizer, show_results Einzelanalyse).
     Einstieg, Sizing und Ausstieg ausschliesslich ueber strategy/trade_rules.py --
     dieselben Funktionen nutzen Portfolio-Simulator und Live (trade_manager.py).
     return_trades=True liefert zusaetzlich die Trade-Liste (Charts, Paritaetstests).
+    trade_start: erst ab diesem Zeitpunkt (Kerzen-Open) einsteigen -- die Daten davor
+    dienen nur als Vorlauf fuer SR-Zonen/Indikatoren, genau wie bei einem Live-Bot,
+    der an diesem Tag startet (fuer IS/OOS-Abschnitte ohne Kaltstart).
     """
+    if trade_start is not None:
+        trade_start = pd.Timestamp(trade_start)
+        if trade_start.tzinfo is None and data.index.tz is not None:
+            trade_start = trade_start.tz_localize(data.index.tz)
     if data.empty or len(data) < 100:
         return {"total_pnl_pct": -100, "trades_count": 0, "win_rate": 0, "max_drawdown_pct": 1.0,
                 "end_capital": start_capital, "trades": []}
@@ -289,7 +296,7 @@ def run_backtest(data, strategy_params, risk_params, start_capital=1000, verbose
                 # wenn die vorige Position WAEHREND dieser Kerze geschlossen wurde.
 
         # --- Einstieg ---
-        if not position and current_capital > 0:
+        if not position and current_capital > 0 and (trade_start is None or timestamp >= trade_start):
             side = entry_side(current_candle, timestamp, strategy_params, bias_ctx)
             if side:
                 entry_price = current_candle['close']

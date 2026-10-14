@@ -34,13 +34,16 @@
         "use_shorts": true
     },
     "_meta": {
-        "pnl_pct": 23.11,
-        "oos_pnl_pct": 6.47,
-        "oos_trades": 15,
-        "is_oos_split_date": "2026-01-09",
-        "confirmed": false,
+        "pnl_pct": 20.43,
+        "oos_pnl_pct": 25.61,
+        "oos_trades": 45,
+        "is_oos_split_date": "2025-04-13",
+        "confirmed": true,
         "optimized_at": "2026-08-23T01:53:37",
-        "unconfirmed_reason": "no_valid_trials",
-        "unconfirmed_at": "2026-10-13T08:45:46"
+        "oos_max_dd_pct": 6.83,
+        "oos_win_rate": 48.9,
+        "criteria": "IS: PnL > 0 % | OOS: >= 30 Trades, PnL >= 10 %, MaxDD < 30 %",
+        "evaluated_at": "2026-10-13T14:52:02",
+        "kept_over_reopt": "2026-10-13T18:26:47"
     }
 }

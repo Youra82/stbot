@@ -77,6 +77,9 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
                 'fine_data': strat.get('fine_data'),
                 'bias_ctx': strat.get('bias_ctx'),
                 'min_amount': strat.get('min_amount') or bitget_min_amounts().get(strat.get('symbol', key)),
+                # Optional: erst ab diesem Zeitpunkt einsteigen (Daten davor nur Vorlauf),
+                # z.B. fuer OOS-Portfolio-Backtests -- wie run_backtest(trade_start=...).
+                'trade_start': pd.Timestamp(strat['trade_start']) if strat.get('trade_start') is not None else None,
                 'coarse_duration': df.index[1] - df.index[0] if len(df.index) >= 2 else None,
             }
 
@@ -168,6 +171,7 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
             for key, strat in processed_strategies.items():
                 if key in open_positions: continue
                 if ts not in strat['data'].index: continue
+                if strat.get('trade_start') is not None and ts < strat['trade_start']: continue
                 if any(p.get('symbol_key') == strat.get('symbol') for p in open_positions.values()):
                     continue
 

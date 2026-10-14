@@ -1,0 +1,46 @@
+{
+    "market": {
+        "symbol": "PEPE/USDT:USDT",
+        "timeframe": "2h",
+        "htf": "1d"
+    },
+    "strategy": {
+        "pivot_period": 15,
+        "max_pivots": 38,
+        "channel_width_pct": 8,
+        "max_sr_levels": 5,
+        "min_strength": 3,
+        "source": "Close/Open",
+        "use_weekly_trend_filter": false,
+        "weekly_trend_ema": 4,
+        "use_avalanche_filter": true,
+        "avalanche_percentile_threshold": 63,
+        "use_energy_filter": false,
+        "min_energy_zscore": 0.0,
+        "use_energy_streak_filter": true
+    },
+    "risk": {
+        "margin_mode": "isolated",
+        "risk_per_trade_pct": 2.96,
+        "leverage": 8,
+        "trailing_stop_activation_rr": 1.64,
+        "trailing_stop_callback_rate_pct": 1.39,
+        "atr_multiplier_sl": 4.31,
+        "min_sl_pct": 0.3
+    },
+    "behavior": {
+        "use_longs": true,
+        "use_shorts": true
+    },
+    "_meta": {
+        "pnl_pct": 128.24,
+        "oos_pnl_pct": 20.21,
+        "oos_trades": 24,
+        "oos_max_dd_pct": 11.49,
+        "oos_win_rate": 45.8,
+        "criteria": "IS: PnL > 0 % | OOS: >= 30 Trades, PnL >= 10 %, MaxDD < 30 %",
+        "is_oos_split_date": "2025-10-01",
+        "confirmed": false,
+        "optimized_at": "2026-10-13T20:09:20"
+    }
+}

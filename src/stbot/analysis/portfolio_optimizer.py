@@ -103,7 +103,8 @@ class _LiveTicker:
         self._thread.join(timeout=1)
 
 # *** Angepasst: Nimmt target_max_dd entgegen ***
-def run_portfolio_optimizer(start_capital, strategies_data, start_date, end_date, target_max_dd: float):
+def run_portfolio_optimizer(start_capital, strategies_data, start_date, end_date, target_max_dd: float,
+                            max_team_size: int | None = None):
     """
     Findet die Kombination von Strategien, die das höchste Endkapital liefert,
     während der maximale Drawdown unter dem Zielwert (`target_max_dd`) bleibt UND jeder Coin nur einmal vorkommt.
@@ -203,6 +204,13 @@ def run_portfolio_optimizer(start_capital, strategies_data, start_date, end_date
             selected_coins.add(initial_coin) # NEU
 
     while True:
+        # Teamgroesse = max_open_positions (Live startet jede aktive Strategie; mehr
+        # Mitglieder als Positionen darf das Team nicht haben). Vorher wurde erst NACH
+        # der Suche auf max_positions abgeschnitten -- das gemeldete/verglichene
+        # Ergebnis galt dann fuer ein groesseres Team als das, das live laeuft.
+        if max_team_size and len(best_portfolio_files) >= max_team_size:
+            print(f"Maximale Teamgroesse ({max_team_size}) erreicht -- Optimierung beendet.")
+            break
         if _current_rss_mb() > MAX_RSS_MB:
             print(f"\n  Speicherlimit ({MAX_RSS_MB}MB) erreicht -- breche Team-Suche vorzeitig ab "
                   f"(bisheriges Team bleibt: {best_portfolio_files}).")

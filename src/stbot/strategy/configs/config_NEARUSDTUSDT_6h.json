@@ -1,0 +1,46 @@
+{
+    "market": {
+        "symbol": "NEAR/USDT:USDT",
+        "timeframe": "6h",
+        "htf": "1d"
+    },
+    "strategy": {
+        "pivot_period": 25,
+        "max_pivots": 48,
+        "channel_width_pct": 8,
+        "max_sr_levels": 5,
+        "min_strength": 1,
+        "source": "High/Low",
+        "use_weekly_trend_filter": true,
+        "weekly_trend_ema": 5,
+        "use_avalanche_filter": true,
+        "avalanche_percentile_threshold": 53,
+        "use_energy_filter": true,
+        "min_energy_zscore": -0.27563883686714047,
+        "use_energy_streak_filter": false
+    },
+    "risk": {
+        "margin_mode": "isolated",
+        "risk_per_trade_pct": 1.68,
+        "leverage": 11,
+        "trailing_stop_activation_rr": 1.11,
+        "trailing_stop_callback_rate_pct": 1.32,
+        "atr_multiplier_sl": 2.11,
+        "min_sl_pct": 0.3
+    },
+    "behavior": {
+        "use_longs": true,
+        "use_shorts": true
+    },
+    "_meta": {
+        "pnl_pct": 43.85,
+        "oos_pnl_pct": -2.73,
+        "oos_trades": 27,
+        "oos_max_dd_pct": 11.39,
+        "oos_win_rate": 44.4,
+        "criteria": "IS: PnL > 0 % | OOS: >= 30 Trades, PnL >= 10 %, MaxDD < 30 %",
+        "is_oos_split_date": "2025-05-04",
+        "confirmed": false,
+        "optimized_at": "2026-10-13T21:18:35"
+    }
+}

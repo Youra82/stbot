@@ -5,28 +5,27 @@
         "htf": "1h"
     },
     "strategy": {
-        "pivot_period": 11,
-        "max_pivots": 35,
-        "channel_width_pct": 10,
+        "pivot_period": 8,
+        "max_pivots": 58,
+        "channel_width_pct": 11,
         "max_sr_levels": 5,
-        "min_strength": 3,
-        "source": "Close/Open",
-        "use_weekly_trend_filter": true,
-        "weekly_trend_ema": 5,
-        "use_avalanche_filter": true,
-        "avalanche_percentile_threshold": 65,
+        "min_strength": 1,
+        "source": "High/Low",
+        "use_weekly_trend_filter": false,
+        "weekly_trend_ema": 4,
+        "use_avalanche_filter": false,
+        "avalanche_percentile_threshold": 60,
         "use_energy_filter": true,
-        "min_energy_zscore": 0.7286629748916169,
+        "min_energy_zscore": -0.30488727654585707,
         "use_energy_streak_filter": false
     },
     "risk": {
         "margin_mode": "isolated",
-        "risk_per_trade_pct": 0.69,
-        "risk_reward_ratio": 3.87,
-        "leverage": 13,
-        "trailing_stop_activation_rr": 1.95,
-        "trailing_stop_callback_rate_pct": 1.04,
-        "atr_multiplier_sl": 2.17,
+        "risk_per_trade_pct": 1.97,
+        "leverage": 10,
+        "trailing_stop_activation_rr": 1.26,
+        "trailing_stop_callback_rate_pct": 1.72,
+        "atr_multiplier_sl": 3.88,
         "min_sl_pct": 0.3
     },
     "behavior": {
@@ -34,13 +33,14 @@
         "use_shorts": true
     },
     "_meta": {
-        "pnl_pct": -3.54,
-        "oos_pnl_pct": 2.29,
-        "oos_trades": 9,
-        "is_oos_split_date": "2026-06-24",
+        "pnl_pct": 8.12,
+        "oos_pnl_pct": 1.44,
+        "oos_trades": 32,
+        "oos_max_dd_pct": 16.27,
+        "oos_win_rate": 40.6,
+        "criteria": "IS: PnL > 0 % | OOS: >= 30 Trades, PnL >= 10 %, MaxDD < 30 %",
+        "is_oos_split_date": "2026-08-20",
         "confirmed": false,
-        "optimized_at": "2026-08-23T09:59:44",
-        "unconfirmed_reason": "no_valid_trials",
-        "unconfirmed_at": "2026-10-13T09:40:19"
+        "optimized_at": "2026-10-13T17:36:04"
     }
 }

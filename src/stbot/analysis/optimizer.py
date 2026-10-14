@@ -5,6 +5,7 @@ import time
 import json
 import optuna
 import numpy as np
+import pandas as pd
 import argparse
 import logging
 import warnings
@@ -39,6 +40,10 @@ CURRENT_SYMBOL = None
 CURRENT_TIMEFRAME = None
 CURRENT_HTF = None
 CONFIG_SUFFIX = ""
+EVAL_START = None      # erster Handelstag (start_date); davor nur Vorlauf
+MIN_OOS_PNL = 10.0     # Bestaetigung: OOS-PnL in %
+MAX_OOS_DD = 30.0      # Bestaetigung: OOS-MaxDD in % (strikt kleiner)
+MIN_IS_PNL = 0.0       # Bestaetigung: IS-PnL muss darueber liegen (Strategie muss auch im Training funktionieren)
 MAX_DRAWDOWN_CONSTRAINT = 0.30
 MIN_WIN_RATE_CONSTRAINT = 55.0
 MIN_PNL_CONSTRAINT = 0.0
@@ -116,7 +121,8 @@ def objective(trial):
     # Trials ist das der Unterschied zwischen Minuten und Stunden. Die
     # praezisen Zahlen (fuer Tabelle + Config) kommen aus einer einmaligen
     # Nachbewertung des besten Trials nach der Suche, siehe main().
-    is_result = run_backtest(IS_DATA.copy(), strategy_params, risk_params, START_CAPITAL, verbose=False, fine_data=None)
+    is_result = run_backtest(IS_DATA.copy(), strategy_params, risk_params, START_CAPITAL, verbose=False,
+                             fine_data=None, trade_start=EVAL_START, return_trades=True)
     pnl      = is_result.get('total_pnl_pct', -1000)
     drawdown = is_result.get('max_drawdown_pct', 1.0)
     trades   = is_result.get('trades_count', 0)
@@ -130,43 +136,104 @@ def objective(trial):
     elif OPTIM_MODE == "best_profit" and (drawdown > MAX_DRAWDOWN_CONSTRAINT or trades < 20):
         raise optuna.exceptions.TrialPruned()
 
-    # OOS nur fuer Trials rechnen, die die IS-Kriterien ueberhaupt erfuellen
-    # (spart Rechenzeit fuer die vielen von vornherein verworfenen Trials).
-    # Bekannte Vereinfachung ggue. dnabot: dort laeuft EIN durchgehender
-    # Backtest, dessen Trade-Liste danach nach entry_time gesplittet wird --
-    # stbots run_backtest() gibt keine Trade-Liste zurueck (nur Aggregat-
-    # Stats), daher hier zwei UNABHAENGIGE Backtests. Nachteil: Indikatoren
-    # mit Rolling-Fenstern (z.B. avalanche_percentile, energy_zscore) muessen
-    # im OOS-Abschnitt eigenstaendig neu "warmlaufen" statt nahtlos an IS
-    # anzuschliessen -- die ersten ~100 OOS-Kerzen sind dadurch etwas
-    # konservativer als im echten Live-Betrieb (Filter dort ggf. noch NaN).
-    oos_result = run_backtest(OOS_DATA.copy(), strategy_params, risk_params, START_CAPITAL, verbose=False, fine_data=None)
-    trial.set_user_attr('is_stats', is_result)
-    trial.set_user_attr('oos_stats', oos_result)
     trial.set_user_attr('strategy_params', strategy_params)
     trial.set_user_attr('risk_params', risk_params)
 
-    # Robustheits-Score statt reiner Gesamt-IS-PnL: IS_DATA in K_FOLDS
-    # aufeinanderfolgende Teilfenster splitten, jedes einzeln backtesten
-    # (weiterhin fine_data=None, billig) und das SCHLECHTESTE Teilfenster
-    # als Optuna-Zielwert nehmen. Reine Gesamt-PnL-Optimierung bevorzugt
-    # Parameter, die eine einzelne Marktphase zufaellig gut treffen -- genau
-    # das Muster, das beim ersten echten Testlauf auffiel (BTC 6h: IS +190%,
-    # OOS -11.8%). Das Minimum ueber mehrere Teilfenster bestraft das schon
-    # WAEHREND der Suche, nicht erst hinterher im OOS-Check. Pruning-Kriterien
-    # oben bleiben auf dem VOLLEN IS-Fenster (genug Daten fuer eine
-    # verlaessliche trades>=20/Drawdown-Pruefung; einzelne Teilfenster waeren
-    # dafuer oft zu kurz).
-    fold_size = len(IS_DATA) // K_FOLDS
+    # Robustheits-Score: IS-Handelszeitraum in K_FOLDS aufeinanderfolgende Teilfenster
+    # teilen und das SCHLECHTESTE als Optuna-Zielwert nehmen (bestraft Parameter, die
+    # nur eine Marktphase treffen). Aus EINEM durchgehenden IS-Lauf (mit Vorlauf): Trades
+    # nach Einstiegszeit den Fenstern zuordnen, PnL relativ zum Kapital am Fensteranfang.
+    # (Vorher: je Fenster ein eigener Backtest ueber die ganze Historie davor -- gleiches
+    # Ergebnis bis auf den Zinseszins, aber ~2,5x langsamer.)
+    is_idx = IS_DATA.index[IS_DATA.index >= EVAL_START]
+    fold_size = max(1, len(is_idx) // K_FOLDS)
+    bounds = [is_idx[min(k * fold_size, len(is_idx) - 1)] for k in range(K_FOLDS)] + [IS_DATA.index[-1] + pd.Timedelta(days=1)]
+    trades = sorted(is_result.get('trades', []), key=lambda t: t['entry_time'])
+    equity = START_CAPITAL
     fold_pnls = []
     for k in range(K_FOLDS):
-        fold_data = IS_DATA.iloc[k * fold_size: (k + 1) * fold_size if k < K_FOLDS - 1 else len(IS_DATA)]
-        fold_result = run_backtest(fold_data.copy(), strategy_params, risk_params, START_CAPITAL, verbose=False, fine_data=None)
-        fold_pnls.append(fold_result.get('total_pnl_pct', -1000))
+        f_trades = [t for t in trades if bounds[k] <= t['entry_time'] < bounds[k + 1]]
+        f_pnl = sum(t['pnl_usd'] for t in f_trades)
+        fold_pnls.append(f_pnl / equity * 100 if equity > 0 else -1000)
+        equity += f_pnl
+    is_result.pop('trades', None)
+    trial.set_user_attr('is_stats', is_result)
     trial.set_user_attr('fold_pnls', fold_pnls)
     robust_score = min(fold_pnls)
 
     return robust_score
+
+
+def _criteria_str():
+    return (f"IS: PnL > {MIN_IS_PNL:g} % | OOS: >= {MIN_OOS_TRADES} Trades, PnL >= {MIN_OOS_PNL:g} %, "
+            f"MaxDD < {MAX_OOS_DD:g} %")
+
+
+def _passes(is_stats, oos):
+    """
+    Bestaetigungs-Kriterien (vom Nutzer festgelegt, 2026-10-13): im OOS-Zeitraum
+    >= MIN_OOS_TRADES Trades, PnL >= MIN_OOS_PNL, MaxDD < MAX_OOS_DD -- und die
+    Strategie muss auch im IS-Zeitraum verdient haben (IS-PnL > MIN_IS_PNL), sonst
+    ist ein OOS-Treffer eher Zufall (Anlass: LINK/1h IS -3.5 %, OOS +10.6 %).
+    """
+    if not oos or not is_stats:
+        return False
+    return bool(is_stats.get('total_pnl_pct', -1e9) > MIN_IS_PNL
+                and oos.get('trades_count', 0) >= MIN_OOS_TRADES
+                and oos.get('total_pnl_pct', -1e9) >= MIN_OOS_PNL
+                and oos.get('max_drawdown_pct', 1.0) * 100 < MAX_OOS_DD)
+
+
+def _write_meta(path, oos, split_ts, confirmed, extra=None, is_stats=None):
+    with open(path) as f:
+        cfg = json.load(f)
+    meta = cfg.setdefault('_meta', {})
+    if is_stats is not None:
+        meta['pnl_pct'] = round(is_stats.get('total_pnl_pct', 0), 2)
+    meta.update({
+        'oos_pnl_pct':      round(oos.get('total_pnl_pct', 0), 2),
+        'oos_trades':       oos.get('trades_count', 0),
+        'oos_max_dd_pct':   round(oos.get('max_drawdown_pct', 0) * 100, 2),
+        'oos_win_rate':     round(oos.get('win_rate', 0), 1),
+        'criteria':         _criteria_str(),
+        'is_oos_split_date': str(split_ts.date()),
+        'confirmed':        bool(confirmed),
+    })
+    for k in ('unconfirmed_reason', 'unconfirmed_at'):
+        meta.pop(k, None)
+    if not confirmed:
+        meta['unconfirmed_reason'] = 'oos_criteria'
+        meta['unconfirmed_at'] = _dt.now().isoformat(timespec='seconds')
+    if extra:
+        meta.update(extra)
+    with open(path, 'w') as f:
+        json.dump(cfg, f, indent=4)
+
+
+def _evaluate_existing(symbol, timeframe, args, split_ts, run_results):
+    """--evaluate_only: bestehende Config auf IS/OOS (mit Vorlauf, Feinkerzen) bewerten, confirmed neu setzen."""
+    safe = f"{symbol.replace('/', '').replace(':', '')}_{timeframe}"
+    path = os.path.join(PROJECT_ROOT, 'src', 'stbot', 'strategy', 'configs', f"config_{safe}{CONFIG_SUFFIX}.json")
+    if not os.path.exists(path):
+        run_results['failed'].append({'symbol': symbol, 'timeframe': timeframe, 'reason': 'no_config'})
+        return
+    with open(path) as f:
+        cfg = json.load(f)
+    sp = dict(cfg['strategy']); sp.update({'symbol': symbol, 'timeframe': timeframe, 'htf': determine_htf(timeframe)})
+    rp = dict(cfg['risk'])
+    fine_tf = FINE_TF_MAP.get(timeframe)
+    fine = load_data(symbol, fine_tf, args.start_date, args.end_date, quiet=True) if fine_tf else None
+    if fine is not None and fine.empty:
+        fine = None
+    is_stats = run_backtest(IS_DATA.copy(), sp, rp, START_CAPITAL, fine_data=fine, trade_start=EVAL_START)
+    oos = run_backtest(OOS_DATA.copy(), sp, rp, START_CAPITAL, fine_data=fine, trade_start=split_ts)
+    ok = _passes(is_stats, oos)
+    _write_meta(path, oos, split_ts, ok, extra={'evaluated_at': _dt.now().isoformat(timespec='seconds')}, is_stats=is_stats)
+    print(f"  {symbol} {timeframe}: IS {is_stats.get('total_pnl_pct', 0):+.1f}% | OOS {oos.get('trades_count', 0)} Trades, "
+          f"{oos.get('total_pnl_pct', 0):+.1f}%, DD {oos.get('max_drawdown_pct', 0) * 100:.1f}% -> "
+          f"{'BESTAETIGT' if ok else 'nicht bestaetigt'}")
+    run_results['saved'].append({'symbol': symbol, 'timeframe': timeframe, 'oos_pnl_pct': round(oos.get('total_pnl_pct', 0), 2),
+                                 'confirmed': ok, 'config_file': os.path.basename(path), 'evaluate_only': True})
 
 
 def _mark_unconfirmed(symbol, timeframe, reason):
@@ -188,7 +255,7 @@ def _mark_unconfirmed(symbol, timeframe, reason):
 def main():
     global HISTORICAL_DATA, IS_DATA, OOS_DATA, CURRENT_SYMBOL, CURRENT_TIMEFRAME, CURRENT_HTF, CONFIG_SUFFIX
     global MAX_DRAWDOWN_CONSTRAINT, MIN_WIN_RATE_CONSTRAINT, MIN_PNL_CONSTRAINT, START_CAPITAL, OPTIM_MODE
-    global IS_FRACTION, MIN_OOS_TRADES, K_FOLDS
+    global IS_FRACTION, MIN_OOS_TRADES, K_FOLDS, EVAL_START, MIN_OOS_PNL, MAX_OOS_DD, MIN_IS_PNL
 
     parser = argparse.ArgumentParser(description="Parameter-Optimierung fuer StBot (SRv2)")
     parser.add_argument('--symbols',    type=str, default="",
@@ -210,8 +277,16 @@ def main():
     parser.add_argument('--config_suffix', type=str, default="")
     parser.add_argument('--is_fraction',   type=float, default=0.70,
                         help='Anteil In-Sample (Rest ist Out-of-Sample-Validierung), Standard 0.70')
-    parser.add_argument('--min_oos_trades', type=int, default=10,
-                        help='Mindestanzahl OOS-Trades fuer eine belastbare Bestaetigung, Standard 10')
+    parser.add_argument('--min_oos_trades', type=int, default=30,
+                        help='Bestaetigung: Mindestanzahl OOS-Trades, Standard 30')
+    parser.add_argument('--min_oos_pnl', type=float, default=10.0,
+                        help='Bestaetigung: Mindest-OOS-PnL in %%, Standard 10')
+    parser.add_argument('--max_oos_dd', type=float, default=30.0,
+                        help='Bestaetigung: OOS-MaxDD muss unter diesem Wert (%%) liegen, Standard 30')
+    parser.add_argument('--min_is_pnl', type=float, default=0.0,
+                        help='Bestaetigung: IS-PnL muss ueber diesem Wert (%%) liegen, Standard 0')
+    parser.add_argument('--evaluate_only', action='store_true',
+                        help='Keine Optimierung: bestehende Configs auf IS/OOS bewerten und confirmed neu setzen')
     parser.add_argument('--k_folds',       type=int, default=3,
                         help='Anzahl IS-Teilfenster fuer den Robustheits-Score (Minimum ueber alle Fenster), Standard 3')
     args = parser.parse_args()
@@ -225,6 +300,9 @@ def main():
     OPTIM_MODE              = args.mode
     IS_FRACTION             = args.is_fraction
     MIN_OOS_TRADES          = args.min_oos_trades
+    MIN_OOS_PNL             = args.min_oos_pnl
+    MAX_OOS_DD              = args.max_oos_dd
+    MIN_IS_PNL              = args.min_is_pnl
     K_FOLDS                 = args.k_folds
 
     # TASKS aufbauen: --pairs hat Vorrang vor --symbols/--timeframes
@@ -264,18 +342,28 @@ def main():
                 {'symbol': symbol, 'timeframe': timeframe, 'reason': 'no_data'})
             continue
 
-        # Chronologischer IS/OOS-Split (analog dnabot/alphabet_optimizer.py):
-        # die ersten IS_FRACTION der Kerzen sieht Optuna (Zielfunktion), der
-        # Rest dient ausschliesslich der spaeteren Bestaetigung.
-        split_idx = int(len(HISTORICAL_DATA) * IS_FRACTION)
-        split_ts  = HISTORICAL_DATA.index[split_idx]
-        IS_DATA   = HISTORICAL_DATA.iloc[:split_idx]
-        OOS_DATA  = HISTORICAL_DATA.iloc[split_idx:]
+        # Chronologischer IS/OOS-Split auf dem HANDELSZEITRAUM (ab start_date; die
+        # Kerzen davor sind nur Vorlauf aus load_data). IS = [start_date, Split),
+        # OOS = [Split, Ende] -- OOS wird mit der kompletten Historie davor als
+        # Vorlauf bewertet (trade_start), so wie ein Live-Bot, der am Split-Tag
+        # startet. Vorher lief OOS als abgeschnittener Datenblock mit Kaltstart.
+        EVAL_START = pd.Timestamp(args.start_date, tz='UTC')
+        eval_idx   = HISTORICAL_DATA.index[HISTORICAL_DATA.index >= EVAL_START]
+        if len(eval_idx) < 100:
+            print("  Zu wenig Daten im Handelszeitraum.")
+            run_results['failed'].append({'symbol': symbol, 'timeframe': timeframe, 'reason': 'too_little_data'})
+            continue
+        split_ts  = eval_idx[int(len(eval_idx) * IS_FRACTION)]
+        IS_DATA   = HISTORICAL_DATA[HISTORICAL_DATA.index < split_ts]
+        OOS_DATA  = HISTORICAL_DATA
         logging.info(
-            f"{symbol} ({timeframe}): {len(HISTORICAL_DATA)} Kerzen | "
-            f"IS bis {split_ts.date()} ({split_idx} Kerzen) | "
-            f"OOS ab {split_ts.date()} ({len(HISTORICAL_DATA) - split_idx} Kerzen)"
+            f"{symbol} ({timeframe}): {len(HISTORICAL_DATA)} Kerzen | Handel ab {EVAL_START.date()} | "
+            f"IS bis {split_ts.date()} | OOS ab {split_ts.date()} ({len(eval_idx) - int(len(eval_idx) * IS_FRACTION)} Kerzen)"
         )
+
+        if args.evaluate_only:
+            _evaluate_existing(symbol, timeframe, args, split_ts, run_results)
+            continue
 
         # Fein-Timeframe fuer die spaetere praezise Nachbewertung (siehe unten,
         # nach der Suche) -- waehrend der Suche selbst nutzt objective() bewusst
@@ -370,9 +458,9 @@ def main():
         best_strategy_params = best_trial.user_attrs.get('strategy_params')
         best_risk_params     = best_trial.user_attrs.get('risk_params')
         if best_strategy_params is not None and best_risk_params is not None:
-            best_is  = run_backtest(IS_DATA.copy(), best_strategy_params, best_risk_params, START_CAPITAL, verbose=False, fine_data=fine_data_precise)
+            best_is  = run_backtest(IS_DATA.copy(), best_strategy_params, best_risk_params, START_CAPITAL, verbose=False, fine_data=fine_data_precise, trade_start=EVAL_START)
             print(f"    ... IS-Nachbewertung fertig ({time.time()-_pnb_start:.0f}s)")
-            best_oos = run_backtest(OOS_DATA.copy(), best_strategy_params, best_risk_params, START_CAPITAL, verbose=False, fine_data=fine_data_precise)
+            best_oos = run_backtest(OOS_DATA.copy(), best_strategy_params, best_risk_params, START_CAPITAL, verbose=False, fine_data=fine_data_precise, trade_start=split_ts)
             print(f"    ... OOS-Nachbewertung fertig ({time.time()-_pnb_start:.0f}s)")
             new_pnl  = best_is.get('total_pnl_pct', new_pnl)
         else:
@@ -399,8 +487,8 @@ def main():
                 baseline_strategy.update({'symbol': symbol, 'timeframe': timeframe, 'htf': CURRENT_HTF})
                 baseline_risk = dict(existing_cfg['risk'])
                 print(f"  Bestehende Config als Baseline auf denselben Daten nachbewerten...")
-                baseline_is  = run_backtest(IS_DATA.copy(), baseline_strategy, baseline_risk, START_CAPITAL, verbose=False, fine_data=fine_data_precise)
-                baseline_oos = run_backtest(OOS_DATA.copy(), baseline_strategy, baseline_risk, START_CAPITAL, verbose=False, fine_data=fine_data_precise)
+                baseline_is  = run_backtest(IS_DATA.copy(), baseline_strategy, baseline_risk, START_CAPITAL, verbose=False, fine_data=fine_data_precise, trade_start=EVAL_START)
+                baseline_oos = run_backtest(OOS_DATA.copy(), baseline_strategy, baseline_risk, START_CAPITAL, verbose=False, fine_data=fine_data_precise, trade_start=split_ts)
                 print(f"    ... Baseline-Nachbewertung fertig ({time.time()-_pnb_start:.0f}s)")
             except Exception as e:
                 print(f"  Warnung: Baseline-Bewertung fehlgeschlagen ({e}) -- werte ohne Baseline-Vergleich.")
@@ -423,12 +511,16 @@ def main():
         # ab (im Live-Lauf beobachtet: BTC 4h/2h stuerzten NACH dem vollen
         # Optuna-Lauf beim Speichern ab, mehrere Minuten Rechenzeit verschenkt).
         confirmed = bool(
-            best_oos.get('trades_count', 0) >= MIN_OOS_TRADES
-            and best_oos.get('total_pnl_pct', -1e9) > 0.0
+            _passes(best_is, best_oos)
             and (baseline_oos is None or best_oos.get('total_pnl_pct', -1e9) > baseline_oos.get('total_pnl_pct', -1e9))
         )
+        # Neue Config besteht nicht oder ist schlechter als die bestehende, die bestehende
+        # erfuellt die Kriterien aber selbst -> bestehende behalten statt ueberschreiben.
+        keep_baseline = (not confirmed) and baseline_oos is not None and _passes(baseline_is, baseline_oos)
 
-        mark = '[BESTAETIGT]' if confirmed else '[nicht bestaetigt -- wird gespeichert, aber NICHT fuer die Portfolio-Auswahl zugelassen]'
+        mark = ('[BESTAETIGT]' if confirmed else
+                '[nicht besser -- bestehende Config erfuellt die Kriterien und bleibt]' if keep_baseline else
+                '[nicht bestaetigt -- wird gespeichert, aber NICHT fuer die Portfolio-Auswahl zugelassen]')
         print(f"\n  --- {symbol} ({timeframe}) --- {mark}")
         fold_pnls = best_trial.user_attrs.get('fold_pnls')
         if fold_pnls:
@@ -451,6 +543,13 @@ def main():
             print(f"  {'WinRate':<14}{best_is.get('win_rate',0):>12.1f}%   |{best_oos.get('win_rate',0):>12.1f}%")
             print(f"  {'PnL %':<14}{best_is.get('total_pnl_pct',0):>+12.1f}%   |{best_oos.get('total_pnl_pct',0):>+12.1f}%")
             print(f"  {'MaxDD %':<14}{best_is.get('max_drawdown_pct',0)*100:>12.1f}%   |{best_oos.get('max_drawdown_pct',0)*100:>12.1f}%")
+
+        if keep_baseline:
+            _write_meta(config_output_path, baseline_oos, split_ts, True, extra={'kept_over_reopt': _dt.now().isoformat(timespec='seconds')}, is_stats=baseline_is)
+            print(f"\n[OK] Bestehende Konfiguration behalten (OOS {baseline_oos.get('total_pnl_pct', 0):+.1f}%).")
+            run_results['saved'].append({'symbol': symbol, 'timeframe': timeframe, 'oos_pnl_pct': round(baseline_oos.get('total_pnl_pct', 0), 2),
+                                         'confirmed': True, 'config_file': config_filename, 'kept_baseline': True})
+            continue
 
         # Config wird IMMER geschrieben (auch unbestaetigt) -- auf Nutzerwunsch,
         # damit nie ein Paar komplett ohne Config dasteht. Die Bestaetigung wird
@@ -492,6 +591,9 @@ def main():
                 "pnl_pct":         round(new_pnl, 2),
                 "oos_pnl_pct":     round(best_oos.get('total_pnl_pct', 0), 2),
                 "oos_trades":      best_oos.get('trades_count', 0),
+                "oos_max_dd_pct":  round(best_oos.get('max_drawdown_pct', 0) * 100, 2),
+                "oos_win_rate":    round(best_oos.get('win_rate', 0), 1),
+                "criteria":        _criteria_str(),
                 "is_oos_split_date": str(split_ts.date()),
                 "confirmed":       confirmed,
                 "optimized_at":    _dt.now().isoformat(timespec='seconds'),

@@ -591,7 +591,8 @@ def main() -> int:
         return 1
 
     from stbot.analysis.portfolio_optimizer import run_portfolio_optimizer
-    result = run_portfolio_optimizer(capital, strategies_data, start_date, end_date, max_dd)
+    result = run_portfolio_optimizer(capital, strategies_data, start_date, end_date, max_dd,
+                                     max_team_size=max_positions)
 
     if result and result.get('skipped_low_memory'):
         # Bewusster, sauberer Abbruch (siehe portfolio_optimizer.py::_check_memory_available) --

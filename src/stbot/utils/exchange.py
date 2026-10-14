@@ -153,7 +153,7 @@ class Exchange:
             # Retry brach der Download beim ersten 429 sofort ab und lieferte leere
             # Daten (-> Trial schlaegt fehl), UND jeder der parallelen Worker loggte
             # denselben Fehler ungebremst erneut -- daher die Log-Flut.
-            max_retries = 5
+            max_retries = 10
             retries = 0
 
             while start_ts < end_ts and retries < max_retries:
@@ -199,14 +199,22 @@ class Exchange:
                         cur_date = pd.Timestamp(ohlcv[-1][0], unit='ms', tz='UTC').date()
                         logger.info(f"  ... {symbol} ({timeframe}): {len(all_ohlcv)} Kerzen geladen, aktuell bei {cur_date}")
                     time.sleep(self.exchange.rateLimit / 1000)
-                except ccxt.RateLimitExceeded:
+                except (ccxt.RateLimitExceeded, ccxt.DDoSProtection):
+                    # Bitget-429 kommt bei ccxt als DDoSProtection (Unterklasse von
+                    # NetworkError) -- bei parallelen Optimierer-Prozessen haeufig.
                     retries += 1
                     if not quiet:
-                        logger.warning(f"  ... {symbol} ({timeframe}): Rate-Limit erreicht, warte 10s (Versuch {retries}/{max_retries})...")
-                    time.sleep(10)
+                        logger.warning(f"  ... {symbol} ({timeframe}): Rate-Limit erreicht, warte {10 * retries}s (Versuch {retries}/{max_retries})...")
+                    time.sleep(10 * retries)
                 except ccxt.NetworkError:
                     retries += 1
-                    time.sleep(5)
+                    time.sleep(5 * retries)
+
+            if retries >= max_retries:
+                # Lieber KEINE Daten als still abgeschnittene: ein Teilzeitraum wuerde
+                # unbemerkt optimiert/bewertet (gefunden 2026-10-13, 6 parallele Prozesse).
+                logger.error(f"  ✖ {symbol} ({timeframe}): Download nach {max_retries} Fehlversuchen abgebrochen -- keine Daten.")
+                return pd.DataFrame()
 
             if not all_ohlcv: return pd.DataFrame()
 

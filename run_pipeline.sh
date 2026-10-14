@@ -61,7 +61,7 @@ read -p "Auswahl (1-2) [Standard: 1]: " OPTIM_MODE; OPTIM_MODE=${OPTIM_MODE:-1}
 if [ "$OPTIM_MODE" == "1" ]; then
     OPTIM_MODE_ARG="strict"; 
     read -p "Max Drawdown % [Standard: 30]: " MAX_DD; MAX_DD=${MAX_DD:-30}; 
-    read -p "Min Win-Rate % [Standard: 55]: " MIN_WR; MIN_WR=${MIN_WR:-55}; 
+    read -p "Min Win-Rate % [Standard: 35]: " MIN_WR; MIN_WR=${MIN_WR:-35}; 
     read -p "Min PnL % [Standard: 0]: " MIN_PNL; MIN_PNL=${MIN_PNL:-0}
 else
     OPTIM_MODE_ARG="best_profit"; 
@@ -94,10 +94,11 @@ for symbol in $SYMBOLS; do
         if [ "$START_DATE_INPUT" == "a" ]; then
              lookback_days=365 # Standard-Fallback
              case "$timeframe" in
-                  5m|15m) lookback_days=60 ;;
+                  # (2026-10-13) laengere Historie, damit der OOS-Teil (30 %) fuer die
+                  # Bestaetigung (>= 30 OOS-Trades) ueberhaupt genug Trades enthalten kann
+                  5m|15m) lookback_days=180 ;;
                   30m|1h) lookback_days=365 ;;
-                  2h|4h) lookback_days=730 ;;
-                  6h|1d) lookback_days=1095 ;;
+                  2h|4h|6h|1d) lookback_days=1825 ;;
              esac
              FINAL_START_DATE=$(date -d "$lookback_days days ago" +%F)
              echo -e "${YELLOW}INFO: Automatisches Startdatum für $timeframe (${lookback_days} Tage Rückblick) gesetzt auf: $FINAL_START_DATE${NC}"

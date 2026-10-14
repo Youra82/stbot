@@ -5,28 +5,27 @@
         "htf": "1d"
     },
     "strategy": {
-        "pivot_period": 13,
-        "max_pivots": 40,
-        "channel_width_pct": 24,
+        "pivot_period": 17,
+        "max_pivots": 32,
+        "channel_width_pct": 11,
         "max_sr_levels": 5,
-        "min_strength": 3,
-        "source": "Close/Open",
-        "use_weekly_trend_filter": true,
+        "min_strength": 2,
+        "source": "High/Low",
+        "use_weekly_trend_filter": false,
         "weekly_trend_ema": 4,
-        "use_avalanche_filter": false,
-        "avalanche_percentile_threshold": 60,
-        "use_energy_filter": false,
-        "min_energy_zscore": 0.0,
-        "use_energy_streak_filter": false
+        "use_avalanche_filter": true,
+        "avalanche_percentile_threshold": 72,
+        "use_energy_filter": true,
+        "min_energy_zscore": -0.1454395541315229,
+        "use_energy_streak_filter": true
     },
     "risk": {
         "margin_mode": "isolated",
-        "risk_per_trade_pct": 2.56,
-        "risk_reward_ratio": 2.59,
-        "leverage": 7,
-        "trailing_stop_activation_rr": 1.61,
-        "trailing_stop_callback_rate_pct": 1.78,
-        "atr_multiplier_sl": 1.9,
+        "risk_per_trade_pct": 1.82,
+        "leverage": 13,
+        "trailing_stop_activation_rr": 2.25,
+        "trailing_stop_callback_rate_pct": 0.91,
+        "atr_multiplier_sl": 1.87,
         "min_sl_pct": 0.3
     },
     "behavior": {
@@ -34,13 +33,14 @@
         "use_shorts": true
     },
     "_meta": {
-        "pnl_pct": 5.48,
-        "oos_pnl_pct": 2.05,
-        "oos_trades": 6,
-        "is_oos_split_date": "2026-01-09",
+        "pnl_pct": 60.42,
+        "oos_pnl_pct": -7.25,
+        "oos_trades": 26,
+        "oos_max_dd_pct": 15.66,
+        "oos_win_rate": 26.9,
+        "criteria": "IS: PnL > 0 % | OOS: >= 30 Trades, PnL >= 10 %, MaxDD < 30 %",
+        "is_oos_split_date": "2025-04-13",
         "confirmed": false,
-        "optimized_at": "2026-08-23T03:24:58",
-        "unconfirmed_reason": "no_valid_trials",
-        "unconfirmed_at": "2026-10-13T10:32:39"
+        "optimized_at": "2026-10-13T19:41:59"
     }
 }

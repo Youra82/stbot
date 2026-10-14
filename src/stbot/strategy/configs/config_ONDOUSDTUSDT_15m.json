@@ -1,0 +1,46 @@
+{
+    "market": {
+        "symbol": "ONDO/USDT:USDT",
+        "timeframe": "15m",
+        "htf": "1h"
+    },
+    "strategy": {
+        "pivot_period": 9,
+        "max_pivots": 38,
+        "channel_width_pct": 12,
+        "max_sr_levels": 5,
+        "min_strength": 2,
+        "source": "Close/Open",
+        "use_weekly_trend_filter": true,
+        "weekly_trend_ema": 10,
+        "use_avalanche_filter": true,
+        "avalanche_percentile_threshold": 74,
+        "use_energy_filter": true,
+        "min_energy_zscore": 0.7536221311688496,
+        "use_energy_streak_filter": true
+    },
+    "risk": {
+        "margin_mode": "isolated",
+        "risk_per_trade_pct": 1.03,
+        "leverage": 17,
+        "trailing_stop_activation_rr": 1.98,
+        "trailing_stop_callback_rate_pct": 0.59,
+        "atr_multiplier_sl": 2.69,
+        "min_sl_pct": 0.3
+    },
+    "behavior": {
+        "use_longs": true,
+        "use_shorts": true
+    },
+    "_meta": {
+        "pnl_pct": 19.08,
+        "oos_pnl_pct": -12.4,
+        "oos_trades": 20,
+        "oos_max_dd_pct": 14.03,
+        "oos_win_rate": 15.0,
+        "criteria": "IS: PnL > 0 % | OOS: >= 30 Trades, PnL >= 10 %, MaxDD < 30 %",
+        "is_oos_split_date": "2026-08-20",
+        "confirmed": false,
+        "optimized_at": "2026-10-14T07:17:35"
+    }
+}

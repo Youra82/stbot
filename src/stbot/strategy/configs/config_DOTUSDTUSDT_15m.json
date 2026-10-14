@@ -5,28 +5,27 @@
         "htf": "1h"
     },
     "strategy": {
-        "pivot_period": 27,
-        "max_pivots": 56,
-        "channel_width_pct": 15,
+        "pivot_period": 10,
+        "max_pivots": 17,
+        "channel_width_pct": 19,
         "max_sr_levels": 5,
-        "min_strength": 2,
+        "min_strength": 1,
         "source": "High/Low",
-        "use_weekly_trend_filter": false,
-        "weekly_trend_ema": 4,
-        "use_avalanche_filter": false,
-        "avalanche_percentile_threshold": 60,
+        "use_weekly_trend_filter": true,
+        "weekly_trend_ema": 12,
+        "use_avalanche_filter": true,
+        "avalanche_percentile_threshold": 64,
         "use_energy_filter": false,
         "min_energy_zscore": 0.0,
-        "use_energy_streak_filter": false
+        "use_energy_streak_filter": true
     },
     "risk": {
         "margin_mode": "isolated",
-        "risk_per_trade_pct": 1.18,
-        "risk_reward_ratio": 3.05,
-        "leverage": 13,
-        "trailing_stop_activation_rr": 1.33,
-        "trailing_stop_callback_rate_pct": 0.3,
-        "atr_multiplier_sl": 2.23,
+        "risk_per_trade_pct": 2.04,
+        "leverage": 17,
+        "trailing_stop_activation_rr": 1.73,
+        "trailing_stop_callback_rate_pct": 0.81,
+        "atr_multiplier_sl": 4.88,
         "min_sl_pct": 0.3
     },
     "behavior": {
@@ -34,13 +33,14 @@
         "use_shorts": true
     },
     "_meta": {
-        "pnl_pct": -4.76,
-        "oos_pnl_pct": -2.51,
-        "oos_trades": 6,
-        "is_oos_split_date": "2026-06-24",
+        "pnl_pct": 7.48,
+        "oos_pnl_pct": -10.69,
+        "oos_trades": 13,
+        "oos_max_dd_pct": 13.66,
+        "oos_win_rate": 23.1,
+        "criteria": "IS: PnL > 0 % | OOS: >= 30 Trades, PnL >= 10 %, MaxDD < 30 %",
+        "is_oos_split_date": "2026-08-20",
         "confirmed": false,
-        "optimized_at": "2026-08-23T18:24:48",
-        "unconfirmed_reason": "no_valid_trials",
-        "unconfirmed_at": "2026-10-13T09:20:52"
+        "optimized_at": "2026-10-13T18:26:22"
     }
 }

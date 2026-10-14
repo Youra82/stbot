@@ -1,0 +1,46 @@
+{
+    "market": {
+        "symbol": "TAO/USDT:USDT",
+        "timeframe": "15m",
+        "htf": "1h"
+    },
+    "strategy": {
+        "pivot_period": 5,
+        "max_pivots": 46,
+        "channel_width_pct": 13,
+        "max_sr_levels": 5,
+        "min_strength": 4,
+        "source": "High/Low",
+        "use_weekly_trend_filter": true,
+        "weekly_trend_ema": 12,
+        "use_avalanche_filter": false,
+        "avalanche_percentile_threshold": 60,
+        "use_energy_filter": true,
+        "min_energy_zscore": 0.3453656941133536,
+        "use_energy_streak_filter": false
+    },
+    "risk": {
+        "margin_mode": "isolated",
+        "risk_per_trade_pct": 2.82,
+        "leverage": 5,
+        "trailing_stop_activation_rr": 2.84,
+        "trailing_stop_callback_rate_pct": 1.47,
+        "atr_multiplier_sl": 4.76,
+        "min_sl_pct": 0.3
+    },
+    "behavior": {
+        "use_longs": true,
+        "use_shorts": true
+    },
+    "_meta": {
+        "pnl_pct": 15.89,
+        "oos_pnl_pct": 3.28,
+        "oos_trades": 16,
+        "oos_max_dd_pct": 8.66,
+        "oos_win_rate": 31.2,
+        "criteria": "IS: PnL > 0 % | OOS: >= 30 Trades, PnL >= 10 %, MaxDD < 30 %",
+        "is_oos_split_date": "2026-08-20",
+        "confirmed": false,
+        "optimized_at": "2026-10-14T07:16:59"
+    }
+}
