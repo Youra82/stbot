@@ -264,7 +264,7 @@ def build_html(items, team_periods, portfolio_lines, order_flags, summary, start
 <div class="card"><h2>Alle Trades</h2><div class="scroll"><table class="tbl">
 <tr><th>Status</th><th>Strategie</th><th>Live</th><th>Backtest</th></tr>{''.join(rows)}</table></div></div>
 <div class="card"><h2>Portfolio im Zeitraum</h2><ul class="pf">{pf}</ul></div>
-<div class="card"><h2>Orders</h2><ul class="pf">{flags}</ul></div>
+<div class="card"><h2>Hinweise (Daten &amp; Orders)</h2><ul class="pf">{flags}</ul></div>
 </main><div id="tip"></div><script>{JS}</script></body></html>"""
 
 

@@ -200,7 +200,7 @@ def simulate(history, start, end, capital, carry):
     warm = (start - timedelta(days=60)).strftime('%Y-%m-%d')
     end_s = (end + timedelta(days=1)).strftime('%Y-%m-%d')
     keys = sorted({k for e in history for k in e['team'] if pd.Timestamp(e['valid_from']) <= end})
-    sd = {}
+    sd, data_flags = {}, []
     for key in keys:
         periods = [(a, b) for a, b in active_periods(history, key) if b is None or b > start]
         if not periods:
@@ -212,6 +212,13 @@ def simulate(history, start, end, capital, carry):
         data = data[~data.index.duplicated()].sort_index()
         data = data[data.index + pd.Timedelta(minutes=TF_MIN[tf]) <= end]  # nur geschlossene Kerzen
         fine = load_data(sym, FINE_TF_MAP[tf], warm, end_s, quiet=True)
+        # Ohne vollstaendige Kerzen waere jede "Abweichung" nur ein Datenloch des Backtests
+        for label, df, need in ((tf, data, pd.Timedelta(minutes=TF_MIN[tf])),
+                                (FINE_TF_MAP[tf], fine, pd.Timedelta(minutes=TF_MIN[tf]))):
+            last = df.index.max() if len(df) else None
+            if last is None or last < end - 2 * need:
+                data_flags.append(f"Backtest-Daten {_short(key)} ({label}) unvollständig: enden "
+                                  f"{_fmt_t(last) if last is not None else 'leer'} – Ergebnis dieser Strategie ungültig")
         sd[key] = {'symbol': sym, 'timeframe': tf, 'data': data, 'fine_data': fine,
                    'smc_params': cfg['strategy'], 'risk_params': cfg['risk'], 'htf': htf,
                    'min_amount': mins.get(sym), 'active_periods': periods}
@@ -234,7 +241,7 @@ def simulate(history, start, end, capital, carry):
                     signal_time=as_utc(p['entry_time']) + dur(p['strategy_key']), exit_time=None,
                     entry=p.get('entry'), exit=None, pnl=None)
                for p in res.get('open_positions', [])]
-    return [t for t in trades if t['signal_time'] >= start]
+    return [t for t in trades if t['signal_time'] >= start], data_flags
 
 
 # --- Ursachen aus den Bot-Logs ------------------------------------------------
@@ -457,7 +464,7 @@ def build_message(items, unknown, order_flags, live, equity, days, team_lines=()
                              f"Sim {d['sim']['exit']:.6g} ({d['exit_dev_pct']:.1f} %)")
                 lines.append(f"  → {d['reason']}")
     if order_flags:
-        lines.append(f"\n⚠️ Orders ({len(order_flags)}):")
+        lines.append(f"\n⚠️ Hinweise ({len(order_flags)}):")
         lines += [f"• {x}" for x in order_flags]
     if unknown:
         lines.append(f"\nℹ️ {len(unknown)} Trade(s) vor Beginn der Teamhistorie, nicht bewertet")
@@ -476,10 +483,10 @@ def run_check(days, send, history_path):
     # Kontostand zu Fensterbeginn: heutiges Equity ohne offene uPnL und ohne Ergebnis der Trades im Fenster
     realized_now = (equity or 25.0) - sum(float(p['unrealizedPL']) for p in open_pos)
     start_capital = realized_now - sum(t['pnl'] for t in live if t['exit_time'] is not None)
-    sim = simulate(hist, start, end, start_capital, carry)
+    sim, data_flags = simulate(hist, start, end, start_capital, carry)
     rows, extra, missing, unknown = compare(live, sim, history_path)
     items = build_items(rows, extra, missing, live, end)
-    order_flags = check_orders(open_pos, plans)
+    order_flags = data_flags + check_orders(open_pos, plans)
     team_lines = portfolio_lines(hist, start, end)
     msg = build_message(items, unknown, order_flags, live, equity, days, team_lines)
     print(msg)
