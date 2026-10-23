@@ -26,8 +26,14 @@ idna==3.11
 urllib3==2.5.0
 
 # Charting
-matplotlib
-plotly
+matplotlib==3.10.8
+plotly==6.5.2
+
+# Excel-Export (Optimizer/show_results)
+openpyxl==3.1.5
+
+# Tests (run_tests.sh)
+pytest==9.0.2
 
 # Fortschrittsanzeige
 tqdm==4.67.1
