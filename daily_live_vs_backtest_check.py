@@ -485,17 +485,20 @@ def run_check(days, send, history_path):
     start_capital = realized_now - sum(t['pnl'] for t in live if t['exit_time'] is not None)
     sim, data_flags = simulate(hist, start, end, start_capital, carry)
     rows, extra, missing, unknown = compare(live, sim, history_path)
-    items = build_items(rows, extra, missing, live, end)
+    # Kopfzeile/Uebersicht nur ueber bewertete Trades (gleiches Team bekannt) -- sonst stuende
+    # Live mit Trades vor Beginn der Teamhistorie gegen einen Backtest ohne diese Trades
+    live_eval = [t for t in live if not any(t is u for u in unknown)]
+    items = build_items(rows, extra, missing, live_eval, end)
     order_flags = data_flags + check_orders(open_pos, plans)
     team_lines = portfolio_lines(hist, start, end)
-    msg = build_message(items, unknown, order_flags, live, equity, days, team_lines)
+    msg = build_message(items, unknown, order_flags, live_eval, equity, days, team_lines)
     print(msg)
 
     keys = sorted({k for e in hist for k in e['team'] if pd.Timestamp(e['valid_from']) <= end})
     team_periods = {_short(k): [(a, b) for a, b in active_periods(hist, k) if b is None or b > start]
                     for k in keys}
     team_periods = {k: v for k, v in team_periods.items() if v}
-    summary = dict(live_n=len(live), live_pnl=sum(t['pnl'] for t in live if t['exit_time'] is not None),
+    summary = dict(live_n=len(live_eval), live_pnl=sum(t['pnl'] for t in live_eval if t['exit_time'] is not None),
                    sim_pnl=sum(d['sim']['pnl'] for d in items if d['sim'] and d['sim']['pnl'] is not None),
                    equity=equity)
     names = {_symbol_raw(k): _short(k) for k in keys}
