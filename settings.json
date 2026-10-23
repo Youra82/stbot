@@ -24,18 +24,18 @@
                 "active": true
             },
             {
-                "symbol": "ETH/USDT:USDT",
-                "timeframe": "1h",
-                "active": true
-            },
-            {
-                "symbol": "BNB/USDT:USDT",
+                "symbol": "AVAX/USDT:USDT",
                 "timeframe": "30m",
                 "active": true
             },
             {
                 "symbol": "BCH/USDT:USDT",
                 "timeframe": "2h",
+                "active": true
+            },
+            {
+                "symbol": "XRP/USDT:USDT",
+                "timeframe": "4h",
                 "active": true
             }
         ]

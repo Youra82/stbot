@@ -37,9 +37,15 @@ def _effective_start(strat_start, start_date):
     return max(starts) if starts else None
 
 
-def run_portfolio_simulation(start_capital, strategies_data, start_date, end_date, verbose=True):
+def run_portfolio_simulation(start_capital, strategies_data, start_date, end_date, verbose=True, symbol_blocks=None):
     """
     Führt eine chronologische Portfolio-Simulation mit mehreren StBot-Strategien durch.
+
+    Optional fuer den Live-Abgleich (daily_live_vs_backtest_check.py):
+      strategies_data[key]['active_periods'] = [(von, bis), ...]  -- Einstieg nur, wenn der
+        Entscheidungszeitpunkt (Kerzenschluss) im Team-Zeitraum liegt (bis=None: offen)
+      symbol_blocks = [(symbol, von, bis), ...]  -- Symbol hat eine Live-Position, die der
+        Simulator nicht kennt (eine Position je Symbol); bis=None: noch offen
     """
     if verbose:
         print("\n--- Starte Portfolio-Simulation (StBot SRv2)... ---")
@@ -94,6 +100,7 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
                 # z.B. fuer OOS-Portfolio-Backtests -- wie run_backtest(trade_start=...).
                 'trade_start': _effective_start(strat.get('trade_start'), start_date),
                 'coarse_duration': df.index[1] - df.index[0] if len(df.index) >= 2 else None,
+                'active_periods': strat.get('active_periods'),
             }
 
             all_timestamps.update(df.index)
@@ -186,6 +193,13 @@ def run_portfolio_simulation(start_capital, strategies_data, start_date, end_dat
                 if ts not in strat['data'].index: continue
                 if strat.get('trade_start') is not None and ts < strat['trade_start']: continue
                 if any(p.get('symbol_key') == strat.get('symbol') for p in open_positions.values()):
+                    continue
+                decide = ts + strat['coarse_duration'] if strat['coarse_duration'] is not None else ts
+                if strat.get('active_periods') is not None and not any(
+                        a <= decide and (b is None or decide < b) for a, b in strat['active_periods']):
+                    continue
+                if symbol_blocks and any(sym == strat.get('symbol') and a <= decide and (b is None or decide < b)
+                                         for sym, a, b in symbol_blocks):
                     continue
 
                 current_candle = strat['data'].loc[ts]

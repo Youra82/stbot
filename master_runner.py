@@ -11,6 +11,7 @@ PROJECT_ROOT = SCRIPT_DIR
 sys.path.append(os.path.join(PROJECT_ROOT, 'src'))
 
 from stbot.utils.exchange import Exchange
+from stbot.utils.team_history import record_team, strategy_key
 
 def main():
     """
@@ -45,6 +46,17 @@ def main():
         subprocess.Popen(
             [python_executable, auto_opt_script],
             stdout=open(os.path.join(logs_dir, 'auto_optimizer_trigger.log'), 'a'),
+            stderr=subprocess.STDOUT,
+        )
+
+    # Taeglicher Live-vs-Simulator-Abgleich im Hintergrund (prueft selbst, ob faellig)
+    daily_check_script = os.path.join(SCRIPT_DIR, 'daily_live_vs_backtest_check.py')
+    if os.path.exists(daily_check_script):
+        logs_dir = os.path.join(SCRIPT_DIR, 'logs')
+        os.makedirs(logs_dir, exist_ok=True)
+        subprocess.Popen(
+            [python_executable, daily_check_script],
+            stdout=open(os.path.join(logs_dir, 'daily_live_vs_backtest_check.log'), 'a'),
             stderr=subprocess.STDOUT,
         )
 
@@ -93,6 +105,7 @@ def main():
 
         print("=======================================================")
 
+        started_keys = []
         for strategy_info in strategy_list:
             # 1. Fall: Strategie kommt aus manueller settings.json (Dict)
             if isinstance(strategy_info, dict):
@@ -148,6 +161,7 @@ def main():
                 continue
 
             print(f"\n--- Starte Bot für: {symbol} ({timeframe}) ---")
+            started_keys.append(strategy_key(symbol, timeframe))
 
             command = [
                 python_executable,
@@ -160,6 +174,13 @@ def main():
             # Starte Prozess im Hintergrund, warte nicht auf Ende
             subprocess.Popen(command)
             time.sleep(2) # Kurze Pause, um API-Rate-Limits beim Start zu schonen
+
+        # Teamhistorie: welches Portfolio ab wann live lief (fuer Live-vs-Backtest-Abgleich)
+        try:
+            if record_team(started_keys, source='master_runner'):
+                print(f"Teamhistorie: neues Team aufgezeichnet ({len(started_keys)} Strategien).")
+        except Exception as e:
+            print(f"Warnung: Teamhistorie nicht geschrieben: {e}")
 
     except FileNotFoundError as e:
         print(f"Fehler: Eine wichtige Datei wurde nicht gefunden: {e}")

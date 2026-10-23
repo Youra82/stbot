@@ -211,6 +211,18 @@ def _write_to_settings(portfolio_files: list, strategies_data: dict) -> None:
         json.dump(settings, f, indent=4)
 
 
+def _record_selection(source: str) -> None:
+    """Teamhistorie: Ergebnis der Wochenauswahl festhalten, auch wenn das Team gleich bleibt."""
+    try:
+        from stbot.utils.team_history import record_team, strategy_key
+        with open(SETTINGS_PATH) as f:
+            active = json.load(f).get('live_trading_settings', {}).get('active_strategies', [])
+        keys = [strategy_key(s['symbol'], s['timeframe']) for s in active if s.get('active', True)]
+        record_team(keys, source=source, force=True)
+    except Exception as e:
+        print(f"  Warnung: Teamhistorie nicht geschrieben: {e}")
+
+
 BOT_NAME = 'stbot'
 
 
@@ -643,9 +655,11 @@ def main() -> int:
         if cur_result and new_cap <= cur_cap:
             print(f"{Y}  Neues Portfolio ({new_cap:.2f} USDT) nicht besser als aktuelles "
                   f"({cur_cap:.2f} USDT) — keine Aenderung.{NC}\n")
+            _record_selection('wochenauswahl: beibehalten')
         else:
             _write_to_settings(portfolio_files, strategies_data)
             print(f"{G}✓ settings.json aktualisiert — {len(portfolio_files)} Strategie(n).{NC}\n")
+            _record_selection('wochenauswahl: neu' if current_set != new_set else 'wochenauswahl: bestaetigt')
     else:
         if current_set == new_set:
             print(f"{Y}  Portfolio unveraendert — keine Aenderung noetig.{NC}\n")
