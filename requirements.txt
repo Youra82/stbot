@@ -2,7 +2,7 @@
 # Generiert auf Basis der tatsächlich verwendeten Pakete
 
 # Exchange
-ccxt==4.3.5
+ccxt==4.5.35
 
 # Optimierung (mit SQLite-Storage)
 optuna==4.5.0

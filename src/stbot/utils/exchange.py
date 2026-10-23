@@ -42,6 +42,14 @@ def load_data_from_cache_or_fetch(symbol, timeframe, start_date_str, end_date_st
     return pd.DataFrame()
 
 
+# Das Bitget-Konto laeuft im Hedge-Modus (posMode hedge_mode): Orders brauchen tradeSide
+# open/close, ein Close-Long ist "buy + close". ccxt 4.3.5 setzte das von sich aus; ab ccxt 4.4
+# nur noch mit hedged=True -- ohne schickt 4.5.35 One-Way-Orders (reduceOnly, ohne tradeSide),
+# die Bitget im Hedge-Modus ablehnt (SL/TSL waeren nicht gesetzt worden). Geprueft 2026-10-23:
+# mit hedged=True sendet 4.5.35 dieselben place-order/place-plan-order-Anfragen wie 4.3.5.
+HEDGE_MODE = {'hedged': True} if tuple(int(x) for x in ccxt.__version__.split('.')[:2]) >= (4, 4) else {}
+
+
 class Exchange:
     def __init__(self, account_config):
         self.account = account_config
@@ -318,7 +326,7 @@ class Exchange:
             rounded_amount = float(self.exchange.amount_to_precision(symbol, amount))
             if rounded_amount <= 0: return None
 
-            clean_params = params.copy()
+            clean_params = {**HEDGE_MODE, **params}
             # Entferne Parameter, die Bitget via CCXT stören könnten, falls nötig
             if 'instId' in clean_params: del clean_params['instId']
             if 'symbol' in clean_params: del clean_params['symbol']
@@ -338,6 +346,7 @@ class Exchange:
             rounded_amount = float(self.exchange.amount_to_precision(symbol, amount))
 
             order_params = {
+                **HEDGE_MODE,
                 'triggerPrice': rounded_price,
                 'reduceOnly': params.get('reduceOnly', False)
             }
@@ -360,6 +369,7 @@ class Exchange:
             callback_rate_float = callback_rate_decimal * 100
 
             order_params = {
+                **HEDGE_MODE,
                 **params,
                 'trailingTriggerPrice': rounded_activation,
                 'trailingPercent': callback_rate_float,

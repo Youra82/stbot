@@ -48,4 +48,11 @@ find . -type d -name "__pycache__" -delete
 echo "6. Setze Ausführungsrechte für alle .sh-Skripte..."
 chmod +x *.sh
 
+# 7. Python-Pakete auf den Stand von requirements.txt bringen (z. B. ccxt-Upgrade)
+echo "7. Aktualisiere Python-Pakete in der .venv..."
+if [ -x .venv/bin/pip ]; then
+    .venv/bin/pip install -q -r requirements.txt
+    echo "   ✅ ccxt $(.venv/bin/python3 -c 'import ccxt; print(ccxt.__version__)')"
+fi
+
 echo "✅ Update erfolgreich abgeschlossen. Dein Bot ist jetzt auf dem neuesten Stand."
