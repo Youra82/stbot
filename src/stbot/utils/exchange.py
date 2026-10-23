@@ -121,6 +121,22 @@ class Exchange:
                 df.set_index('timestamp', inplace=True)
                 df.sort_index(inplace=True)
 
+                # Bitgets recent-Endpoint liefert hoechstens ~90 Tage, egal welches limit
+                # (2026-10-23: 1d 89 statt 400, 4h 539 statt 1000). Live fehlte damit Historie,
+                # die der Backtest hat: Wochenfilter mit EMA >= ~9 galt als "fehlt" -> RSR/2h und
+                # AAVE/2h handelten live nie; 4h/6h-S/R-Zonen aus weniger Pivots. Aeltere Kerzen
+                # ueber den Historien-Download nachladen, bis limit erreicht ist.
+                if len(df) < effective_limit - 1:
+                    tf_ms = self.exchange.parse_timeframe(timeframe) * 1000
+                    first = df.index[0]
+                    start = first - pd.Timedelta(milliseconds=tf_ms * (effective_limit - len(df) + 2))
+                    older = self.fetch_historical_ohlcv(symbol, timeframe, start.strftime('%Y-%m-%d'),
+                                                        (first + pd.Timedelta(days=1)).strftime('%Y-%m-%d'),
+                                                        quiet=True)
+                    if not older.empty:
+                        df = pd.concat([older[older.index < first], df])
+                        df = df[~df.index.duplicated(keep='last')].sort_index()
+
                 # Letzte Kerze verwerfen, falls sie noch nicht geschlossen ist (fetch_ohlcv liefert
                 # sonst die gerade laufende Kerze als letzte Zeile -> würde Signale auf Basis
                 # unvollständiger Daten auslösen, siehe Live-vs-Backtest-Analyse 2026-07-30).
@@ -133,7 +149,7 @@ class Exchange:
                     except Exception:
                         pass
 
-                return df
+                return df.tail(effective_limit)
 
         except Exception as e:
             logger.error(f"FEHLER bei Live-API-Abruf für {symbol}: {e}. Versuche Fallback.")
