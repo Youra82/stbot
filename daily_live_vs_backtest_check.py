@@ -46,7 +46,8 @@ from stbot.analysis.backtester import load_data, FINE_TF_MAP
 from stbot.analysis.portfolio_simulator import run_portfolio_simulation
 from stbot.strategy.trade_rules import bitget_min_amounts
 from stbot.utils import team_history
-from stbot.utils.telegram import send_message
+from stbot.utils.telegram import send_document, send_message, send_photo
+from stbot.analysis.live_vs_backtest_report import write_report
 
 LOG_DIR       = os.path.join(PROJECT_ROOT, 'logs')
 SETTINGS_FILE = os.path.join(PROJECT_ROOT, 'settings.json')
@@ -54,6 +55,7 @@ SECRET_FILE   = os.path.join(PROJECT_ROOT, 'secret.json')
 CONFIGS_DIR   = os.path.join(PROJECT_ROOT, 'src', 'stbot', 'strategy', 'configs')
 LAST_RUN_FILE = os.path.join(PROJECT_ROOT, 'artifacts', 'db', '.last_live_vs_backtest_check')
 TRIGGER_LOG   = os.path.join(LOG_DIR, 'daily_live_vs_backtest_check.log')
+REPORT_DIR    = os.path.join(PROJECT_ROOT, 'artifacts', 'db', 'reports')  # gitignored
 PRODUCT       = 'USDT-FUTURES'
 
 DEFAULT_SETTINGS = {'enabled': True, 'rolling_window_days': 7, 'send_hour': 8}
@@ -361,25 +363,68 @@ def portfolio_lines(history, start, end):
     return lines
 
 
-def build_message(rows, extra, missing, unknown, order_flags, live, equity, days, end, team_lines=()):
-    closed_live = [t for t in live if t['exit_time'] is not None]
-    exit_dev = []
+def _tf_dur(key):
+    return pd.Timedelta(minutes=TF_MIN[key.rsplit('_', 1)[1]])
+
+
+def build_items(rows, extra, missing, live, end):
+    """Eine Zeile je Fall (gleich / fehlt live / nur live) mit Ursache -- Grundlage fuer
+    Telegram-Text und illustrierte Uebersicht, damit beide dasselbe sagen."""
+    def lt_d(lt):
+        return dict(entry_time=lt['entry_time'], exit_time=lt['exit_time'], entry=lt['entry'],
+                    exit=lt['exit'], pnl=lt['pnl'] if lt['exit_time'] is not None else None)
+
+    def st_d(st):
+        return dict(signal_time=st['signal_time'], exit_time=st['exit_time'], entry=st['entry'],
+                    exit=st['exit'], pnl=st['pnl'])
+
+    items = []
     for lt, st in rows:
+        d = dict(status='gleich', key=st['key'], name=_short(st['key']), side=st['side'],
+                 live=lt_d(lt), sim=st_d(st), exit_dev_pct=None, exit_note='', reason='')
         if lt['exit'] is None or st['exit'] is None:
-            tf_dur = pd.Timedelta(minutes=TF_MIN[st['key'].rsplit('_', 1)[1]])
-            pending = st['exit'] is None and lt['exit_time'] is not None and lt['exit_time'] > end - tf_dur
+            pending = st['exit'] is None and lt['exit_time'] is not None and lt['exit_time'] > end - _tf_dur(st['key'])
             if (lt['exit'] is None) != (st['exit'] is None) and not pending:
-                exit_dev.append(f"{_short(st['key'])} {_fmt_t(lt['entry_time'])}: live {'offen' if lt['exit'] is None else 'zu'}"
-                                f", Sim {'offen' if st['exit'] is None else 'zu'}")
-            continue
-        dev = abs(lt['exit'] - st['exit']) / st['exit'] * 100
-        if dev > EXIT_TOL_PCT:
-            exit_dev.append(f"{_short(st['key'])} {_fmt_t(lt['entry_time'])}: Exit live {lt['exit']:g} / Sim {st['exit']:.6g}"
-                            f" ({dev:.1f} %)\n  → {explain_exit(st, lt)}")
-    sim_pnl = sum(st['pnl'] for _, st in rows if st['pnl'] is not None) + \
-        sum(st['pnl'] for st in missing if st['pnl'] is not None)
-    live_pnl = sum(t['pnl'] for t in closed_live)
-    n_sim = len(rows) + len(missing)
+                d['exit_note'] = (f"live {'offen' if lt['exit'] is None else 'zu'}, "
+                                  f"Sim {'offen' if st['exit'] is None else 'zu'}")
+        else:
+            dev = abs(lt['exit'] - st['exit']) / st['exit'] * 100
+            if dev > EXIT_TOL_PCT:
+                d['exit_dev_pct'] = dev
+                d['reason'] = explain_exit(st, lt)
+        items.append(d)
+    for st in missing:
+        items.append(dict(status='fehlt', key=st['key'], name=_short(st['key']), side=st['side'], live=None,
+                          sim=st_d(st), exit_dev_pct=None, exit_note='',
+                          reason=explain_from_log(st['key'], st['signal_time'])))
+    for lt, in_team in extra:
+        key = in_team[0] if in_team else None
+        prev = [t for t in live if t['symbol'] == lt['symbol'] and t['exit_time'] is not None
+                and t['exit_time'] <= lt['entry_time'] and t['entry_time'] < lt['entry_time']]
+        # Simulator-Exitzeit = Beginn der Kerze, in der der Exit lag
+        sim_open = [st for _, st in rows if st['symbol'] == lt['symbol'] and st['exit_time'] is not None
+                    and st['signal_time'] < lt['entry_time'] < st['exit_time'] + _tf_dur(st['key'])]
+        if not in_team:
+            reason = 'Strategie war zu dem Zeitpunkt nicht im Team'
+        elif prev and sim_open:
+            reason = (f"Wiedereinstieg: live schon {_fmt_t(prev[-1]['exit_time'])} ausgestiegen, Simulator war "
+                      f"noch in der Position (Exit in Kerze ab {_fmt_t(sim_open[-1]['exit_time'])})")
+        else:
+            reason = explain_from_log(key, lt['entry_time'] - pd.Timedelta(minutes=1))
+        items.append(dict(status='nur_live', key=key, name=_short(key) if key else lt['symbol'][:-4],
+                          side=lt['side'], live=lt_d(lt), sim=None, exit_dev_pct=None, exit_note='',
+                          reason=reason))
+    return items
+
+
+def build_message(items, unknown, order_flags, live, equity, days, team_lines=()):
+    same = [d for d in items if d['status'] == 'gleich']
+    missing = [d for d in items if d['status'] == 'fehlt']
+    extra = [d for d in items if d['status'] == 'nur_live']
+    exit_dev = [d for d in same if d['exit_dev_pct'] or d['exit_note']]
+    sim_pnl = sum(d['sim']['pnl'] for d in items if d['sim'] and d['sim']['pnl'] is not None)
+    live_pnl = sum(t['pnl'] for t in live if t['exit_time'] is not None)
+    n_sim = len(same) + len(missing)
     ok = not (extra or missing or exit_dev or order_flags)
 
     lines = [f"📊 stbot Live vs. Simulator (letzte {days} Tage)", ""]
@@ -390,39 +435,34 @@ def build_message(rows, extra, missing, unknown, order_flags, live, equity, days
     lines.append("")
     if team_lines:
         lines += list(team_lines) + [""]
-    lines.append(f"✅ Gleiche Einstiege: {len(rows)}/{n_sim}" if n_sim else "Keine Simulator-Signale im Team.")
+    lines.append(f"✅ Gleiche Einstiege: {len(same)}/{n_sim}" if n_sim else "Keine Simulator-Signale im Team.")
     if missing:
         lines.append(f"\n❗ Fehlt live ({len(missing)}):")
-        for st in missing:
-            lines.append(f"• {_short(st['key'])} {st['side']} Signal {_fmt_t(st['signal_time'])}")
-            lines.append(f"  → {explain_from_log(st['key'], st['signal_time'])}")
+        for d in missing:
+            lines.append(f"• {d['name']} {d['side']} Signal {_fmt_t(d['sim']['signal_time'])}")
+            lines.append(f"  → {d['reason']}")
     if extra:
         lines.append(f"\n❗ Nur live ({len(extra)}):")
-        for lt, in_team in extra:
-            why = 'nicht im Team' if not in_team else 'kein Simulator-Signal'
-            name = _short(in_team[0]) if in_team else lt['symbol'][:-4]
-            lines.append(f"• {name} {lt['side']} {_fmt_t(lt['entry_time'])} ({why})")
-            prev = [t for t in live if t['symbol'] == lt['symbol'] and t['exit_time'] is not None
-                    and t['exit_time'] <= lt['entry_time'] and t['entry_time'] < lt['entry_time']]
-            # Simulator-Exitzeit = Beginn der Kerze, in der der Exit lag
-            sim_open = [st for _, st in rows if st['symbol'] == lt['symbol'] and st['exit_time'] is not None
-                        and st['signal_time'] < lt['entry_time']
-                        < st['exit_time'] + pd.Timedelta(minutes=TF_MIN[st['key'].rsplit('_', 1)[1]])]
-            if prev and sim_open:
-                lines.append(f"  → Wiedereinstieg: live schon {_fmt_t(prev[-1]['exit_time'])} ausgestiegen, "
-                             f"Simulator war noch in der Position (Exit in Kerze ab "
-                             f"{_fmt_t(sim_open[-1]['exit_time'])})")
-            elif in_team:
-                lines.append(f"  → {explain_from_log(in_team[0], lt['entry_time'] - pd.Timedelta(minutes=1))}")
+        for d in extra:
+            why = 'kein Simulator-Signal' if d['key'] else 'nicht im Team'
+            lines.append(f"• {d['name']} {d['side']} {_fmt_t(d['live']['entry_time'])} ({why})")
+            lines.append(f"  → {d['reason']}")
     if exit_dev:
         lines.append(f"\n⚠️ Exit-Abweichung > {EXIT_TOL_PCT} % ({len(exit_dev)}):")
-        lines += [f"• {x}" for x in exit_dev]
+        for d in exit_dev:
+            if d['exit_note']:
+                lines.append(f"• {d['name']} {_fmt_t(d['live']['entry_time'])}: {d['exit_note']}")
+            else:
+                lines.append(f"• {d['name']} {_fmt_t(d['live']['entry_time'])}: Exit live {d['live']['exit']:g} / "
+                             f"Sim {d['sim']['exit']:.6g} ({d['exit_dev_pct']:.1f} %)")
+                lines.append(f"  → {d['reason']}")
     if order_flags:
         lines.append(f"\n⚠️ Orders ({len(order_flags)}):")
         lines += [f"• {x}" for x in order_flags]
     if unknown:
         lines.append(f"\nℹ️ {len(unknown)} Trade(s) vor Beginn der Teamhistorie, nicht bewertet")
     lines.append("\n" + ("Alles im Gleichlauf." if ok else "Abweichungen prüfen (Ursache vor Fix)."))
+    lines.append("\n🖼 Übersicht mit Grafiken: Bild und HTML-Datei unten (antippen zum Öffnen)")
     return "\n".join(lines)
 
 
@@ -438,11 +478,29 @@ def run_check(days, send, history_path):
     start_capital = realized_now - sum(t['pnl'] for t in live if t['exit_time'] is not None)
     sim = simulate(hist, start, end, start_capital, carry)
     rows, extra, missing, unknown = compare(live, sim, history_path)
-    msg = build_message(rows, extra, missing, unknown, check_orders(open_pos, plans), live, equity,
-                        days, end, portfolio_lines(hist, start, end))
+    items = build_items(rows, extra, missing, live, end)
+    order_flags = check_orders(open_pos, plans)
+    team_lines = portfolio_lines(hist, start, end)
+    msg = build_message(items, unknown, order_flags, live, equity, days, team_lines)
     print(msg)
+
+    keys = sorted({k for e in hist for k in e['team'] if pd.Timestamp(e['valid_from']) <= end})
+    team_periods = {_short(k): [(a, b) for a, b in active_periods(hist, k) if b is None or b > start]
+                    for k in keys}
+    team_periods = {k: v for k, v in team_periods.items() if v}
+    summary = dict(live_n=len(live), live_pnl=sum(t['pnl'] for t in live if t['exit_time'] is not None),
+                   sim_pnl=sum(d['sim']['pnl'] for d in items if d['sim'] and d['sim']['pnl'] is not None),
+                   equity=equity)
+    names = {_symbol_raw(k): _short(k) for k in keys}
+    carry_named = [dict(c, name=names.get(c['symbol'], c['symbol'][:-4])) for c in carry]
+    png, page = write_report(items, team_periods, team_lines, order_flags, summary, start, end, REPORT_DIR,
+                             carry_named)
+    print(f"Uebersicht: {png} | {page}")
     if send:
         send_message(tg.get('bot_token'), tg.get('chat_id'), msg)
+        send_photo(tg.get('bot_token'), tg.get('chat_id'), png, caption='stbot Live vs. Backtest – Übersicht')
+        send_document(tg.get('bot_token'), tg.get('chat_id'), page,
+                      caption='Interaktive Übersicht: antippen, im Browser öffnen')
         _log(f"GESENDET live={len(live)} match={len(rows)} fehlt={len(missing)} extra={len(extra)}")
     return msg
 
